@@ -1,6 +1,6 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
-// #include "resource.h"
+#include "resource.h"
 #include <windows.h>
 #include <shlwapi.h>
 
@@ -902,7 +902,7 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
 	wc.lpfnWndProc = WindowProc;
 	wc.lpszClassName = EmuWinClass;
 	wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-	// wc.hIcon = LoadIcon(instance, (LPCTSTR)IDI_UXN32); // use this one
+	wc.hIcon = LoadIcon(instance, (LPCTSTR)IDI_UXN32); // use this one
 	// wc.hIconSm = LoadIcon(instance, (LPCTSTR)IDI_UXN32);
 	wc.style = CS_HREDRAW | CS_VREDRAW;
 	// wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
