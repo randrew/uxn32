@@ -90,6 +90,7 @@ typedef struct EmuWindow {
 	UINT needs_clear : 1;
 	BOOL host_cursor;
 
+	SIZE dib_dims;
 	UxnScreen screen; // could move to a UxnGrafxBox
 	UxnFiler filer;
 } EmuWindow;
@@ -223,9 +224,6 @@ int uxn_eval(Uxn *u, unsigned int pc)
 
 /* TODO try to eval uxn, if not, put into queue. in the one that's working, keep re-running and then give time to message loop? */
 
-#define FIXED_SIZE 0
-
-
 static Uint8 SpriteBlendingTable[5][16] = {
 	{0, 0, 0, 0, 1, 0, 1, 1, 2, 2, 0, 2, 3, 3, 3, 0},
 	{0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3},
@@ -299,17 +297,20 @@ ScreenDevOutCb(Device *d, Uint8 port)
 	UxnScreen *screen = ScreenOfDevice(d);
 	switch(port) {
 	case 0x5:
-		if(!FIXED_SIZE) {
-			Uint16 w, h;
-			DEVPEEK16(d, w, 0x2);
-			DEVPEEK16(d, h, 0x4);
-			(void)w; (void)h;
-			// set_size(w, h, 1);
-			// DebugBox("set_size: %d %d %d", (int)width, (int)height, (int)is_resize);
-			// screen_resize(&uxn_screen, width, height);
+	{
+		DWORD w, h;
+		DEVPEEK16(d, w, 0x2) DEVPEEK16(d, h, 0x4)
+		if (w > 1024 || h > 1024)
+		{
+			/* If the size is unacceptable, write back the old one */
+			DEVPOKE16(d, 0x2, screen->width)
+			DEVPOKE16(d, 0x4, screen->height)
 		}
+		else SetUxnScreenSize(screen, w, h);
 		break;
-	case 0xe: {
+	}
+	case 0xe:
+	{
 		Uint16 x, y;
 		Uint8 layer = d->dat[0xe] & 0x40, *pixels = layer ? screen->fg : screen->bg;
 		int width = screen->width;
@@ -321,17 +322,19 @@ ScreenDevOutCb(Device *d, Uint8 port)
 		if(d->dat[0x6] & 0x02) DEVPOKE16(d, 0xa, y + 1); /* auto y+1 */
 		break;
 	}
-	case 0xf: {
-		Uint16 x, y, addr;
-		Uint8 twobpp = !!(d->dat[0xf] & 0x80);
-		Uint8 *layer_pixels = (d->dat[0xf] & 0x40) ? screen->fg : screen->bg;
+	case 0xf:
+	{
+		UINT x, y, addr, tmp, advnc = d->dat[0x6], sprite = d->dat[0xf];
+		UINT twobpp = !!(sprite & 0x80);
+		Uint8 *layer_pixels = (sprite & 0x40) ? screen->fg : screen->bg;
 		DEVPEEK16(d, x, 0x8);
 		DEVPEEK16(d, y, 0xa);
 		DEVPEEK16(d, addr, 0xc);
-		DrawUxnSprite(screen, layer_pixels, x, y, &d->mem[addr], d->dat[0xf] & 0xf, d->dat[0xf] & 0x10, d->dat[0xf] & 0x20, twobpp);
-		if(d->dat[0x6] & 0x04) DEVPOKE16(d, 0xc, addr + 8 + twobpp * 8); /* auto addr+length */
-		if(d->dat[0x6] & 0x01) DEVPOKE16(d, 0x8, x + 8);                 /* auto x+8 */
-		if(d->dat[0x6] & 0x02) DEVPOKE16(d, 0xa, y + 8);                 /* auto y+8 */
+		DrawUxnSprite(screen, layer_pixels, x, y, &d->mem[addr], sprite & 0xf, sprite & 0x10, sprite & 0x20, twobpp);
+		/* auto addr+length */
+		if(advnc & 0x04) { tmp = addr + 8 + twobpp * 8; DEVPOKE16(d, 0xc, tmp); }
+		if(advnc & 0x01) { tmp = x + 8; DEVPOKE16(d, 0x8, tmp); } /* auto x+8 */
+		if(advnc & 0x02) { tmp = y + 8; DEVPOKE16(d, 0xa, tmp); } /* auto y+8 */
 		break;
 	}
 	}
@@ -700,16 +703,18 @@ WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	{
 		case WM_CREATE:
 		{
-			BITMAPINFO bmi; HDC wdc; LPCSTR filename;
+			BITMAPINFO bmi; LPCSTR filename;
 			SetUpBitmapInfo(&bmi, UXN_DEFAULT_WIDTH, UXN_DEFAULT_HEIGHT);
 
 			d = AllocZeroedOrFail(sizeof(EmuWindow));
 			SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)d);
 
-			wdc = GetDC(hwnd);
-			d->hDibDC = CreateCompatibleDC(wdc);
+#if 0 /* TODO test if there's any penalty for allocating this stuff in WM_PAINT */
+			HDC hDC = GetDC(hwnd);
+			d->hDibDC = CreateCompatibleDC(hDC);
 			d->hBMP = CreateDIBSection(d->hDibDC, &bmi, DIB_RGB_COLORS, NULL, NULL, 0);
-			ReleaseDC(hwnd, wdc);
+			ReleaseDC(hwnd, hDC);
+#endif
 			d->host_cursor = TRUE;
 
 			// Context *context = ((CREATESTRUCT *)lparam)->lpCreateParams;
@@ -730,8 +735,8 @@ WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 			FreeUxnBox(d->box);
 			FreeUxnScreen(&d->screen);
 			ResetFiler(&d->filer);
-			DeleteObject(d->hBMP);
-			DeleteDC(d->hDibDC);
+			if (d->hBMP) DeleteObject(d->hBMP);
+			if (d->hDibDC) DeleteDC(d->hDibDC);
 			HeapFree(GetProcessHeap(), 0, d);
 			PostQuitMessage(0);
 			return 0;
@@ -739,8 +744,32 @@ WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 		case WM_PAINT:
 		{
 			PAINTSTRUCT ps;
-			HDC hDC; BITMAPINFO bmi;
+			HDC hDC; BITMAPINFO bmi; SIZE bmpSize;
 			uxn_eval(&d->box->core, GETVECTOR(d->box->dev_screen));
+			GetClientRect(hwnd, &crect);
+			GetUxnScreenRect(&crect, &d->screen, &srect);
+			SetUpBitmapInfo(&bmi, d->screen.width, d->screen.height);
+			if (d->dib_dims.cx != d->screen.width || d->dib_dims.cy != d->screen.height)
+			{
+				if (d->hBMP) DeleteObject(d->hBMP);
+				if (d->hDibDC) DeleteDC(d->hDibDC);
+				if (d->screen.width > 0 && d->screen.height > 0)
+				{
+					hDC = GetDC(hwnd);
+					d->hDibDC = CreateCompatibleDC(hDC);
+					d->hBMP = CreateDIBSection(d->hDibDC, &bmi, DIB_RGB_COLORS, NULL, NULL, 0);
+					ReleaseDC(hwnd, hDC);
+				}
+				else
+				{
+					d->hBMP = NULL;
+					d->hDibDC = NULL;
+				}
+				d->dib_dims.cx = d->screen.width;
+				d->dib_dims.cy = d->screen.height;
+				d->needs_clear = 1;
+			}
+			if (!d->hBMP || !d->hDibDC) return 0; /* TODO should at least clear window */
 			{
 				DIBSECTION sec; UxnScreen *p = &d->screen;
 				// SIZE_T width = MIN(p->width, sec.dsBm.bmWidth), height = MIN(p->height, sec.dsBm.bmHeight);
@@ -752,9 +781,6 @@ WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 				for (i = 0; i < size; i++)
 					((ULONG *)sec.dsBm.bmBits)[i] = palette[p->fg[i] << 2 | p->bg[i]];
 			}
-			GetClientRect(hwnd, &crect);
-			GetUxnScreenRect(&crect, &d->screen, &srect);
-			SetUpBitmapInfo(&bmi, UXN_DEFAULT_WIDTH, UXN_DEFAULT_HEIGHT);
 			hDC = BeginPaint(hwnd, &ps);
 			if (d->needs_clear)
 			{
