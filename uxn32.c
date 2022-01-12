@@ -40,7 +40,7 @@ typedef LONG LONG_PTR;
 #include "core32.h"
 // #include "devices/audio.h"
 
-#define OFFSET_OF(s,m) ((SIZE_T)&(((s*)0)->m))
+#define OFFSET_OF(s, m) ((SIZE_T)&(((s*)0)->m))
 #define OUTER_OF(outer, type, field) ((type *) ((char *)(outer) - OFFSET_OF(type, field)))
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
