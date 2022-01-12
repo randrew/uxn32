@@ -1,0 +1,7 @@
+.DS_Store
+
+# CLion per-user file
+/.idea/workspace.xml
+
+# Qt Creator per-user file
+CMakeLists.txt.user
