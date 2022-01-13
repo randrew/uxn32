@@ -59,7 +59,6 @@ typedef LONG LONG_PTR;
 typedef struct UxnBox {
 	void *user;
 	Uxn core;
-	Device *dev_screen, *dev_mouse, *dev_ctrl, *dev_audio0;
 	Stack work_stack, ret_stack;
 	Uint8 device_memory[256];
 } UxnBox;
@@ -85,6 +84,7 @@ typedef struct UxnFiler {
 
 typedef struct EmuWindow {
 	UxnBox *box;
+	Device *dev_screen, *dev_mouse, *dev_ctrl, *dev_audio0;
 	HWND hWnd;
 	HBITMAP hBMP;
 	HDC hDibDC;
@@ -200,6 +200,7 @@ LoadFileInto(LPCSTR path, char *dest, DWORD max_bytes, DWORD *bytes_read)
 }
 
 
+#if 0
 int
 uxn_halt(Uxn *u, Uint8 error, Uint16 addr)
 {
@@ -213,6 +214,7 @@ uxn_halt(Uxn *u, Uint8 error, Uint16 addr)
 	DebugBox("Uxn machine halted: %s#%04x, at 0x%04x\n", errors[error], u->ram[addr], addr);
 	return 0;
 }
+#endif
 
 int uxn_eval(Uxn *u, unsigned int pc)
 {
@@ -622,38 +624,6 @@ result:
 #define audio_dei nil_dei
 #define audio_deo nil_deo
 
-UxnBox *
-MakeUxnBox(void)
-{
-	char *main_ram;
-	UxnBox *box = (UxnBox *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(UxnBox) + UXN_RAM_SIZE);
-	if (!box) OutOfMemory();
-	main_ram = (char *)(box + 1);
-	box->core.ram = (Uint8 *)main_ram;
-	box->core.devpage = box->device_memory;
-	box->core.wst = &box->work_stack;
-	box->core.rst = &box->ret_stack;
-	/* system   */ uxn_port(&box->core, 0x0, SystemDevInCb, SystemDevOutCb);
-	/* console  */ uxn_port(&box->core, 0x1, nil_dei, console_deo); /* ask if this should be shown in a console window on win32 and whether or not uxn roms tend to just passively poop out stuff in the background */
-	/* screen   */ box->dev_screen = uxn_port(&box->core, 0x2, ScreenDevInCb, ScreenDevOutCb);
-	/* audio0   */ box->dev_audio0 = uxn_port(&box->core, 0x3, audio_dei, audio_deo);
-	/* audio1   */ uxn_port(&box->core, 0x4, audio_dei, audio_deo);
-	/* audio2   */ uxn_port(&box->core, 0x5, audio_dei, audio_deo);
-	/* audio3   */ uxn_port(&box->core, 0x6, audio_dei, audio_deo);
-	/* unused   */ uxn_port(&box->core, 0x7, nil_dei, nil_deo);
-	/* control  */ box->dev_ctrl = uxn_port(&box->core, 0x8, nil_dei, nil_deo);
-	/* mouse    */ box->dev_mouse = uxn_port(&box->core, 0x9, nil_dei, nil_deo);
-	/* file     */ uxn_port(&box->core, 0xa, nil_dei, file_deo);
-	/* datetime */ uxn_port(&box->core, 0xb, SystemDevDateInCb, nil_deo);
-	/* unused   */ uxn_port(&box->core, 0xc, nil_dei, nil_deo);
-	/* unused   */ uxn_port(&box->core, 0xd, nil_dei, nil_deo);
-	/* unused   */ uxn_port(&box->core, 0xe, nil_dei, nil_deo);
-	/* unused   */ uxn_port(&box->core, 0xf, nil_dei, nil_deo);
-
-	/* this is weird. i think we just want to fold it into the window d init stuff */
-	return box;
-}
-
 void
 LoadROMIntoBox(UxnBox *box, LPCSTR filename)
 {
@@ -663,6 +633,47 @@ LoadROMIntoBox(UxnBox *box, LPCSTR filename)
 		if (res == 0 || res >= MAX_PATH) tmp[0] = 0;
 		FatalBox("Tried and failed to load the rom file %s", tmp);
 	}
+}
+
+void InitEmuWindow(EmuWindow *d, HWND hWnd)
+{
+	char *main_ram;
+	UxnBox *box = (UxnBox *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(UxnBox) + UXN_RAM_SIZE);
+	if (!box) OutOfMemory();
+	main_ram = (char *)(box + 1);
+	box->user = d;
+	box->core.ram = (Uint8 *)main_ram;
+	box->core.devpage = box->device_memory;
+	box->core.wst = &box->work_stack;
+	box->core.rst = &box->ret_stack;
+	/* system   */ uxn_port(&box->core, 0x0, SystemDevInCb, SystemDevOutCb);
+	/* console  */ uxn_port(&box->core, 0x1, nil_dei, console_deo); /* ask if this should be shown in a console window on win32 and whether or not uxn roms tend to just passively poop out stuff in the background */
+	/* screen   */ d->dev_screen = uxn_port(&box->core, 0x2, ScreenDevInCb, ScreenDevOutCb);
+	/* audio0   */ d->dev_audio0 = uxn_port(&box->core, 0x3, audio_dei, audio_deo);
+	/* audio1   */ uxn_port(&box->core, 0x4, audio_dei, audio_deo);
+	/* audio2   */ uxn_port(&box->core, 0x5, audio_dei, audio_deo);
+	/* audio3   */ uxn_port(&box->core, 0x6, audio_dei, audio_deo);
+	/* unused   */ uxn_port(&box->core, 0x7, nil_dei, nil_deo);
+	/* control  */ d->dev_ctrl = uxn_port(&box->core, 0x8, nil_dei, nil_deo);
+	/* mouse    */ d->dev_mouse = uxn_port(&box->core, 0x9, nil_dei, nil_deo);
+	/* file     */ uxn_port(&box->core, 0xa, nil_dei, file_deo);
+	/* datetime */ uxn_port(&box->core, 0xb, SystemDevDateInCb, nil_deo);
+	/* unused   */ uxn_port(&box->core, 0xc, nil_dei, nil_deo);
+	/* unused   */ uxn_port(&box->core, 0xd, nil_dei, nil_deo);
+	/* unused   */ uxn_port(&box->core, 0xe, nil_dei, nil_deo);
+	/* unused   */ uxn_port(&box->core, 0xf, nil_dei, nil_deo);
+
+	d->box = box;
+	d->host_cursor = TRUE;
+	d->hWnd = hWnd; /* TODO cleanup reorder these assignments */
+	SetUxnScreenSize(&d->screen, UXN_DEFAULT_WIDTH, UXN_DEFAULT_HEIGHT);
+#if 0 /* TODO test if there's any penalty for allocating this stuff in WM_PAINT */
+	HDC hDC = GetDC(hwnd);
+	d->hDibDC = CreateCompatibleDC(hDC);
+	d->hBMP = CreateDIBSection(d->hDibDC, &bmi, DIB_RGB_COLORS, NULL, NULL, 0);
+	ReleaseDC(hwnd, hDC);
+#endif
+	d->filer.hFile = d->filer.hFind = INVALID_HANDLE_VALUE;
 }
 
 void
@@ -726,28 +737,13 @@ WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 	{
 		case WM_CREATE:
 		{
-			BITMAPINFO bmi; LPCSTR filename;
+			BITMAPINFO bmi; LPCSTR filename = ((CREATESTRUCT *)lparam)->lpCreateParams;
 			SetUpBitmapInfo(&bmi, UXN_DEFAULT_WIDTH, UXN_DEFAULT_HEIGHT);
 
 			d = AllocZeroedOrFail(sizeof(EmuWindow));
 			SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)d);
+			InitEmuWindow(d, hwnd);
 
-#if 0 /* TODO test if there's any penalty for allocating this stuff in WM_PAINT */
-			HDC hDC = GetDC(hwnd);
-			d->hDibDC = CreateCompatibleDC(hDC);
-			d->hBMP = CreateDIBSection(d->hDibDC, &bmi, DIB_RGB_COLORS, NULL, NULL, 0);
-			ReleaseDC(hwnd, hDC);
-#endif
-			d->host_cursor = TRUE;
-			d->hWnd = hwnd; /* TODO cleanup reorder these assignments */
-
-			// Context *context = ((CREATESTRUCT *)lparam)->lpCreateParams;
-			filename = ((CREATESTRUCT *)lparam)->lpCreateParams;
-
-			d->box = MakeUxnBox();
-			d->box->user = d;
-			SetUxnScreenSize(&d->screen, UXN_DEFAULT_WIDTH, UXN_DEFAULT_HEIGHT);
-			d->filer.hFile = d->filer.hFind = INVALID_HANDLE_VALUE;
 			LoadROMIntoBox(d->box, filename);
 			if (!uxn_eval(&d->box->core, UXN_ROM_OFFSET))
 				DebugBox("Uxn boot error");
@@ -769,7 +765,7 @@ WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 		{
 			PAINTSTRUCT ps;
 			HDC hDC; BITMAPINFO bmi;
-			uxn_eval(&d->box->core, GETVECTOR(d->box->dev_screen));
+			uxn_eval(&d->box->core, GETVECTOR(d->dev_screen));
 			GetClientRect(hwnd, &crect);
 			GetUxnScreenRect(&crect, &d->screen, &srect);
 			SetUpBitmapInfo(&bmi, d->screen.width, d->screen.height);
@@ -844,11 +840,11 @@ WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 			GetUxnScreenRect(&crect, &d->screen, &srect);
 			SetHostCursorVisible(d, !PtInRect(&srect, mouse));
 			BindPointToLocalUxnScreen(&srect, &mouse);
-			DEVPOKE16(d->box->dev_mouse, 0x2, (Uint16)mouse.x)
-			DEVPOKE16(d->box->dev_mouse, 0x4, (Uint16)mouse.y)
-			if (or_and) d->box->dev_mouse->dat[6] &= ~bits;
-			else d->box->dev_mouse->dat[6] |= bits;
-			uxn_eval(&d->box->core, GETVECTOR(d->box->dev_mouse));
+			DEVPOKE16(d->dev_mouse, 0x2, (Uint16)mouse.x)
+			DEVPOKE16(d->dev_mouse, 0x4, (Uint16)mouse.y)
+			if (or_and) d->dev_mouse->dat[6] &= ~bits;
+			else d->dev_mouse->dat[6] |= bits;
+			uxn_eval(&d->box->core, GETVECTOR(d->dev_mouse));
 			InvalidateRect(hwnd, &srect, FALSE);
 			break;
 		}
@@ -858,12 +854,12 @@ WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 			GetClientRect(hwnd, &crect);
 			GetUxnScreenRect(&crect, &d->screen, &srect);
 			/* could set mouse x,y pos here if we wanted to */
-			DEVPOKE16(d->box->dev_mouse, 0xa, 0); /* no X axis scrolling yet */
-			DEVPOKE16(d->box->dev_mouse, 0xc, (Uint16)(-zDelta / 120)); /* TODO accumulate error */
-			uxn_eval(&d->box->core, GETVECTOR(d->box->dev_mouse));
+			DEVPOKE16(d->dev_mouse, 0xa, 0); /* no X axis scrolling yet */
+			DEVPOKE16(d->dev_mouse, 0xc, (Uint16)(-zDelta / 120)); /* TODO accumulate error */
+			uxn_eval(&d->box->core, GETVECTOR(d->dev_mouse));
 			InvalidateRect(hwnd, &srect, FALSE);
-			DEVPOKE16(d->box->dev_mouse, 0xa, 0);
-			DEVPOKE16(d->box->dev_mouse, 0xc, 0);
+			DEVPOKE16(d->dev_mouse, 0xa, 0);
+			DEVPOKE16(d->dev_mouse, 0xc, 0);
 			break;
 		}
 		}
@@ -878,15 +874,15 @@ WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 			if (keyChar < 32 && keyChar != 8 && keyChar != 9 && keyChar != 10 && keyChar != 13 && keyChar != 27) break;
 			GetClientRect(hwnd, &crect);
 			GetUxnScreenRect(&crect, &d->screen, &srect);
-			d->box->dev_ctrl->dat[3] = (Uint8)keyChar;
-			uxn_eval(&d->box->core, GETVECTOR(d->box->dev_ctrl));
-			d->box->dev_ctrl->dat[3] = 0;
+			d->dev_ctrl->dat[3] = (Uint8)keyChar;
+			uxn_eval(&d->box->core, GETVECTOR(d->dev_ctrl));
+			d->dev_ctrl->dat[3] = 0;
 			InvalidateRect(hwnd, &srect, FALSE);
 			return 0;
 		}
 		case WM_KEYDOWN:
 		{
-			int old_mask = d->box->dev_ctrl->dat[2];
+			int old_mask = d->dev_ctrl->dat[2];
 			if (old_mask & (0x01 | 0x02) && (keyChar = MapVirtualKey(wparam, MAPVK_VK_TO_CHAR)))
 			{
 				/* Make lower case if upper case */
@@ -909,11 +905,11 @@ WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 			case VK_RIGHT:   mask = 0x80; break;
 			}
 			if (!mask) break;
-			if (msg == WM_KEYDOWN) d->box->dev_ctrl->dat[2] |= mask;
-			else d->box->dev_ctrl->dat[2] &= ~mask;
+			if (msg == WM_KEYDOWN) d->dev_ctrl->dat[2] |= mask;
+			else d->dev_ctrl->dat[2] &= ~mask;
 			GetClientRect(hwnd, &crect);
 			GetUxnScreenRect(&crect, &d->screen, &srect);
-			uxn_eval(&d->box->core, GETVECTOR(d->box->dev_ctrl));
+			uxn_eval(&d->box->core, GETVECTOR(d->dev_ctrl));
 			InvalidateRect(hwnd, &srect, FALSE);
 			return 0;
 		}
