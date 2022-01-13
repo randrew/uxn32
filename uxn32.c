@@ -744,7 +744,7 @@ WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 		case WM_PAINT:
 		{
 			PAINTSTRUCT ps;
-			HDC hDC; BITMAPINFO bmi; SIZE bmpSize;
+			HDC hDC; BITMAPINFO bmi;
 			uxn_eval(&d->box->core, GETVECTOR(d->box->dev_screen));
 			GetClientRect(hwnd, &crect);
 			GetUxnScreenRect(&crect, &d->screen, &srect);
