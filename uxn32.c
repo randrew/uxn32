@@ -85,6 +85,7 @@ typedef struct UxnFiler {
 
 typedef struct EmuWindow {
 	UxnBox *box;
+	HWND hWnd;
 	HBITMAP hBMP;
 	HDC hDibDC;
 	UINT needs_clear : 1;
@@ -270,6 +271,11 @@ static void FreeUxnScreen(UxnScreen *p)
 	if (p->bg) HeapFree(GetProcessHeap(), 0, p->bg);
 }
 
+EmuWindow * EmuOfDevice(Device *d) /* TODO these are kinda dumb, clean when making Devices better */
+{
+	UxnBox *box = OUTER_OF(d->u, UxnBox, core);
+	return (EmuWindow *)box->user;
+}
 UxnScreen * ScreenOfDevice(Device *d)
 {
 	UxnBox *box = OUTER_OF(d->u, UxnBox, core);
@@ -291,6 +297,17 @@ ScreenDevInCb(Device *d, Uint8 port)
 	}
 }
 
+static void ResizeEmuWindow(EmuWindow *d, LONG width, LONG height)
+{
+	RECT r;
+	GetWindowRect(d->hWnd, &r);
+	r.right = r.left + width;
+	r.bottom = r.top + height;
+	AdjustWindowRect(&r, GetWindowLong(d->hWnd, GWL_STYLE), FALSE); /* note: no spam protection from Uxn program yet */
+	MoveWindow(d->hWnd, r.left, r.top, r.right - r.left, r.bottom - r.top, TRUE);
+	/* Seems like the repaint from this is always async. We need the TRUE flag for repainting or the non-client area will be messed up on non-DWM. */
+}
+
 void
 ScreenDevOutCb(Device *d, Uint8 port)
 {
@@ -306,7 +323,11 @@ ScreenDevOutCb(Device *d, Uint8 port)
 			DEVPOKE16(d, 0x2, screen->width)
 			DEVPOKE16(d, 0x4, screen->height)
 		}
-		else SetUxnScreenSize(screen, w, h);
+		else
+		{
+			SetUxnScreenSize(screen, w, h);
+			ResizeEmuWindow(EmuOfDevice(d), screen->width, screen->height);
+		}
 		break;
 	}
 	case 0xe:
@@ -716,6 +737,7 @@ WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 			ReleaseDC(hwnd, hDC);
 #endif
 			d->host_cursor = TRUE;
+			d->hWnd = hwnd; /* TODO cleanup reorder these assignments */
 
 			// Context *context = ((CREATESTRUCT *)lparam)->lpCreateParams;
 			filename = ((CREATESTRUCT *)lparam)->lpCreateParams;
