@@ -563,7 +563,7 @@ FileDevStat(UxnFiler *f, char *dst, DWORD dst_len)
 static DWORD
 FileDevDelete(UxnFiler *f)
 {
-	DWORD result = 0;
+	DWORD result;
 	ResetFiler(f);
 	if (!f->pathlen) return 0;
 	if (PathIsDirectoryA(f->path))
