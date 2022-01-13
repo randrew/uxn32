@@ -59,7 +59,7 @@ typedef LONG LONG_PTR;
 typedef struct UxnBox {
 	void *user;
 	Uxn core;
-	Device *dev_system, *dev_screen, *dev_mouse, *dev_ctrl, *dev_audio0, *dev_console;
+	Device *dev_screen, *dev_mouse, *dev_ctrl, *dev_audio0;
 	Stack work_stack, ret_stack;
 	Uint8 device_memory[256];
 } UxnBox;
@@ -312,6 +312,7 @@ void
 ScreenDevOutCb(Device *d, Uint8 port)
 {
 	UxnScreen *screen = ScreenOfDevice(d);
+	Uxn *u = d->u; /* TODO */
 	switch(port) {
 	case 0x5:
 	{
@@ -351,7 +352,7 @@ ScreenDevOutCb(Device *d, Uint8 port)
 		DEVPEEK16(d, x, 0x8);
 		DEVPEEK16(d, y, 0xa);
 		DEVPEEK16(d, addr, 0xc);
-		DrawUxnSprite(screen, layer_pixels, x, y, &d->mem[addr], sprite & 0xf, sprite & 0x10, sprite & 0x20, twobpp);
+		DrawUxnSprite(screen, layer_pixels, x, y, &u->ram[addr], sprite & 0xf, sprite & 0x10, sprite & 0x20, twobpp);
 		/* auto addr+length */
 		if(advnc & 0x04) { tmp = addr + 8 + twobpp * 8; DEVPOKE16(d, 0xc, tmp); }
 		if(advnc & 0x01) { tmp = x + 8; DEVPOKE16(d, 0x8, tmp); } /* auto x+8 */
@@ -459,10 +460,11 @@ FileDevPathChange(Device *d)
 	DWORD addr, i, avail;
 	char tmp[MAX_PATH + 1], *in_mem;
 	UxnFiler *f = FilerOfDevice(d);
+	Uxn *u = d->u; /* TODO */
 	ResetFiler(f);
 	DEVPEEK16(d, addr, 0x8);
 	avail = UXN_RAM_SIZE - addr;
-	in_mem = (char *)d->mem + addr;
+	in_mem = (char *)u->ram + addr;
 	if (avail > MAX_PATH) avail = MAX_PATH;
 	for (i = 0;; i++) {
 		if (i >= avail) goto error;
@@ -576,7 +578,6 @@ uxn_port(Uxn *u, Uint8 id, Uint8 (*deifn)(Device *d, Uint8 port), void (*deofn)(
 {
 	Device *d = &u->dev[id];
 	d->u = u;
-	d->mem = u->ram; /* TODO unnecessary */
 	d->dei = deifn;
 	d->deo = deofn;
 	d->dat = u->devpage + id * 0x10;
@@ -588,6 +589,7 @@ file_deo(Device *d, Uint8 port)
 {
 	DWORD result = 0, /* next inits suppress msvc warning */ out_len = 0; char *out = 0;
 	UxnFiler *f = FilerOfDevice(d);
+	Uxn *u = d->u; /* TODO */
 	switch(port) { /* These need write location and size */
 	int peek_at; DWORD dst, avail;
 	case 0x5: peek_at = 0x4; goto calc;
@@ -598,7 +600,7 @@ file_deo(Device *d, Uint8 port)
 		DEVPEEK16(d, out_len, 0xa);
 		avail = UXN_RAM_SIZE - dst;
 		if (out_len > avail) out_len = avail;
-		out = (char *)d->mem + dst;
+		out = (char *)u->ram + dst;
 	}
 	switch(port) {
 	case 0x5: result = FileDevStat(f, out, out_len); goto result;
@@ -631,8 +633,8 @@ MakeUxnBox(void)
 	box->core.devpage = box->device_memory;
 	box->core.wst = &box->work_stack;
 	box->core.rst = &box->ret_stack;
-	/* system   */ box->dev_system = uxn_port(&box->core, 0x0, SystemDevInCb, SystemDevOutCb);
-	/* console  */ box->dev_console = uxn_port(&box->core, 0x1, nil_dei, console_deo); /* ask if this should be shown in a console window on win32 and whether or not uxn roms tend to just passively poop out stuff in the background */
+	/* system   */ uxn_port(&box->core, 0x0, SystemDevInCb, SystemDevOutCb);
+	/* console  */ uxn_port(&box->core, 0x1, nil_dei, console_deo); /* ask if this should be shown in a console window on win32 and whether or not uxn roms tend to just passively poop out stuff in the background */
 	/* screen   */ box->dev_screen = uxn_port(&box->core, 0x2, ScreenDevInCb, ScreenDevOutCb);
 	/* audio0   */ box->dev_audio0 = uxn_port(&box->core, 0x3, audio_dei, audio_deo);
 	/* audio1   */ uxn_port(&box->core, 0x4, audio_dei, audio_deo);

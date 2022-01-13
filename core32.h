@@ -23,7 +23,7 @@ typedef struct {
 
 typedef struct Device {
 	struct Uxn *u;
-	Uint8 *dat, *mem;
+	Uint8 *dat;
 	Uint8 (*dei)(struct Device *d, Uint8);
 	void (*deo)(struct Device *d, Uint8);
 } Device;
