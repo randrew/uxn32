@@ -29,7 +29,7 @@ typedef struct Device {
 } Device;
 
 typedef struct Uxn {
-	Uint8 *ram, *devpage;
+	Uint8 *ram;
 	Stack *wst, *rst;
 	Device dev[16];
 	Uint16 pc, fault_code;

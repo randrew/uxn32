@@ -576,13 +576,13 @@ FileDevDelete(UxnFiler *f)
 }
 
 Device *
-uxn_port(Uxn *u, Uint8 id, Uint8 (*deifn)(Device *d, Uint8 port), void (*deofn)(Device *d, Uint8 port))
+uxn_port(Uxn *u, Uint8 *devpage, Uint8 id, Uint8 (*deifn)(Device *d, Uint8 port), void (*deofn)(Device *d, Uint8 port))
 {
 	Device *d = &u->dev[id];
 	d->u = u;
 	d->dei = deifn;
 	d->deo = deofn;
-	d->dat = u->devpage + id * 0x10;
+	d->dat = devpage + id * 0x10;
 	return d;
 }
 
@@ -643,25 +643,24 @@ void InitEmuWindow(EmuWindow *d, HWND hWnd)
 	main_ram = (char *)(box + 1);
 	box->user = d;
 	box->core.ram = (Uint8 *)main_ram;
-	box->core.devpage = box->device_memory;
 	box->core.wst = &box->work_stack;
 	box->core.rst = &box->ret_stack;
-	/* system   */ uxn_port(&box->core, 0x0, SystemDevInCb, SystemDevOutCb);
-	/* console  */ uxn_port(&box->core, 0x1, nil_dei, console_deo); /* ask if this should be shown in a console window on win32 and whether or not uxn roms tend to just passively poop out stuff in the background */
-	/* screen   */ d->dev_screen = uxn_port(&box->core, 0x2, ScreenDevInCb, ScreenDevOutCb);
-	/* audio0   */ d->dev_audio0 = uxn_port(&box->core, 0x3, audio_dei, audio_deo);
-	/* audio1   */ uxn_port(&box->core, 0x4, audio_dei, audio_deo);
-	/* audio2   */ uxn_port(&box->core, 0x5, audio_dei, audio_deo);
-	/* audio3   */ uxn_port(&box->core, 0x6, audio_dei, audio_deo);
-	/* unused   */ uxn_port(&box->core, 0x7, nil_dei, nil_deo);
-	/* control  */ d->dev_ctrl = uxn_port(&box->core, 0x8, nil_dei, nil_deo);
-	/* mouse    */ d->dev_mouse = uxn_port(&box->core, 0x9, nil_dei, nil_deo);
-	/* file     */ uxn_port(&box->core, 0xa, nil_dei, file_deo);
-	/* datetime */ uxn_port(&box->core, 0xb, SystemDevDateInCb, nil_deo);
-	/* unused   */ uxn_port(&box->core, 0xc, nil_dei, nil_deo);
-	/* unused   */ uxn_port(&box->core, 0xd, nil_dei, nil_deo);
-	/* unused   */ uxn_port(&box->core, 0xe, nil_dei, nil_deo);
-	/* unused   */ uxn_port(&box->core, 0xf, nil_dei, nil_deo);
+	/* system   */ uxn_port(&box->core, box->device_memory, 0x0, SystemDevInCb, SystemDevOutCb);
+	/* console  */ uxn_port(&box->core, box->device_memory, 0x1, nil_dei, console_deo); /* ask if this should be shown in a console window on win32 and whether or not uxn roms tend to just passively poop out stuff in the background */
+	/* screen   */ d->dev_screen = uxn_port(&box->core, box->device_memory,  0x2, ScreenDevInCb, ScreenDevOutCb);
+	/* audio0   */ d->dev_audio0 = uxn_port(&box->core, box->device_memory,  0x3, audio_dei, audio_deo);
+	/* audio1   */ uxn_port(&box->core, box->device_memory,  0x4, audio_dei, audio_deo);
+	/* audio2   */ uxn_port(&box->core, box->device_memory,  0x5, audio_dei, audio_deo);
+	/* audio3   */ uxn_port(&box->core, box->device_memory,  0x6, audio_dei, audio_deo);
+	/* unused   */ uxn_port(&box->core, box->device_memory,  0x7, nil_dei, nil_deo);
+	/* control  */ d->dev_ctrl = uxn_port(&box->core, box->device_memory,  0x8, nil_dei, nil_deo);
+	/* mouse    */ d->dev_mouse = uxn_port(&box->core, box->device_memory,  0x9, nil_dei, nil_deo);
+	/* file     */ uxn_port(&box->core, box->device_memory,  0xa, nil_dei, file_deo);
+	/* datetime */ uxn_port(&box->core, box->device_memory,  0xb, SystemDevDateInCb, nil_deo);
+	/* unused   */ uxn_port(&box->core, box->device_memory,  0xc, nil_dei, nil_deo);
+	/* unused   */ uxn_port(&box->core, box->device_memory,  0xd, nil_dei, nil_deo);
+	/* unused   */ uxn_port(&box->core, box->device_memory,  0xe, nil_dei, nil_deo);
+	/* unused   */ uxn_port(&box->core, box->device_memory,  0xf, nil_dei, nil_deo);
 
 	d->box = box;
 	d->host_cursor = TRUE;
