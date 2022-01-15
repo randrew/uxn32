@@ -841,7 +841,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)d);
 			InitEmuWindow(d, hwnd);
 			LoadROMIntoBox(d->box, filename);
-			ApplyInputEvent(d, EmuIn_Start, 0, 0, 0);
+			SendInputEvent(d, EmuIn_Start, 0, 0, 0);
 			SetTimer(hwnd, Screen60hzTimer, 16, NULL);
 			return 0;
 		}
