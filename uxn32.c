@@ -326,12 +326,12 @@ Uint8 ScreenDevInCb(Device *d, Uint8 port)
 
 static void ResizeEmuWindow(EmuWindow *d, LONG width, LONG height)
 {
-	RECT r;
+	RECT c, r;
+	c.left = 0; c.top = 0;
+	c.right = width; c.bottom = height;
+	AdjustWindowRect(&c, GetWindowLong(d->hWnd, GWL_STYLE), FALSE); /* note: no spam protection from Uxn program yet */
 	GetWindowRect(d->hWnd, &r);
-	r.right = r.left + width;
-	r.bottom = r.top + height;
-	AdjustWindowRect(&r, GetWindowLong(d->hWnd, GWL_STYLE), FALSE); /* note: no spam protection from Uxn program yet */
-	MoveWindow(d->hWnd, r.left, r.top, r.right - r.left, r.bottom - r.top, TRUE);
+	MoveWindow(d->hWnd, r.left, r.top, c.right - c.left, c.bottom - c.top, TRUE);
 	/* Seems like the repaint from this is always async. We need the TRUE flag for repainting or the non-client area will be messed up on non-DWM. */
 }
 
