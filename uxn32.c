@@ -768,6 +768,14 @@ static void SetHostCursorVisible(EmuWindow *d, BOOL visible)
 	ShowCursor(visible);
 }
 
+static void InvalidateUxnScreenRect(EmuWindow *d)
+{
+	RECT crect, srect;
+	GetClientRect(d->hWnd, &crect);
+	GetUxnScreenRect(&crect, &d->screen, &srect);
+	InvalidateRect(d->hWnd, &srect, FALSE);
+}
+
 static void RunUxn(EmuWindow *d, unsigned int pc)
 {
 	UINT res; MSG msg; Uxn *u = &d->box->core;
@@ -791,13 +799,8 @@ static void RunUxn(EmuWindow *d, unsigned int pc)
 			/* total will include some non-Uxn work, but close enough */
 		}
 		event_interrupts++;
-		if (t_b - d->last_paint > RepaintTimeLimit)
-		{
-			RECT crect, srect;
-			GetClientRect(d->hWnd, &crect); /* TODO repetitive */
-			GetUxnScreenRect(&crect, &d->screen, &srect);
-			InvalidateRect(d->hWnd, &srect, FALSE);
-		}
+		/* If we're going incredibly slow, occasionally force a repaint even though the Uxn program might not have finished drawing to them (ugly/incomplete image.) ApplyInputEvent will queue another repaint later to get a finished image. */
+		if (t_b - d->last_paint > RepaintTimeLimit) InvalidateUxnScreenRect(d);
 		while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
 		{
 			if (msg.message == WM_QUIT)
@@ -814,7 +817,6 @@ done:
 
 static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT y)
 {
-	RECT crect, srect;
 	switch (type)
 	{
 	case EmuIn_KeyChar:
@@ -846,15 +848,11 @@ static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT
 		DEVPOKE16(d->dev_mouse, 0xc, 0);
 		break;
 	}
-	GetClientRect(d->hWnd, &crect); /* move this stuff? */
-	GetUxnScreenRect(&crect, &d->screen, &srect);
-	InvalidateRect(d->hWnd, &srect, FALSE);
-	/* We might have a lot of EmuIn events queued up. If it's been a long time since we repainted the screen, just force it now. */
+	InvalidateUxnScreenRect(d); /* Queue a repaint if there isn't already one */
+	/* We might have a lot of EmuIn events queued up in a row with no repaint. If it's been a long time since we repainted the screen, just force it now. */
 	if (TimeStampNow() - d->last_paint > RepaintTimeLimit) UpdateWindow(d->hWnd);
-	if (d->queue_count)
-	{
-		PostMessage(d->hWnd, UXNMSG_MoreExec, 0, 0);
-	}
+	/* If we have any buffered input events, post a message that will make us process another one. */
+	if (d->queue_count) PostMessage(d->hWnd, UXNMSG_MoreExec, 0, 0);
 }
 
 static void SendInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT y)
