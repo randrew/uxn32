@@ -19,7 +19,7 @@ Features
 Use
 ---
 
-Download the [pre-built zip of Uxn32.exe plus a ROM starter pack](https://github.com/randrew/uxn32/releases/download/1.0/Uxn32-1.0-Plus-Start-Pack-ROMs.zip). Unzip into a new directory and run Uxn32.exe.
+Download the pre-built [Uxn Starter Pack - a bundle of Uxn32.exe and a collection of ROMs](https://github.com/randrew/uxn32/releases/download/1.0/Uxn32-1.0-Plus-Start-Pack-ROMs.zip). Unzip into a new directory and run Uxn32.exe.
 
 Uxn32 TODO
 ----------
