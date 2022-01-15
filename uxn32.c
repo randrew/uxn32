@@ -682,11 +682,6 @@ void FreeUxnBox(UxnBox *box)
 	HeapFree(GetProcessHeap(), 0, box);
 }
 
-// typedef struct EmuCreationParams {
-// 	// could make this a UxnBox in the future to avoid window-create-then-resize if the rom has a particular size it wants. or something like that
-// 	LPSTR *rom_file;
-// } EmuCreationParams;
-
 static void SetUpBitmapInfo(BITMAPINFO *bmi, int width, int height)
 {
 	ZeroMemory(bmi, sizeof(BITMAPINFO));
