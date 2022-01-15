@@ -133,7 +133,8 @@ typedef struct EmuWindow
 	HDC hDibDC;
 	SIZE dib_dims;
 
-	BYTE needs_clear, host_cursor, exec_guard;
+	BYTE needs_clear, host_cursor, exec_guard, window_closing;
+	/* TODO window_closing not generalized to all interruptions */
 
 	EmuInEvent *queue_buffer;
 	USHORT queue_count, queue_first;
@@ -757,10 +758,10 @@ static void RunUxn(EmuWindow *d, unsigned int pc)
 		event_interrupts++;
 		/* If we're going incredibly slow, occasionally force a repaint even though the Uxn program might not have finished drawing to them (ugly/incomplete image.) ApplyInputEvent will queue another repaint later to get a finished image. */
 		if (t_b - d->last_paint > RepaintTimeLimit) InvalidateUxnScreenRect(d);
-		while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+		for (;;)
 		{
-			if (msg.message == WM_QUIT)
-				break;
+			if (d->window_closing) return;
+			if (!PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) break;
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		}
@@ -808,6 +809,7 @@ static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT
 		RunUxn(d, UXN_ROM_OFFSET);
 		break;
 	}
+	if (d->window_closing) { DestroyWindow(d->hWnd); return; }
 	InvalidateUxnScreenRect(d); /* Queue a repaint if there isn't already one */
 	/* We might have a lot of EmuIn events queued up in a row with no repaint. If it's been a long time since we repainted the screen, just force it now. */
 	if (TimeStampNow() - d->last_paint > RepaintTimeLimit) UpdateWindow(d->hWnd);
@@ -844,6 +846,12 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			SendInputEvent(d, EmuIn_Start, 0, 0, 0);
 			SetTimer(hwnd, Screen60hzTimer, 16, NULL);
 			return 0;
+		}
+		case WM_CLOSE:
+		{
+			if (d->exec_guard) d->window_closing = 1;
+			else DestroyWindow(hwnd);
+			break;
 		}
 		case WM_DESTROY:
 		{
