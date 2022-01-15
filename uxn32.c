@@ -71,7 +71,6 @@ static LONGLONG TimeStampNow(void) { LARGE_INTEGER r; QueryPerformanceCounter(&r
 static UINT TimeStampMicros(LONGLONG t) { return (UINT)LongLongMulDiv(t, 1000000, _perfcount_freq.QuadPart); }
 static UINT TimeStampMillis(LONGLONG t) { return (UINT)LongLongMulDiv(t, 1000, _perfcount_freq.QuadPart); }
 static UINT MicrosSince(LONGLONG t) { return TimeStampMicros(TimeStampNow() - t); }
-static UINT MillisSince(LONGLONG t) { return TimeStampMillis(TimeStampNow() - t); }
 
 typedef struct UxnBox {
 	void *user;
@@ -810,8 +809,6 @@ static void RunUxn(EmuWindow *d, unsigned int pc)
 		}
 	}
 done:
-	// if (event_interrupts > 0)
-	// DebugPrint("took %d us (time interrupts: %d executions: %d)", TimeStampMicros(total), event_interrupts, instr_interrupts);
 	d->exec_guard = 0;
 }
 
@@ -903,9 +900,7 @@ WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 		}
 		case WM_PAINT:
 		{
-			PAINTSTRUCT ps;
-			HDC hDC; BITMAPINFO bmi;
-			// if (screen_overdrive)
+			PAINTSTRUCT ps; HDC hDC; BITMAPINFO bmi;
 			// if (!d->exec_guard) RunUxn(d, GETVECTOR(d->dev_screen));
 			GetClientRect(hwnd, &crect);
 			GetUxnScreenRect(&crect, &d->screen, &srect);
