@@ -59,6 +59,7 @@ typedef LONG LONG_PTR;
 
 static LARGE_INTEGER _perfcount_freq;
 static LONGLONG ExecutionTimeLimit;
+#define RepaintTimeLimit ExecutionTimeLimit
 
 static LONGLONG LongLongMulDiv(LONGLONG value, LONGLONG numer, LONGLONG denom)
 {
@@ -128,6 +129,7 @@ typedef struct EmuWindow {
 
 	EmuInEvent *queue_buffer;
 	USHORT queue_count, queue_first;
+	LONGLONG last_paint;
 
 	SIZE dib_dims;
 	UxnScreen screen; // could move to a UxnGrafxBox
@@ -769,7 +771,7 @@ static void SetHostCursorVisible(EmuWindow *d, BOOL visible)
 static void RunUxn(EmuWindow *d, unsigned int pc)
 {
 	UINT res; MSG msg; Uxn *u = &d->box->core;
-	LONGLONG total = 0, t_a, t_b;
+	LONGLONG total = 0, t_a, t_b, t_delta;
 	int event_interrupts = 0, instr_interrupts = 0;
 	SANITY_CHECK(d->exec_guard == 0);
 	if (!pc) return;
@@ -782,12 +784,20 @@ static void RunUxn(EmuWindow *d, unsigned int pc)
 		{
 			res = UxnExec(&d->box->core, 100000); /* about 1900 usecs on good hardware */
 			instr_interrupts++;
-			t_b = TimeStampNow() - t_a;
-			if (res != 0) { total += t_b; goto done; }
-			if (t_b > ExecutionTimeLimit) { total += t_b; break; }
+			t_b = TimeStampNow();
+			t_delta = t_b - t_a;
+			if (res != 0) { total += t_delta; goto done; }
+			if (t_delta > ExecutionTimeLimit) { total += t_delta; break; }
 			/* total will include some non-Uxn work, but close enough */
 		}
 		event_interrupts++;
+		if (t_b - d->last_paint > RepaintTimeLimit)
+		{
+			RECT crect, srect;
+			GetClientRect(d->hWnd, &crect); /* TODO repetitive */
+			GetUxnScreenRect(&crect, &d->screen, &srect);
+			InvalidateRect(d->hWnd, &srect, FALSE);
+		}
 		while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
 		{
 			if (msg.message == WM_QUIT)
@@ -839,6 +849,8 @@ static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT
 	GetClientRect(d->hWnd, &crect); /* move this stuff? */
 	GetUxnScreenRect(&crect, &d->screen, &srect);
 	InvalidateRect(d->hWnd, &srect, FALSE);
+	/* We might have a lot of EmuIn events queued up. If it's been a long time since we repainted the screen, just force it now. */
+	if (TimeStampNow() - d->last_paint > RepaintTimeLimit) UpdateWindow(d->hWnd);
 	if (d->queue_count)
 	{
 		PostMessage(d->hWnd, UXNMSG_MoreExec, 0, 0);
@@ -946,6 +958,7 @@ WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 			// StretchBlt(hDC, 0, 0, UXN_DEFAULT_WIDTH, UXN_DEFAULT_HEIGHT, d->hDibDC, 0, 0, UXN_DEFAULT_WIDTH, UXN_DEFAULT_HEIGHT, SRCCOPY);
 			BitBlt(hDC, srect.left, srect.top, d->screen.width, d->screen.height, d->hDibDC, 0, 0, SRCCOPY);
 			EndPaint(hwnd, &ps);
+			d->last_paint = TimeStampNow();
 			return 0;
 		}
 		case WM_SIZE:
