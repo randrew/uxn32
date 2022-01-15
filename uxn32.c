@@ -845,9 +845,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	{
 		case WM_CREATE:
 		{
-			BITMAPINFO bmi; LPCSTR filename = ((CREATESTRUCT *)lparam)->lpCreateParams;
-			SetUpBitmapInfo(&bmi, UXN_DEFAULT_WIDTH, UXN_DEFAULT_HEIGHT);
-
+			LPCSTR filename = ((CREATESTRUCT *)lparam)->lpCreateParams;
 			d = AllocZeroedOrFail(sizeof(EmuWindow));
 			SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)d);
 			InitEmuWindow(d, hwnd);
