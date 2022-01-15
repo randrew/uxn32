@@ -252,8 +252,6 @@ uxn_halt(Uxn *u, Uint8 error, Uint16 addr)
 }
 #endif
 
-/* TODO try to eval uxn, if not, put into queue. in the one that's working, keep re-running and then give time to message loop? */
-
 static Uint8 SpriteBlendingTable[5][16] = {
 	{0, 0, 0, 0, 1, 0, 1, 1, 2, 2, 0, 2, 3, 3, 3, 0},
 	{0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3},
@@ -284,7 +282,7 @@ static void SetUxnScreenSize(UxnScreen *p, DWORD width, DWORD height)
 {
 	DWORD one_size = width * height, two_size = one_size * 2;
 	HANDLE hHeap = GetProcessHeap(); BOOL reallocing = p->bg != NULL;
-	// TODO pad for simd
+	/* TODO pad for simd */
 	Uint8 *buff = reallocing ? HeapReAlloc(hHeap, 0, p->bg, two_size) : HeapAlloc(hHeap, HEAP_ZERO_MEMORY, two_size);
 	if (!buff) OutOfMemory();
 	if (reallocing) ZeroMemory(buff, two_size);
@@ -458,10 +456,9 @@ static UxnFiler *FilerOfDevice(Device *d)
 	return &((EmuWindow *)box->user)->filer;
 }
 
-/* TODO error when file size beyond DWORD */
-
 /* Returns 0 on error, including not enough space. Will not write to the dst buffer on error.
  * dst_len should be at least strlen(display_name) + 7 or it will definitely not work. */
+/* TODO error when file size beyond DWORD */
 static DWORD PrintDirListRow(char *dst, DWORD dst_len, char *display_name, DWORD file_size, DWORD is_dir)
 {
 	int written; int ok = file_size < 0x10000; char tmp[1024 + 1];
@@ -803,8 +800,8 @@ static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT
 		RunUxn(d, GETVECTOR(d->dev_mouse));
 		break;
 	case EmuIn_Wheel:
-		DEVPOKE16(d->dev_mouse, 0xa, x); /* no X axis scrolling yet */
-		DEVPOKE16(d->dev_mouse, 0xc, y); /* TODO accumulate error */
+		DEVPOKE16(d->dev_mouse, 0xa, x);
+		DEVPOKE16(d->dev_mouse, 0xc, y);
 		RunUxn(d, GETVECTOR(d->dev_mouse));
 		DEVPOKE16(d->dev_mouse, 0xa, 0);
 		DEVPOKE16(d->dev_mouse, 0xc, 0);
@@ -956,6 +953,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			GetUxnScreenRect(&crect, &d->screen, &srect);
 			if (!PtInRect(&srect, mouse)) break;
 			/* could set mouse x,y pos here if we wanted to */
+			/* TODO no x axis scrolling yet */
 			/* TODO accumulate error from division */
 			SendInputEvent(d, EmuIn_Wheel, 0, 0, (Uint16)(-zDelta / 120));
 			return 0;
