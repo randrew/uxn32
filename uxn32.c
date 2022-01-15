@@ -99,16 +99,19 @@ typedef struct UxnFiler {
 } UxnFiler;
 
 enum {
+	Screen60hzTimer = 1,
+};
+enum {
 	UXNMSG_MoreExec = WM_USER
 };
-
 enum {
 	EmuIn_KeyChar = 1,
 	EmuIn_CtrlDown,
 	EmuIn_CtrlUp,
 	EmuIn_MouseDown,
 	EmuIn_MouseUp,
-	EmuIn_Wheel
+	EmuIn_Wheel,
+	EmuIn_Screen
 };
 
 typedef struct EmuInEvent {
@@ -844,6 +847,9 @@ static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT
 		DEVPOKE16(d->dev_mouse, 0xa, 0);
 		DEVPOKE16(d->dev_mouse, 0xc, 0);
 		break;
+	case EmuIn_Screen:
+		RunUxn(d, GETVECTOR(d->dev_screen));
+		break;
 	}
 	InvalidateUxnScreenRect(d); /* Queue a repaint if there isn't already one */
 	/* We might have a lot of EmuIn events queued up in a row with no repaint. If it's been a long time since we repainted the screen, just force it now. */
@@ -885,10 +891,12 @@ WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 			if (!uxn_eval(&d->box->core, UXN_ROM_OFFSET))
 				DebugBox("Uxn boot error");
 
+			SetTimer(hwnd, Screen60hzTimer, 16, NULL);
 			return 0;
 		}
 		case WM_DESTROY:
 		{
+			KillTimer(hwnd, Screen60hzTimer);
 			FreeUxnBox(d->box);
 			FreeUxnScreen(&d->screen);
 			ResetFiler(&d->filer);
@@ -901,7 +909,6 @@ WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 		case WM_PAINT:
 		{
 			PAINTSTRUCT ps; HDC hDC; BITMAPINFO bmi;
-			// if (!d->exec_guard) RunUxn(d, GETVECTOR(d->dev_screen));
 			GetClientRect(hwnd, &crect);
 			GetUxnScreenRect(&crect, &d->screen, &srect);
 			SetUpBitmapInfo(&bmi, d->screen.width, d->screen.height);
@@ -1042,6 +1049,11 @@ WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 			SetHostCursorVisible(d, TRUE);
 			break;
 
+		case WM_TIMER:
+			if (wparam != Screen60hzTimer) break;
+			ApplyInputEvent(d, EmuIn_Screen, 0, 0, 0);
+			return 0;
+
 		case UXNMSG_MoreExec:
 		{
 			EmuInEvent *evt;
@@ -1050,7 +1062,7 @@ WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 			d->queue_first = (d->queue_first + 1) % QUEUE_CAP;
 			d->queue_count--;
 			ApplyInputEvent(d, evt->type, evt->bits, evt->x, evt->y);
-			break;
+			return 0;
 		}
 	}
 	return DefWindowProc(hwnd, msg, wparam, lparam);
