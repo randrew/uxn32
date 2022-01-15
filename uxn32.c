@@ -248,16 +248,6 @@ uxn_halt(Uxn *u, Uint8 error, Uint16 addr)
 }
 #endif
 
-int uxn_eval(Uxn *u, unsigned int pc)
-{
-	if (!pc) return 0;
-	u->pc = pc;
-	/* TODO there's something fancy we should do with the loop to make it tell if it ran out or not by return value, returning 0 when limit is 0 means we might have succeeded in reaching the null instruction on the last allowed step, so we need to do something else */
-	if (UxnExec(u, 100000000) == 0) FatalBox("Uxn machine took too long");
-	if (u->fault_code) DebugBox("Uxn machine faulted: %d, at %dx", (int)u->fault_code, (int)u->pc);
-	return 1;
-}
-
 /* TODO try to eval uxn, if not, put into queue. in the one that's working, keep re-running and then give time to message loop? */
 
 static Uint8 SpriteBlendingTable[5][16] = {
@@ -745,6 +735,7 @@ static void InvalidateUxnScreenRect(EmuWindow *d)
 	InvalidateRect(d->hWnd, &srect, FALSE);
 }
 
+/* TODO there's something fancy we should do with the loop to make it tell if it ran out or not by return value, returning 0 when limit is 0 means we might have succeeded in reaching the null instruction on the last allowed step, so we need to do something else */
 static void RunUxn(EmuWindow *d, unsigned int pc)
 {
 	UINT res; MSG msg; Uxn *u = &d->box->core;
