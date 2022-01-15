@@ -44,6 +44,7 @@ typedef LONG LONG_PTR;
 #define OUTER_OF(outer, type, field) ((type *) ((char *)(outer) - OFFSET_OF(type, field)))
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
+#define SANITY_CHECK(a) { if (!(a)) DebugBreak(); }
 
 #define UXN_DEFAULT_WIDTH (64 * 8)
 #define UXN_DEFAULT_HEIGHT (40 * 8)
@@ -55,6 +56,21 @@ typedef LONG LONG_PTR;
 #define DEVPOKE16X2(d, a, v1, v2) { DEVPOKE16(d, a, v1) DEVPOKE16(d, a + 2, v2) }
 /* ^ TODO remove if unused */
 #define GETVECTOR(d) ((d)->dat[0] << 8 | (d)->dat[1])
+
+static LARGE_INTEGER _perfcount_freq;
+static LONGLONG ExecutionTimeLimit;
+
+static LONGLONG LongLongMulDiv(LONGLONG value, LONGLONG numer, LONGLONG denom)
+{
+    LONGLONG q = value / denom, r = value % denom;
+    return q * numer + r * numer / denom;
+}
+
+static LONGLONG TimeStampNow(void) { LARGE_INTEGER r; QueryPerformanceCounter(&r); return r.QuadPart; }
+static UINT TimeStampMicros(LONGLONG t) { return (UINT)LongLongMulDiv(t, 1000000, _perfcount_freq.QuadPart); }
+static UINT TimeStampMillis(LONGLONG t) { return (UINT)LongLongMulDiv(t, 1000, _perfcount_freq.QuadPart); }
+static UINT MicrosSince(LONGLONG t) { return TimeStampMicros(TimeStampNow() - t); }
+static UINT MillisSince(LONGLONG t) { return TimeStampMillis(TimeStampNow() - t); }
 
 typedef struct UxnBox {
 	void *user;
@@ -82,14 +98,36 @@ typedef struct UxnFiler {
 	} state;
 } UxnFiler;
 
+enum {
+	UXNMSG_MoreExec = WM_USER
+};
+
+enum {
+	EmuIn_KeyChar = 1,
+	EmuIn_CtrlDown,
+	EmuIn_CtrlUp,
+	EmuIn_MouseDown,
+	EmuIn_MouseUp,
+	EmuIn_Wheel
+};
+
+typedef struct EmuInEvent {
+	BYTE type; BYTE bits; USHORT x, y;
+} EmuInEvent;
+
+#define QUEUE_CAP 256
+
 typedef struct EmuWindow {
 	UxnBox *box;
 	Device *dev_screen, *dev_mouse, *dev_ctrl, *dev_audio0;
 	HWND hWnd;
 	HBITMAP hBMP;
 	HDC hDibDC;
-	UINT needs_clear : 1;
-	BOOL host_cursor;
+
+	BYTE needs_clear, host_cursor, exec_guard;
+
+	EmuInEvent *queue_buffer;
+	USHORT queue_count, queue_first;
 
 	SIZE dib_dims;
 	UxnScreen screen; // could move to a UxnGrafxBox
@@ -218,6 +256,7 @@ uxn_halt(Uxn *u, Uint8 error, Uint16 addr)
 
 int uxn_eval(Uxn *u, unsigned int pc)
 {
+	if (!pc) return 0;
 	u->pc = pc;
 	/* TODO there's something fancy we should do with the loop to make it tell if it ran out or not by return value, returning 0 when limit is 0 means we might have succeeded in reaching the null instruction on the last allowed step, so we need to do something else */
 	if (UxnExec(u, 100000000) == 0) FatalBox("Uxn machine took too long");
@@ -727,6 +766,98 @@ static void SetHostCursorVisible(EmuWindow *d, BOOL visible)
 	ShowCursor(visible);
 }
 
+static void RunUxn(EmuWindow *d, unsigned int pc)
+{
+	UINT res; MSG msg; Uxn *u = &d->box->core;
+	LONGLONG total = 0, t_a, t_b;
+	int event_interrupts = 0, instr_interrupts = 0;
+	SANITY_CHECK(d->exec_guard == 0);
+	if (!pc) return;
+	d->exec_guard = 1;
+	u->pc = pc;
+	for (;;)
+	{
+		t_a = TimeStampNow();
+		for (;;)
+		{
+			res = UxnExec(&d->box->core, 100000); /* about 1900 usecs on good hardware */
+			instr_interrupts++;
+			t_b = TimeStampNow() - t_a;
+			if (res != 0) { total += t_b; goto done; }
+			if (t_b > ExecutionTimeLimit) { total += t_b; break; }
+			/* total will include some non-Uxn work, but close enough */
+		}
+		event_interrupts++;
+		while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+		{
+			if (msg.message == WM_QUIT)
+				break;
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
+	}
+done:
+	// if (event_interrupts > 0)
+	// DebugPrint("took %d us (time interrupts: %d executions: %d)", TimeStampMicros(total), event_interrupts, instr_interrupts);
+	d->exec_guard = 0;
+}
+
+static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT y)
+{
+	RECT crect, srect;
+	switch (type)
+	{
+	case EmuIn_KeyChar:
+		d->dev_ctrl->dat[3] = bits;
+		RunUxn(d, GETVECTOR(d->dev_ctrl));
+		d->dev_ctrl->dat[3] = 0;
+		break;
+	case EmuIn_CtrlDown:
+		d->dev_ctrl->dat[2] |= bits; goto run_ctrl;
+	case EmuIn_CtrlUp:
+		d->dev_ctrl->dat[2] &= ~bits;
+	run_ctrl:
+		RunUxn(d, GETVECTOR(d->dev_ctrl));
+		break;
+	case EmuIn_MouseDown:
+		d->dev_mouse->dat[6] |= bits; goto mouse_xy;
+	case EmuIn_MouseUp:
+		d->dev_mouse->dat[6] &= ~bits;
+	mouse_xy:
+		DEVPOKE16(d->dev_mouse, 0x2, x)
+		DEVPOKE16(d->dev_mouse, 0x4, y)
+		RunUxn(d, GETVECTOR(d->dev_mouse));
+		break;
+	case EmuIn_Wheel:
+		DEVPOKE16(d->dev_mouse, 0xa, x); /* no X axis scrolling yet */
+		DEVPOKE16(d->dev_mouse, 0xc, y); /* TODO accumulate error */
+		RunUxn(d, GETVECTOR(d->dev_mouse));
+		DEVPOKE16(d->dev_mouse, 0xa, 0);
+		DEVPOKE16(d->dev_mouse, 0xc, 0);
+		break;
+	}
+	GetClientRect(d->hWnd, &crect); /* move this stuff? */
+	GetUxnScreenRect(&crect, &d->screen, &srect);
+	InvalidateRect(d->hWnd, &srect, FALSE);
+	if (d->queue_count)
+	{
+		PostMessage(d->hWnd, UXNMSG_MoreExec, 0, 0);
+	}
+}
+
+static void SendInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT y)
+{
+	if (!d->exec_guard && d->queue_count == 0) ApplyInputEvent(d, type, bits, x, y);
+	else /* busy */
+	{
+		EmuInEvent *evt;
+		if (d->queue_count == QUEUE_CAP) return; /* it's too crowded here anyway */
+		if (!d->queue_buffer) d->queue_buffer = AllocZeroedOrFail(QUEUE_CAP * sizeof(EmuInEvent));
+		evt = d->queue_buffer + (d->queue_first + d->queue_count++) % QUEUE_CAP;
+		evt->type = type; evt->bits = bits; evt->x = x; evt->y = y;
+	}
+}
+
 static LRESULT CALLBACK
 WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
@@ -764,7 +895,8 @@ WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 		{
 			PAINTSTRUCT ps;
 			HDC hDC; BITMAPINFO bmi;
-			uxn_eval(&d->box->core, GETVECTOR(d->dev_screen));
+			// if (screen_overdrive)
+			// if (!d->exec_guard) RunUxn(d, GETVECTOR(d->dev_screen));
 			GetClientRect(hwnd, &crect);
 			GetUxnScreenRect(&crect, &d->screen, &srect);
 			SetUpBitmapInfo(&bmi, d->screen.width, d->screen.height);
@@ -823,43 +955,38 @@ WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 		}
 
 		{
-		unsigned int or_and, bits;
-		case WM_MOUSEMOVE:   or_and = 0; bits = 0x0; goto act_mouse;
-		case WM_LBUTTONDOWN: or_and = 0; bits = 0x1; goto act_mouse;
-		case WM_LBUTTONUP:   or_and = 1; bits = 0x1; goto act_mouse;
-		case WM_MBUTTONDOWN: or_and = 0; bits = 0x2; goto act_mouse;
-		case WM_MBUTTONUP:   or_and = 1; bits = 0x2; goto act_mouse;
-		case WM_RBUTTONDOWN: or_and = 0; bits = 0x4; goto act_mouse;
-		case WM_RBUTTONUP:   or_and = 1; bits = 0x4; goto act_mouse;
+		enum { DN = EmuIn_MouseDown, UP = EmuIn_MouseUp }; unsigned int mode, bits;
+		case WM_MOUSEMOVE:   mode = DN; bits = 0x0; goto act_mouse;
+		case WM_LBUTTONDOWN: mode = DN; bits = 0x1; goto act_mouse;
+		case WM_LBUTTONUP:   mode = UP; bits = 0x1; goto act_mouse;
+		case WM_MBUTTONDOWN: mode = DN; bits = 0x2; goto act_mouse;
+		case WM_MBUTTONUP:   mode = UP; bits = 0x2; goto act_mouse;
+		case WM_RBUTTONDOWN: mode = DN; bits = 0x4; goto act_mouse;
+		case WM_RBUTTONUP:   mode = UP; bits = 0x4; goto act_mouse;
 		act_mouse:
 		{
-			POINT mouse;
+			POINT mouse; BOOL mouse_in_uxn;
 			mouse.x = LOWORD(lparam); mouse.y = HIWORD(lparam);
 			GetClientRect(hwnd, &crect);
 			GetUxnScreenRect(&crect, &d->screen, &srect);
-			SetHostCursorVisible(d, !PtInRect(&srect, mouse));
-			BindPointToLocalUxnScreen(&srect, &mouse);
-			DEVPOKE16(d->dev_mouse, 0x2, (Uint16)mouse.x)
-			DEVPOKE16(d->dev_mouse, 0x4, (Uint16)mouse.y)
-			if (or_and) d->dev_mouse->dat[6] &= ~bits;
-			else d->dev_mouse->dat[6] |= bits;
-			uxn_eval(&d->box->core, GETVECTOR(d->dev_mouse));
-			InvalidateRect(hwnd, &srect, FALSE);
-			break;
+			mouse_in_uxn = PtInRect(&srect, mouse);
+			SetHostCursorVisible(d, !mouse_in_uxn);
+			if (!mouse_in_uxn) break;
+			BindPointToLocalUxnScreen(&srect, &mouse); /* could save a GetClientRect call by passing it optionally... */
+			SendInputEvent(d, mode, bits, (USHORT)mouse.x, (USHORT)mouse.y);
+			return 0;
 		}
 		case WM_MOUSEWHEEL:
 		{
-			short zDelta = (short)HIWORD(wparam);
+			POINT mouse; short zDelta = (short)HIWORD(wparam);
+			mouse.x = LOWORD(lparam); mouse.y = HIWORD(lparam);
 			GetClientRect(hwnd, &crect);
 			GetUxnScreenRect(&crect, &d->screen, &srect);
+			if (!PtInRect(&srect, mouse)) break;
 			/* could set mouse x,y pos here if we wanted to */
-			DEVPOKE16(d->dev_mouse, 0xa, 0); /* no X axis scrolling yet */
-			DEVPOKE16(d->dev_mouse, 0xc, (Uint16)(-zDelta / 120)); /* TODO accumulate error */
-			uxn_eval(&d->box->core, GETVECTOR(d->dev_mouse));
-			InvalidateRect(hwnd, &srect, FALSE);
-			DEVPOKE16(d->dev_mouse, 0xa, 0);
-			DEVPOKE16(d->dev_mouse, 0xc, 0);
-			break;
+			/* TODO accumulate error from division */
+			SendInputEvent(d, EmuIn_Wheel, 0, 0, (Uint16)(-zDelta / 120));
+			return 0;
 		}
 		}
 
@@ -871,12 +998,7 @@ WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 		as_wm_char:
 			/* Disallow control characters except tab, newline, etc. */
 			if (keyChar < 32 && keyChar != 8 && keyChar != 9 && keyChar != 10 && keyChar != 13 && keyChar != 27) break;
-			GetClientRect(hwnd, &crect);
-			GetUxnScreenRect(&crect, &d->screen, &srect);
-			d->dev_ctrl->dat[3] = (Uint8)keyChar;
-			uxn_eval(&d->box->core, GETVECTOR(d->dev_ctrl));
-			d->dev_ctrl->dat[3] = 0;
-			InvalidateRect(hwnd, &srect, FALSE);
+			SendInputEvent(d, EmuIn_KeyChar, (BYTE)keyChar, 0, 0);
 			return 0;
 		}
 		case WM_KEYDOWN:
@@ -904,12 +1026,7 @@ WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 			case VK_RIGHT:   mask = 0x80; break;
 			}
 			if (!mask) break;
-			if (msg == WM_KEYDOWN) d->dev_ctrl->dat[2] |= mask;
-			else d->dev_ctrl->dat[2] &= ~mask;
-			GetClientRect(hwnd, &crect);
-			GetUxnScreenRect(&crect, &d->screen, &srect);
-			uxn_eval(&d->box->core, GETVECTOR(d->dev_ctrl));
-			InvalidateRect(hwnd, &srect, FALSE);
+			SendInputEvent(d, msg == WM_KEYDOWN ? EmuIn_CtrlDown : EmuIn_CtrlUp, mask, 0, 0);
 			return 0;
 		}
 		}
@@ -918,6 +1035,17 @@ WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 		case WM_MOUSELEAVE:
 			SetHostCursorVisible(d, TRUE);
 			break;
+
+		case UXNMSG_MoreExec:
+		{
+			EmuInEvent *evt;
+			SANITY_CHECK(d->queue_count > 0);
+			evt = &d->queue_buffer[d->queue_first];
+			d->queue_first = (d->queue_first + 1) % QUEUE_CAP;
+			d->queue_count--;
+			ApplyInputEvent(d, evt->type, evt->bits, evt->x, evt->y);
+			break;
+		}
 	}
 	return DefWindowProc(hwnd, msg, wparam, lparam);
 }
@@ -941,6 +1069,8 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
 	WNDCLASSEX wc; HWND hWin;
 	MSG msg;
 	(void)command_line; (void)prev_instance;
+	QueryPerformanceFrequency(&_perfcount_freq);
+	ExecutionTimeLimit = _perfcount_freq.QuadPart / 20;
 	ZeroMemory(&wc, sizeof wc);
 	wc.hInstance = instance;
 	wc.cbSize = sizeof wc;
