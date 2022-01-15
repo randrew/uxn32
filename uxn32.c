@@ -38,7 +38,6 @@ typedef LONG LONG_PTR;
 #pragma comment(lib, "Shlwapi.lib")
 
 #include "core32.h"
-// #include "devices/audio.h"
 
 #define OFFSET_OF(s, m) ((SIZE_T)&(((s*)0)->m))
 #define OUTER_OF(outer, type, field) ((type *) ((char *)(outer) - OFFSET_OF(type, field)))
@@ -102,7 +101,7 @@ enum {
 	Screen60hzTimer = 1,
 };
 enum {
-	UXNMSG_MoreExec = WM_USER
+	UXNMSG_BufferedEvents = WM_USER
 };
 enum {
 	EmuIn_KeyChar = 1,
@@ -465,9 +464,6 @@ static Uint8 SystemDevDateInCb(Device *d, Uint8 port)
 	return d->dat[port];
 }
 
-/*********************************************************/
-
-
 static void
 ResetFiler(UxnFiler *f)
 {
@@ -658,10 +654,6 @@ file_deo(Device *d, Uint8 port)
 result:
 	DEVPOKE16(d, 0x2, result);
 }
-
-
-/*********************************************************/
-
 
 #define console_deo nil_deo
 #define audio_dei nil_dei
@@ -855,7 +847,7 @@ static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT
 	/* We might have a lot of EmuIn events queued up in a row with no repaint. If it's been a long time since we repainted the screen, just force it now. */
 	if (TimeStampNow() - d->last_paint > RepaintTimeLimit) UpdateWindow(d->hWnd);
 	/* If we have any buffered input events, post a message that will make us process another one. */
-	if (d->queue_count) PostMessage(d->hWnd, UXNMSG_MoreExec, 0, 0);
+	if (d->queue_count) PostMessage(d->hWnd, UXNMSG_BufferedEvents, 0, 0);
 }
 
 static void SendInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT y)
@@ -1054,7 +1046,7 @@ WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 			ApplyInputEvent(d, EmuIn_Screen, 0, 0, 0);
 			return 0;
 
-		case UXNMSG_MoreExec:
+		case UXNMSG_BufferedEvents:
 		{
 			EmuInEvent *evt;
 			SANITY_CHECK(d->queue_count > 0);
