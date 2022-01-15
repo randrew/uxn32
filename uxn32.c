@@ -1006,7 +1006,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 
 		case WM_TIMER:
 			if (wparam != Screen60hzTimer) break;
-			ApplyInputEvent(d, EmuIn_Screen, 0, 0, 0);
+			SendInputEvent(d, EmuIn_Screen, 0, 0, 0);
 			return 0;
 
 		case UXNMSG_BufferedEvents:
