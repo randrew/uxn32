@@ -71,20 +71,21 @@ static UINT TimeStampMicros(LONGLONG t) { return (UINT)LongLongMulDiv(t, 1000000
 static UINT TimeStampMillis(LONGLONG t) { return (UINT)LongLongMulDiv(t, 1000, _perfcount_freq.QuadPart); }
 static UINT MicrosSince(LONGLONG t) { return TimeStampMicros(TimeStampNow() - t); }
 
-typedef struct UxnBox {
+typedef struct UxnBox
+{
 	void *user;
 	Uxn core;
 	Stack work_stack, ret_stack;
 	Uint8 device_memory[256];
 } UxnBox;
-
-typedef struct UxnScreen {
+typedef struct UxnScreen
+{
 	Uint32 palette[4];
 	LONG width, height;
 	Uint8 *fg, *bg;
 } UxnScreen;
-
-typedef struct UxnFiler {
+typedef struct UxnFiler
+{
 	HANDLE hFile, hFind;
 	TCHAR path[MAX_PATH];
 	DWORD pathlen;
@@ -97,13 +98,10 @@ typedef struct UxnFiler {
 	} state;
 } UxnFiler;
 
-enum {
-	Screen60hzTimer = 1,
-};
-enum {
-	UXNMSG_BufferedEvents = WM_USER
-};
-enum {
+enum { Screen60hzTimer = 1 };
+enum { UXNMSG_BufferedEvents = WM_USER };
+enum
+{
 	EmuIn_KeyChar = 1,
 	EmuIn_CtrlDown,
 	EmuIn_CtrlUp,
@@ -112,19 +110,23 @@ enum {
 	EmuIn_Wheel,
 	EmuIn_Screen
 };
-
-typedef struct EmuInEvent {
-	BYTE type; BYTE bits; USHORT x, y;
+typedef struct EmuInEvent
+{
+	BYTE type;
+	BYTE bits;
+	USHORT x, y;
 } EmuInEvent;
 
 #define QUEUE_CAP 256
 
-typedef struct EmuWindow {
+typedef struct EmuWindow
+{
 	UxnBox *box;
 	Device *dev_screen, *dev_mouse, *dev_ctrl, *dev_audio0;
 	HWND hWnd;
 	HBITMAP hBMP;
 	HDC hDibDC;
+	SIZE dib_dims;
 
 	BYTE needs_clear, host_cursor, exec_guard;
 
@@ -132,20 +134,14 @@ typedef struct EmuWindow {
 	USHORT queue_count, queue_first;
 	LONGLONG last_paint;
 
-	SIZE dib_dims;
-	UxnScreen screen; // could move to a UxnGrafxBox
+	UxnScreen screen;
 	UxnFiler filer;
 } EmuWindow;
 
-static Uint8
-nil_dei(Device *d, Uint8 port)
-{ return d->dat[port]; }
-static void
-nil_deo(Device *d, Uint8 port)
-{ (void)d;(void)port; }
+static Uint8 nil_dei(Device *d, Uint8 port) { return d->dat[port]; }
+static void  nil_deo(Device *d, Uint8 port) { (void)d;(void)port; }
 
-static void
-DebugPrint(char const *fmt, ...)
+static void DebugPrint(char const *fmt, ...)
 {
 	va_list ap; int res; char buffer[1024 + 1];
 	va_start(ap, fmt);
@@ -157,8 +153,7 @@ DebugPrint(char const *fmt, ...)
 	OutputDebugStringA(buffer);
 }
 
-static void
-PrintLastError(void)
+static void PrintLastError(void)
 {
 	DWORD dw = GetLastError();
 	LPVOID lpMsgBuf;
@@ -166,8 +161,7 @@ PrintLastError(void)
 	DebugPrint("Win32 error %d: %s", (int)dw, lpMsgBuf);
 }
 
-static void
-VFmtBox(LPCSTR title, UINT flags, char const *fmt, va_list ap)
+static void VFmtBox(LPCSTR title, UINT flags, char const *fmt, va_list ap)
 {
 	int res; char buffer[1024 + 1];
 	res = wvsprintfA(buffer, fmt, ap);
@@ -177,16 +171,14 @@ VFmtBox(LPCSTR title, UINT flags, char const *fmt, va_list ap)
 	MessageBox(0, buffer, title, flags);
 }
 
-static void
-DebugBox(char const *fmt, ...)
+static void DebugBox(char const *fmt, ...)
 {
 	va_list ap; va_start(ap, fmt);
 	VFmtBox(TEXT("Debug"), MB_OK, fmt, ap);
 	va_end(ap);
 }
 
-static __declspec(noreturn) void
-FatalBox(char const *fmt, ...)
+static __declspec(noreturn) void FatalBox(char const *fmt, ...)
 {
 	va_list ap; va_start(ap, fmt);
 	while (ShowCursor(TRUE) < 0);
@@ -195,8 +187,7 @@ FatalBox(char const *fmt, ...)
 	ExitProcess(ERROR_GEN_FAILURE);
 }
 
-static __declspec(noreturn) void
-OutOfMemory(void)
+static __declspec(noreturn) void OutOfMemory(void)
 {
 	MessageBox(NULL, TEXT("Out of memory"), NULL, MB_OK | MB_ICONSTOP | MB_TASKMODAL);
 	ExitProcess(ERROR_OUTOFMEMORY);
@@ -229,8 +220,7 @@ done:
 }
 #endif
 
-static BOOL
-LoadFileInto(LPCSTR path, char *dest, DWORD max_bytes, DWORD *bytes_read)
+static BOOL LoadFileInto(LPCSTR path, char *dest, DWORD max_bytes, DWORD *bytes_read)
 {
 	HANDLE hFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (hFile == INVALID_HANDLE_VALUE) return FALSE;
@@ -276,8 +266,7 @@ static Uint8 SpriteBlendingTable[5][16] = {
 	{2, 3, 1, 2, 2, 3, 1, 2, 2, 3, 1, 2, 2, 3, 1, 2},
 	{1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0}};
 
-static void
-DrawUxnSprite(UxnScreen *p, Uint8 *layer_pixels, Uint16 x, Uint16 y, Uint8 *sprite, Uint8 color, Uint8 flipx, Uint8 flipy, Uint8 twobpp)
+static void DrawUxnSprite(UxnScreen *p, Uint8 *layer_pixels, Uint16 x, Uint16 y, Uint8 *sprite, Uint8 color, Uint8 flipx, Uint8 flipy, Uint8 twobpp)
 {
 	int v, h, opaque = SpriteBlendingTable[4][color], width = p->width, height = p->height;
 	for (v = 0; v < 8; v++)
@@ -296,7 +285,6 @@ DrawUxnSprite(UxnScreen *p, Uint8 *layer_pixels, Uint16 x, Uint16 y, Uint8 *spri
 	}
 }
 
-
 static void SetUxnScreenSize(UxnScreen *p, DWORD width, DWORD height)
 {
 	DWORD one_size = width * height, two_size = one_size * 2;
@@ -310,6 +298,7 @@ static void SetUxnScreenSize(UxnScreen *p, DWORD width, DWORD height)
 	p->width = width;
 	p->height = height;
 }
+
 static void FreeUxnScreen(UxnScreen *p)
 {
 	if (p->bg) HeapFree(GetProcessHeap(), 0, p->bg);
@@ -320,14 +309,14 @@ EmuWindow * EmuOfDevice(Device *d) /* TODO these are kinda dumb, clean when maki
 	UxnBox *box = OUTER_OF(d->u, UxnBox, core);
 	return (EmuWindow *)box->user;
 }
+
 UxnScreen * ScreenOfDevice(Device *d)
 {
 	UxnBox *box = OUTER_OF(d->u, UxnBox, core);
 	return &((EmuWindow *)box->user)->screen;
 }
 
-Uint8
-ScreenDevInCb(Device *d, Uint8 port)
+Uint8 ScreenDevInCb(Device *d, Uint8 port)
 {
 	UxnScreen *screen = ScreenOfDevice(d);
 	switch(port)
@@ -352,8 +341,7 @@ static void ResizeEmuWindow(EmuWindow *d, LONG width, LONG height)
 	/* Seems like the repaint from this is always async. We need the TRUE flag for repainting or the non-client area will be messed up on non-DWM. */
 }
 
-void
-ScreenDevOutCb(Device *d, Uint8 port)
+void ScreenDevOutCb(Device *d, Uint8 port)
 {
 	UxnScreen *screen = ScreenOfDevice(d);
 	Uxn *u = d->u; /* TODO */
@@ -406,8 +394,7 @@ ScreenDevOutCb(Device *d, Uint8 port)
 	}
 }
 
-Uint8
-SystemDevInCb(Device *d, Uint8 port)
+Uint8 SystemDevInCb(Device *d, Uint8 port)
 {
 	switch (port)
 	{
@@ -417,8 +404,7 @@ SystemDevInCb(Device *d, Uint8 port)
 	return d->dat[port];
 }
 
-void
-SystemDevOutCb(Device *d, Uint8 port)
+void SystemDevOutCb(Device *d, Uint8 port)
 {
 	switch (port)
 	{
@@ -464,16 +450,14 @@ static Uint8 SystemDevDateInCb(Device *d, Uint8 port)
 	return d->dat[port];
 }
 
-static void
-ResetFiler(UxnFiler *f)
+static void ResetFiler(UxnFiler *f)
 {
 	if (f->hFile != INVALID_HANDLE_VALUE) { CloseHandle(f->hFile); f->hFile = INVALID_HANDLE_VALUE; }
 	if (f->hFind != INVALID_HANDLE_VALUE) { FindClose(f->hFind); f->hFind = INVALID_HANDLE_VALUE; }
 	f->state = FileDevState_Init;
 }
 
-static UxnFiler *
-FilerOfDevice(Device *d)
+static UxnFiler *FilerOfDevice(Device *d)
 {
 	UxnBox *box = OUTER_OF(d->u, UxnBox, core);
 	return &((EmuWindow *)box->user)->filer;
@@ -483,8 +467,7 @@ FilerOfDevice(Device *d)
 
 /* Returns 0 on error, including not enough space. Will not write to the dst buffer on error.
  * dst_len should be at least strlen(display_name) + 7 or it will definitely not work. */
-static DWORD
-PrintDirListRow(char *dst, DWORD dst_len, char *display_name, DWORD file_size, DWORD is_dir)
+static DWORD PrintDirListRow(char *dst, DWORD dst_len, char *display_name, DWORD file_size, DWORD is_dir)
 {
 	int written; int ok = file_size < 0x10000; char tmp[1024 + 1];
 	if (dst_len > sizeof tmp) dst_len = sizeof tmp;
@@ -495,8 +478,7 @@ PrintDirListRow(char *dst, DWORD dst_len, char *display_name, DWORD file_size, D
 	return (DWORD)written;
 }
 
-static void
-FileDevPathChange(Device *d)
+static void FileDevPathChange(Device *d)
 {
 	DWORD addr, i, avail;
 	char tmp[MAX_PATH + 1], *in_mem;
@@ -522,8 +504,7 @@ error:
 	f->pathlen = 0;
 }
 
-static DWORD
-FileDevRead(UxnFiler *f, char *dst, DWORD dst_len)
+static DWORD FileDevRead(UxnFiler *f, char *dst, DWORD dst_len)
 {
 	DWORD result = 0; DWORD const pathlen = f->pathlen; char *filepath = f->path;
 	WIN32_FIND_DATA *find_data = &f->find_data;
@@ -569,8 +550,7 @@ FileDevRead(UxnFiler *f, char *dst, DWORD dst_len)
 	return result;
 }
 
-static DWORD
-FileDevWrite(UxnFiler *f, char *src, DWORD src_len, int flags)
+static DWORD FileDevWrite(UxnFiler *f, char *src, DWORD src_len, int flags)
 {
 	DWORD written;
 	if (f->state != FileDevState_Writing) {
@@ -586,8 +566,7 @@ FileDevWrite(UxnFiler *f, char *src, DWORD src_len, int flags)
 	return written;
 }
 
-static DWORD
-FileDevStat(UxnFiler *f, char *dst, DWORD dst_len)
+static DWORD FileDevStat(UxnFiler *f, char *dst, DWORD dst_len)
 {
 	DWORD written; char path_tmp[MAX_PATH]; BY_HANDLE_FILE_INFORMATION info; BOOL ok, dir;
 	f->hFile = CreateFile(f->path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -601,8 +580,7 @@ FileDevStat(UxnFiler *f, char *dst, DWORD dst_len)
 	return written;
 }
 
-static DWORD
-FileDevDelete(UxnFiler *f)
+static DWORD FileDevDelete(UxnFiler *f)
 {
 	DWORD result;
 	ResetFiler(f);
@@ -614,8 +592,7 @@ FileDevDelete(UxnFiler *f)
 	return result ? 0 : 1;
 }
 
-Device *
-uxn_port(Uxn *u, Uint8 *devpage, Uint8 id, Uint8 (*deifn)(Device *d, Uint8 port), void (*deofn)(Device *d, Uint8 port))
+Device *uxn_port(Uxn *u, Uint8 *devpage, Uint8 id, Uint8 (*deifn)(Device *d, Uint8 port), void (*deofn)(Device *d, Uint8 port))
 {
 	Device *d = &u->dev[id];
 	d->u = u;
@@ -625,8 +602,7 @@ uxn_port(Uxn *u, Uint8 *devpage, Uint8 id, Uint8 (*deifn)(Device *d, Uint8 port)
 	return d;
 }
 
-void
-file_deo(Device *d, Uint8 port)
+void file_deo(Device *d, Uint8 port)
 {
 	DWORD result = 0, /* next inits suppress msvc warning */ out_len = 0; char *out = 0;
 	UxnFiler *f = FilerOfDevice(d);
@@ -659,8 +635,7 @@ result:
 #define audio_dei nil_dei
 #define audio_deo nil_deo
 
-void
-LoadROMIntoBox(UxnBox *box, LPCSTR filename)
+void LoadROMIntoBox(UxnBox *box, LPCSTR filename)
 {
 	DWORD bytes_read;
 	if (!LoadFileInto(filename, (char *)(box + 1) + UXN_ROM_OFFSET, UXN_RAM_SIZE - UXN_ROM_OFFSET, &bytes_read)) {
@@ -710,8 +685,7 @@ void InitEmuWindow(EmuWindow *d, HWND hWnd)
 	d->filer.hFile = d->filer.hFind = INVALID_HANDLE_VALUE;
 }
 
-void
-FreeUxnBox(UxnBox *box)
+void FreeUxnBox(UxnBox *box)
 {
 	HeapFree(GetProcessHeap(), 0, box);
 }
@@ -863,8 +837,7 @@ static void SendInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT 
 	}
 }
 
-static LRESULT CALLBACK
-WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
+static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
 	EmuWindow *d = (EmuWindow *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
 	RECT crect, srect;
@@ -1062,8 +1035,7 @@ WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 
 static LPCSTR EmuWinClass = TEXT("uxn_emu_win");
 
-HWND
-CreateUxnWindow(HINSTANCE hInst, LPCSTR file)
+HWND CreateUxnWindow(HINSTANCE hInst, LPCSTR file)
 {
 	RECT rect;
 	rect.left = 0; rect.top = 0;
@@ -1073,8 +1045,7 @@ CreateUxnWindow(HINSTANCE hInst, LPCSTR file)
 	return CreateWindowEx(WS_EX_APPWINDOW, EmuWinClass, TEXT("Uxn"), WS_OVERLAPPEDWINDOW, 200, 200, rect.right - rect.left, rect.bottom - rect.top, NULL, NULL, hInst, (void *)file);
 }
 
-int CALLBACK
-WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
+int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
 {
 	WNDCLASSEX wc; HWND hWin;
 	MSG msg;
