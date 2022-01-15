@@ -19,9 +19,7 @@ Features
 Use
 ---
 
-Download a release from the [Releases](https://github.com/randrew/uxn32/releases) page.
-
-Place Uxn32.exe in a folder with your Uxn ROMs in it, and run Uxn32.exe. If you don't have a ROM named 'boot.rom', a popup will tell you to make one. I recommend using [launcher.rom from the main Uxn project](https://git.sr.ht/~rabbits/uxn/tree/main/item/projects/software/launcher.tal).
+Download the [pre-built zip of Uxn32.exe plus a ROM starter pack](https://github.com/randrew/uxn32/releases/download/1.0/Uxn32-1.0-Plus-Start-Pack-ROMs.zip). Unzip into a new directory and run Uxn32.exe.
 
 Uxn32 TODO
 ----------
