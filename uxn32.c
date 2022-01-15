@@ -108,7 +108,8 @@ enum
 	EmuIn_MouseDown,
 	EmuIn_MouseUp,
 	EmuIn_Wheel,
-	EmuIn_Screen
+	EmuIn_Screen,
+	EmuIn_Start
 };
 typedef struct EmuInEvent
 {
@@ -816,6 +817,9 @@ static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT
 	case EmuIn_Screen:
 		RunUxn(d, GETVECTOR(d->dev_screen));
 		break;
+	case EmuIn_Start:
+		RunUxn(d, UXN_ROM_OFFSET);
+		break;
 	}
 	InvalidateUxnScreenRect(d); /* Queue a repaint if there isn't already one */
 	/* We might have a lot of EmuIn events queued up in a row with no repaint. If it's been a long time since we repainted the screen, just force it now. */
@@ -849,11 +853,8 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			d = AllocZeroedOrFail(sizeof(EmuWindow));
 			SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)d);
 			InitEmuWindow(d, hwnd);
-
 			LoadROMIntoBox(d->box, filename);
-			if (!uxn_eval(&d->box->core, UXN_ROM_OFFSET))
-				DebugBox("Uxn boot error");
-
+			ApplyInputEvent(d, EmuIn_Start, 0, 0, 0);
 			SetTimer(hwnd, Screen60hzTimer, 16, NULL);
 			return 0;
 		}
