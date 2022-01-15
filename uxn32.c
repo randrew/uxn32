@@ -1017,6 +1017,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		{
 			EmuInEvent *evt;
 			SANITY_CHECK(d->queue_count > 0);
+			SANITY_CHECK(d->exec_guard == 0);
 			evt = &d->queue_buffer[d->queue_first];
 			d->queue_first = (d->queue_first + 1) % QUEUE_CAP;
 			d->queue_count--;
