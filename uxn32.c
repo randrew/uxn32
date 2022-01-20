@@ -145,7 +145,6 @@ typedef struct EmuWindow
 	SIZE dib_dims;
 
 	BYTE needs_clear, host_cursor, exec_guard, interrupt_action;
-	/* TODO window_closing not generalized to all interruptions */
 
 	EmuInEvent *queue_buffer;
 	USHORT queue_count, queue_first;
