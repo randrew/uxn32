@@ -1053,6 +1053,8 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			case VK_DOWN:    mask = 0x20; break;
 			case VK_LEFT:    mask = 0x40; break;
 			case VK_RIGHT:   mask = 0x80; break;
+
+			case VK_F4: if (msg == WM_KEYDOWN) SendInterruptAction(d, Irupt_ReloadROMFile); return 0;
 			}
 			if (!mask) break;
 			SendInputEvent(d, msg == WM_KEYDOWN ? EmuIn_CtrlDown : EmuIn_CtrlUp, mask, 0, 0);
