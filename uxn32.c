@@ -182,12 +182,18 @@ static void PrintLastError(void)
 
 static void VFmtBox(LPCSTR title, UINT flags, char const *fmt, va_list ap)
 {
-	int res; char buffer[1024 + 1];
+	int res; char buffer[1024];
 	res = wvsprintfA(buffer, fmt, ap);
 	if (res < 0 || res >= 1024) return;
-	buffer[res] = '\n';
-	buffer[res + 1] = 0;
+	buffer[res] = 0;
 	MessageBox(0, buffer, title, flags);
+}
+
+static void FmtBox(LPCSTR title, UINT flags, char const *fmt, ...)
+{
+	va_list ap; va_start(ap, fmt);
+	VFmtBox(title, flags, fmt, ap);
+	va_end(ap);
 }
 
 static void DebugBox(char const *fmt, ...)
@@ -641,14 +647,17 @@ result:
 #define audio_dei nil_dei
 #define audio_deo nil_deo
 
-void LoadROMIntoBox(UxnBox *box, LPCSTR filename)
+BOOL LoadROMIntoBox(UxnBox *box, LPCSTR filename)
 {
 	DWORD bytes_read;
-	if (!LoadFileInto(filename, (char *)(box + 1) + UXN_ROM_OFFSET, UXN_RAM_SIZE - UXN_ROM_OFFSET, &bytes_read)) {
+	BOOL result = LoadFileInto(filename, (char *)(box + 1) + UXN_ROM_OFFSET, UXN_RAM_SIZE - UXN_ROM_OFFSET, &bytes_read);
+	if (!result)
+	{
 		TCHAR tmp[MAX_PATH]; DWORD res = GetFullPathNameA(filename, MAX_PATH, tmp, NULL);
 		if (res == 0 || res >= MAX_PATH) tmp[0] = 0;
-		FatalBox("Tried and failed to load the rom file %s", tmp);
+		FmtBox("ROM File Load Error", MB_OK | MB_ICONWARNING, "Tried and failed to load the ROM file:\n\n%s\n\nDoes it exist?", tmp);
 	}
+	return result;
 }
 
 void InitEmuWindow(EmuWindow *d, HWND hWnd)
@@ -863,8 +872,8 @@ static void ApplyInterruptAction(EmuWindow *d, BYTE type)
 			ZeroMemory(d->screen.palette, sizeof d->screen.palette); /* optional for quick reload */
 			ZeroMemory(d->screen.bg, d->screen.width * d->screen.height * 2);
 			ResetFiler(&d->filer);
-			LoadROMIntoBox(d->box, d->rom_path);
-			SendInputEvent(d, EmuIn_Start, 0, 0, 0);
+			if (LoadROMIntoBox(d->box, d->rom_path))
+				SendInputEvent(d, EmuIn_Start, 0, 0, 0);
 			break;
 		}
 	}
