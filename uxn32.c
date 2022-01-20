@@ -1129,7 +1129,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	// wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
 	RegisterClassEx(&wc);
 
-	hWin = CreateUxnWindow(instance, TEXT("boot.rom"));
+	hWin = CreateUxnWindow(instance, TEXT("launcher.rom"));
 	ShowWindow(hWin, show_code);
 
 	while (GetMessage(&msg, NULL, 0, 0))
