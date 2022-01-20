@@ -906,7 +906,6 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			SendInterruptAction(d, Irupt_CloseWindow);
 			return 0;
 		case WM_DESTROY:
-		{
 			KillTimer(hwnd, Screen60hzTimer);
 			FreeUxnBox(d->box);
 			FreeUxnScreen(&d->screen);
@@ -916,7 +915,6 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			HeapFree(GetProcessHeap(), 0, d);
 			PostQuitMessage(0);
 			return 0;
-		}
 		case WM_PAINT:
 		{
 			PAINTSTRUCT ps; HDC hDC; BITMAPINFO bmi;
@@ -973,10 +971,8 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			return 0;
 		}
 		case WM_SIZE:
-		{
 			d->needs_clear = 1;
 			return 0;
-		}
 
 		{
 		enum { DN = EmuIn_MouseDown, UP = EmuIn_MouseUp }; unsigned int mode, bits;
