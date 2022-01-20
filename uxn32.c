@@ -45,10 +45,10 @@ typedef LONG LONG_PTR;
 #define OUTER_OF(outer, type, field) ((type *) ((char *)(outer) - OFFSET_OF(type, field)))
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
-#ifdef NDEBUG
-#define SANITY_CHECK(a)
-#else
+#ifdef _DEBUG
 #define SANITY_CHECK(a) { if (!(a)) DebugBreak(); }
+#else
+#define SANITY_CHECK(a)
 #endif
 
 #define UXN_DEFAULT_WIDTH (64 * 8)
