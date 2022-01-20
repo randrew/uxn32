@@ -268,7 +268,7 @@ uxn_halt(Uxn *u, Uint8 error, Uint16 addr)
 }
 #endif
 
-static Uint8 SpriteBlendingTable[5][16] = {
+static const Uint8 SpriteBlendingTable[5][16] = {
 	{0, 0, 0, 0, 1, 0, 1, 1, 2, 2, 0, 2, 3, 3, 3, 0},
 	{0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3},
 	{1, 2, 3, 1, 1, 2, 3, 1, 1, 2, 3, 1, 1, 2, 3, 1},
