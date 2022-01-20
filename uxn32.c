@@ -2,6 +2,7 @@
 #define NOMINMAX
 #include "resource.h"
 #include <windows.h>
+#include <shellapi.h>
 #include <shlwapi.h>
 
 #if !defined(_WIN64) && _WINVER < 0x0500
@@ -35,7 +36,8 @@ typedef LONG LONG_PTR;
 
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "gdi32.lib")
-#pragma comment(lib, "Shlwapi.lib")
+#pragma comment(lib, "shell32.lib")
+#pragma comment(lib, "shlwapi.lib")
 
 #include "core32.h"
 
@@ -103,7 +105,11 @@ typedef struct UxnFiler
 } UxnFiler;
 
 enum { Screen60hzTimer = 1 };
-enum { UXNMSG_BufferedEvents = WM_USER };
+enum
+{
+	UXNMSG_BufferedEvents = WM_USER,
+	UXNMSG_ActionAfterInterrupt
+};
 enum
 {
 	EmuIn_KeyChar = 1,
@@ -114,6 +120,11 @@ enum
 	EmuIn_Wheel,
 	EmuIn_Screen,
 	EmuIn_Start
+};
+enum
+{
+	Irupt_CloseWindow = 1,
+	Irupt_ReloadROMFile
 };
 typedef struct EmuInEvent
 {
@@ -133,7 +144,7 @@ typedef struct EmuWindow
 	HDC hDibDC;
 	SIZE dib_dims;
 
-	BYTE needs_clear, host_cursor, exec_guard, window_closing;
+	BYTE needs_clear, host_cursor, exec_guard, interrupt_action;
 	/* TODO window_closing not generalized to all interruptions */
 
 	EmuInEvent *queue_buffer;
@@ -142,6 +153,8 @@ typedef struct EmuWindow
 
 	UxnScreen screen;
 	UxnFiler filer;
+
+	TCHAR rom_path[MAX_PATH];
 } EmuWindow;
 
 static Uint8 nil_dei(Device *d, Uint8 port) { return d->dat[port]; }
@@ -760,10 +773,10 @@ static void RunUxn(EmuWindow *d, unsigned int pc)
 		if (t_b - d->last_paint > RepaintTimeLimit) InvalidateUxnScreenRect(d);
 		for (;;)
 		{
-			if (d->window_closing) return;
 			if (!PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) break;
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
+			if (d->interrupt_action) goto done;
 		}
 	}
 done:
@@ -807,9 +820,15 @@ static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT
 		break;
 	case EmuIn_Start:
 		RunUxn(d, UXN_ROM_OFFSET);
+		SetTimer(d->hWnd, Screen60hzTimer, 16, NULL);
 		break;
 	}
-	if (d->window_closing) { DestroyWindow(d->hWnd); return; }
+	if (d->interrupt_action)
+	{
+		d->queue_count = 0;
+		PostMessage(d->hWnd, UXNMSG_ActionAfterInterrupt, 0, 0);
+		return;
+	}
 	InvalidateUxnScreenRect(d); /* Queue a repaint if there isn't already one */
 	/* We might have a lot of EmuIn events queued up in a row with no repaint. If it's been a long time since we repainted the screen, just force it now. */
 	if (TimeStampNow() - d->last_paint > RepaintTimeLimit) UpdateWindow(d->hWnd);
@@ -830,6 +849,30 @@ static void SendInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT 
 	}
 }
 
+static void ApplyInterruptAction(EmuWindow *d, BYTE type)
+{
+	switch (type)
+	{
+		case Irupt_CloseWindow: DestroyWindow(d->hWnd); break;
+		case Irupt_ReloadROMFile:
+		{
+			ZeroMemory((char *)(d->box + 1), UXN_RAM_SIZE);
+			ZeroMemory(d->screen.bg, d->screen.width * d->screen.height * 2);
+			ResetFiler(&d->filer);
+			LoadROMIntoBox(d->box, d->rom_path);
+			SendInputEvent(d, EmuIn_Start, 0, 0, 0);
+			break;
+		}
+	}
+}
+
+static void SendInterruptAction(EmuWindow *d, BYTE type)
+{
+	KillTimer(d->hWnd, Screen60hzTimer);
+	if (!d->exec_guard && d->queue_count == 0) ApplyInterruptAction(d, type);
+	else d->interrupt_action = type;
+}
+
 static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
 	EmuWindow *d = (EmuWindow *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
@@ -838,21 +881,21 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	{
 		case WM_CREATE:
 		{
-			LPCSTR filename = ((CREATESTRUCT *)lparam)->lpCreateParams;
+			LPCSTR filename = ((CREATESTRUCT *)lparam)->lpCreateParams; int filelen;
 			d = AllocZeroedOrFail(sizeof(EmuWindow));
 			SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)d);
+			DragAcceptFiles(hwnd, TRUE);
 			InitEmuWindow(d, hwnd);
-			LoadROMIntoBox(d->box, filename);
+			filelen = lstrlen(filename);
+			if (filelen >= MAX_PATH) OutOfMemory(); /* wrong, better msg */
+			CopyMemory(d->rom_path, filename, (filelen + 1) * sizeof(TCHAR));
+			LoadROMIntoBox(d->box, d->rom_path);
 			SendInputEvent(d, EmuIn_Start, 0, 0, 0);
-			SetTimer(hwnd, Screen60hzTimer, 16, NULL);
 			return 0;
 		}
 		case WM_CLOSE:
-		{
-			if (d->exec_guard) d->window_closing = 1;
-			else DestroyWindow(hwnd);
-			break;
-		}
+			SendInterruptAction(d, Irupt_CloseWindow);
+			return 0;
 		case WM_DESTROY:
 		{
 			KillTimer(hwnd, Screen60hzTimer);
@@ -1003,16 +1046,21 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			return 0;
 		}
 		}
-
 		case WM_NCMOUSEMOVE:
 		case WM_MOUSELEAVE:
 			SetHostCursorVisible(d, TRUE);
 			break;
-
 		case WM_TIMER:
 			if (wparam != Screen60hzTimer) break;
 			SendInputEvent(d, EmuIn_Screen, 0, 0, 0);
 			return 0;
+		case WM_DROPFILES:
+		{
+			HDROP hDrop = (HDROP)wparam;
+			if (!DragQueryFile(hDrop, 0, d->rom_path, MAX_PATH)) return 0;
+			SendInterruptAction(d, Irupt_ReloadROMFile);
+			return 0;
+		}
 
 		case UXNMSG_BufferedEvents:
 		{
@@ -1023,6 +1071,14 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			d->queue_first = (d->queue_first + 1) % QUEUE_CAP;
 			d->queue_count--;
 			ApplyInputEvent(d, evt->type, evt->bits, evt->x, evt->y);
+			return 0;
+		}
+		case UXNMSG_ActionAfterInterrupt:
+		{
+			BYTE type = d->interrupt_action;
+			SANITY_CHECK(d->queue_count == 0); /* let's see if this is true */
+			d->interrupt_action = 0; /* We can't set this after, the window may be destroyed */
+			ApplyInterruptAction(d, type);
 			return 0;
 		}
 	}
@@ -1060,7 +1116,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	// wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
 	RegisterClassEx(&wc);
 
-	hWin = CreateUxnWindow(instance, "boot.rom");
+	hWin = CreateUxnWindow(instance, TEXT("boot.rom"));
 	ShowWindow(hWin, show_code);
 
 	while (GetMessage(&msg, NULL, 0, 0))
