@@ -45,10 +45,10 @@ typedef LONG LONG_PTR;
 #define OUTER_OF(outer, type, field) ((type *) ((char *)(outer) - OFFSET_OF(type, field)))
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
-#ifdef _DEBUG
-#define SANITY_CHECK(a) { if (!(a)) DebugBreak(); }
-#else
+#ifdef NDEBUG
 #define SANITY_CHECK(a)
+#else
+#define SANITY_CHECK(a) { if (!(a)) DebugBreak(); }
 #endif
 
 #define UXN_DEFAULT_WIDTH (64 * 8)
@@ -159,25 +159,26 @@ typedef struct EmuWindow
 static Uint8 nil_dei(Device *d, Uint8 port) { return d->dat[port]; }
 static void  nil_deo(Device *d, Uint8 port) { (void)d;(void)port; }
 
-static void VFmtBox(LPCSTR title, UINT flags, char const *fmt, va_list ap)
+static int VFmtBox(HWND hWnd, LPCSTR title, UINT flags, char const *fmt, va_list ap)
 {
-	int res; char buffer[1024];
-	res = wvsprintfA(buffer, fmt, ap);
-	if (res < 0 || res >= 1024) return;
+	char buffer[1024];
+	int res = wvsprintfA(buffer, fmt, ap);
+	if (res < 0 || res >= 1024) DebugBreak();
 	buffer[res] = 0;
-	MessageBox(0, buffer, title, flags);
+	return MessageBox(hWnd, buffer, title, flags);
 }
-static void FmtBox(LPCSTR title, UINT flags, char const *fmt, ...)
+static int FmtBox(HWND hWnd, LPCSTR title, UINT flags, char const *fmt, ...)
 {
-	va_list ap; va_start(ap, fmt);
-	VFmtBox(title, flags, fmt, ap);
+	int res; va_list ap; va_start(ap, fmt);
+	res = VFmtBox(hWnd, title, flags, fmt, ap);
 	va_end(ap);
+	return res;
 }
 static __declspec(noreturn) void FatalBox(char const *fmt, ...)
 {
 	va_list ap; va_start(ap, fmt);
 	while (ShowCursor(TRUE) < 0);
-	VFmtBox(TEXT("Major Problem"), MB_OK | MB_ICONSTOP | MB_TASKMODAL, fmt, ap);
+	VFmtBox(0, TEXT("Major Problem"), MB_OK | MB_ICONSTOP | MB_TASKMODAL, fmt, ap);
 	va_end(ap);
 	ExitProcess(ERROR_GEN_FAILURE);
 }
@@ -187,7 +188,7 @@ static __declspec(noreturn) void OutOfMemory(void)
 	ExitProcess(ERROR_OUTOFMEMORY);
 }
 
-#ifdef _DEBUG
+#ifndef NDEBUG
 static void DebugPrint(char const *fmt, ...)
 {
 	va_list ap; int res; char buffer[1024 + 1];
@@ -209,7 +210,7 @@ static void PrintLastError(void)
 static void DebugBox(char const *fmt, ...)
 {
 	va_list ap; va_start(ap, fmt);
-	VFmtBox(TEXT("Debug"), MB_OK, fmt, ap);
+	VFmtBox(0, TEXT("Debug"), MB_OK, fmt, ap);
 	va_end(ap);
 }
 #endif
@@ -651,7 +652,7 @@ BOOL LoadROMIntoBox(UxnBox *box, LPCSTR filename)
 	{
 		TCHAR tmp[MAX_PATH]; DWORD res = GetFullPathNameA(filename, MAX_PATH, tmp, NULL);
 		if (res == 0 || res >= MAX_PATH) tmp[0] = 0;
-		FmtBox("ROM File Load Error", MB_OK | MB_ICONWARNING, "Tried and failed to load the ROM file:\n\n%s\n\nDoes it exist?", tmp);
+		FmtBox(0, "ROM File Load Error", MB_OK | MB_ICONWARNING, "Tried and failed to load the ROM file:\n\n%s\n\nDoes it exist?", tmp);
 	}
 	return result;
 }
@@ -750,6 +751,21 @@ static void InvalidateUxnScreenRect(EmuWindow *d)
 	InvalidateRect(d->hWnd, &srect, FALSE);
 }
 
+static BOOL IllegalInstrunctionDialog(EmuWindow *d)
+{
+	int res; BOOL retry; unsigned int fcode = d->box->core.fault_code;
+	LPCSTR place = fcode & 0x1 ? "Return" : "Working";
+	LPCSTR action = fcode < 2 ? "underflow" : fcode < 4 ? "overflow" : "division by zero";
+	ShowCursor(TRUE);
+	res = FmtBox(d->hWnd, TEXT("Uxn Program Fault"), MB_RETRYCANCEL | MB_ICONEXCLAMATION, TEXT("Fault: %s-stack %s\n\nInstruction: %04x\t%Address: 0x%04x\n\nThe Uxn program performed an instruction which caused a virtual hardware fault.\n\nThis probably means there was an error in the Uxn program.\n\nYou can either retry execution while skipping over the bad instruction and hope that it works, or cancel execution and end the program."), place, action, d->box->core.ram[d->box->core.pc], d->box->core.pc);
+	ShowCursor(FALSE);
+	retry = res == IDRETRY;
+	if (retry) { d->box->core.pc++; d->box->core.fault_code = 0; }
+	return retry;
+}
+
+static void SendInterruptAction(EmuWindow *d, BYTE type);
+
 /* TODO there's something fancy we should do with the loop to make it tell if it ran out or not by return value, returning 0 when limit is 0 means we might have succeeded in reaching the null instruction on the last allowed step, so we need to do something else */
 static void RunUxn(EmuWindow *d, unsigned int pc)
 {
@@ -769,6 +785,11 @@ static void RunUxn(EmuWindow *d, unsigned int pc)
 			instr_interrupts++;
 			t_b = TimeStampNow();
 			t_delta = t_b - t_a;
+			if (u->fault_code && !IllegalInstrunctionDialog(d))
+			{
+				SendInterruptAction(d, Irupt_ReloadROMFile);
+				goto done;
+			}
 			if (res != 0) { total += t_delta; goto done; }
 			if (t_delta > ExecutionTimeLimit) { total += t_delta; break; }
 			/* total will include some non-Uxn work, but close enough */
