@@ -159,6 +159,35 @@ typedef struct EmuWindow
 static Uint8 nil_dei(Device *d, Uint8 port) { return d->dat[port]; }
 static void  nil_deo(Device *d, Uint8 port) { (void)d;(void)port; }
 
+static void VFmtBox(LPCSTR title, UINT flags, char const *fmt, va_list ap)
+{
+	int res; char buffer[1024];
+	res = wvsprintfA(buffer, fmt, ap);
+	if (res < 0 || res >= 1024) return;
+	buffer[res] = 0;
+	MessageBox(0, buffer, title, flags);
+}
+static void FmtBox(LPCSTR title, UINT flags, char const *fmt, ...)
+{
+	va_list ap; va_start(ap, fmt);
+	VFmtBox(title, flags, fmt, ap);
+	va_end(ap);
+}
+static __declspec(noreturn) void FatalBox(char const *fmt, ...)
+{
+	va_list ap; va_start(ap, fmt);
+	while (ShowCursor(TRUE) < 0);
+	VFmtBox(TEXT("Major Problem"), MB_OK | MB_ICONSTOP | MB_TASKMODAL, fmt, ap);
+	va_end(ap);
+	ExitProcess(ERROR_GEN_FAILURE);
+}
+static __declspec(noreturn) void OutOfMemory(void)
+{
+	MessageBox(NULL, TEXT("Out of memory"), NULL, MB_OK | MB_ICONSTOP | MB_TASKMODAL);
+	ExitProcess(ERROR_OUTOFMEMORY);
+}
+
+#ifdef _DEBUG
 static void DebugPrint(char const *fmt, ...)
 {
 	va_list ap; int res; char buffer[1024 + 1];
@@ -170,7 +199,6 @@ static void DebugPrint(char const *fmt, ...)
 	buffer[res + 1] = 0;
 	OutputDebugStringA(buffer);
 }
-
 static void PrintLastError(void)
 {
 	DWORD dw = GetLastError();
@@ -178,44 +206,13 @@ static void PrintLastError(void)
 	FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, dw, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPTSTR) &lpMsgBuf, 0, NULL );
 	DebugPrint("Win32 error %d: %s", (int)dw, lpMsgBuf);
 }
-
-static void VFmtBox(LPCSTR title, UINT flags, char const *fmt, va_list ap)
-{
-	int res; char buffer[1024];
-	res = wvsprintfA(buffer, fmt, ap);
-	if (res < 0 || res >= 1024) return;
-	buffer[res] = 0;
-	MessageBox(0, buffer, title, flags);
-}
-
-static void FmtBox(LPCSTR title, UINT flags, char const *fmt, ...)
-{
-	va_list ap; va_start(ap, fmt);
-	VFmtBox(title, flags, fmt, ap);
-	va_end(ap);
-}
-
 static void DebugBox(char const *fmt, ...)
 {
 	va_list ap; va_start(ap, fmt);
 	VFmtBox(TEXT("Debug"), MB_OK, fmt, ap);
 	va_end(ap);
 }
-
-static __declspec(noreturn) void FatalBox(char const *fmt, ...)
-{
-	va_list ap; va_start(ap, fmt);
-	while (ShowCursor(TRUE) < 0);
-	VFmtBox(TEXT("Major Problem"), MB_OK | MB_ICONSTOP | MB_TASKMODAL, fmt, ap);
-	va_end(ap);
-	ExitProcess(ERROR_GEN_FAILURE);
-}
-
-static __declspec(noreturn) void OutOfMemory(void)
-{
-	MessageBox(NULL, TEXT("Out of memory"), NULL, MB_OK | MB_ICONSTOP | MB_TASKMODAL);
-	ExitProcess(ERROR_OUTOFMEMORY);
-}
+#endif
 
 static void * AllocZeroedOrFail(SIZE_T bytes)
 {
