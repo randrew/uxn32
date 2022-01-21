@@ -88,7 +88,7 @@ typedef struct UxnScreen
 {
 	Uint32 palette[4];
 	LONG width, height;
-	Uint8 *fg, *bg;
+	Uint8 *bg, *fg;
 } UxnScreen;
 typedef struct UxnFiler
 {
