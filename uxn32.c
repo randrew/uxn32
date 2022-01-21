@@ -252,23 +252,6 @@ static BOOL LoadFileInto(LPCSTR path, char *dest, DWORD max_bytes, DWORD *bytes_
 	return TRUE;
 }
 
-
-#if 0
-int
-uxn_halt(Uxn *u, Uint8 error, Uint16 addr)
-{
-	static char const * const errors[] = {
-		"Working-stack underflow",
-		"Return-stack underflow",
-		"Working-stack overflow",
-		"Return-stack overflow",
-		"Working-stack division by zero",
-		"Return-stack division by zero"};
-	DebugBox("Uxn machine halted: %s#%04x, at 0x%04x\n", errors[error], u->ram[addr], addr);
-	return 0;
-}
-#endif
-
 static const Uint8 SpriteBlendingTable[5][16] = {
 	{0, 0, 0, 0, 1, 0, 1, 1, 2, 2, 0, 2, 3, 3, 3, 0},
 	{0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3},
@@ -767,7 +750,7 @@ static void InvalidateUxnScreenRect(EmuWindow *d)
 static BOOL IllegalInstrunctionDialog(EmuWindow *d)
 {
 	int res; BOOL retry; unsigned int fcode = d->box->core.fault_code;
-	LPCSTR place = fcode & 0x1 ? "Return" : "Working";
+	LPCSTR place = fcode & 1 ? "Return" : "Working";
 	LPCSTR action = fcode < 2 ? "underflow" : fcode < 4 ? "overflow" : "division by zero";
 	ShowCursor(TRUE);
 	res = FmtBox(d->hWnd, TEXT("Uxn Program Fault"), MB_RETRYCANCEL | MB_ICONEXCLAMATION, TEXT("Fault: %s-stack %s\n\nInstruction: %04x\t%Address: 0x%04x\n\nThe Uxn program performed an instruction which caused a virtual hardware fault.\n\nThis probably means there was an error in the Uxn program.\n\nYou can either retry execution while skipping over the bad instruction and hope that it works, or cancel execution and end the program."), place, action, d->box->core.ram[d->box->core.pc], d->box->core.pc);
