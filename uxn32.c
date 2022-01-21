@@ -12,6 +12,7 @@
 #define SetWindowLongPtrW   SetWindowLongW
 typedef LONG LONG_PTR;
 #define GWLP_USERDATA GWL_USERDATA
+#define GWLP_HINSTANCE GWL_HINSTANCE
 #ifdef UNICODE
 #define GetWindowLongPtr  GetWindowLongPtrW
 #define SetWindowLongPtr  SetWindowLongPtrW
