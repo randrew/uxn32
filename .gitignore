@@ -11,3 +11,4 @@ CMakeLists.txt.user
 *.ncb
 *.opt
 *.plg
+*.dsw
