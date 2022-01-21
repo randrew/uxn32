@@ -77,6 +77,40 @@ static UINT TimeStampMicros(LONGLONG t) { return (UINT)LongLongMulDiv(t, 1000000
 static UINT TimeStampMillis(LONGLONG t) { return (UINT)LongLongMulDiv(t, 1000, _perfcount_freq.QuadPart); }
 static UINT MicrosSince(LONGLONG t) { return TimeStampMicros(TimeStampNow() - t); }
 
+typedef struct ListLink { struct ListLink *prev, *next; } ListLink;
+typedef struct LinkedList { struct ListLink *front, *back; } LinkedList;
+
+static ListLink * _impl_ListPopFront(LinkedList *list)
+{
+	ListLink *a = list->front;
+	SANITY_CHECK(a);
+	list->front = a->next;
+	if (a == list->back) list->back = NULL;
+	else a->next = list->front->prev = NULL;
+	return a;
+}
+static void _impl_ListPushBack(LinkedList *list, ListLink *node)
+{
+	SANITY_CHECK(node->prev == NULL && node->next == NULL);
+	if (list->back) { node->prev = list->back; list->back->next = node; }
+	else { list->front = node; }
+	list->back = node;
+}
+static void _impl_ListRemove(LinkedList *list, ListLink *a)
+{
+	if (list->front != a && !a->prev) return; /* Do nothing if not in list */
+	SANITY_CHECK((a == list->back)  == (a->next == NULL));
+	SANITY_CHECK((a == list->front) == (a->prev == NULL));
+    if (a->prev) a->prev->next = a->next;
+    else         list->front   = a->next;
+    if (a->next) a->next->prev = a->prev;
+    else         list->back    = a->prev;
+    a->next = a->prev = NULL;
+}
+#define ListPopFront(list, type, link_field) OUTER_OF(_impl_ListPopFront(list), type, link_field)
+#define ListPushBack(list, a, link_field) _impl_ListPushBack((list), &(a)->link_field)
+#define ListRemove(list, a, link_field) _impl_ListRemove((list), &(a->link_field))
+
 typedef struct UxnBox
 {
 	void *user;
@@ -107,10 +141,9 @@ typedef struct UxnFiler
 enum { Screen60hzTimer = 1 };
 enum
 {
-	UXNMSG_BufferedEvents = WM_USER,
-	UXNMSG_ActionAfterInterrupt
+	UXNMSG_ContinueExec = WM_USER
 };
-enum
+enum EmuIn
 {
 	EmuIn_KeyChar = 1,
 	EmuIn_CtrlDown,
@@ -120,11 +153,6 @@ enum
 	EmuIn_Wheel,
 	EmuIn_Screen,
 	EmuIn_Start
-};
-enum
-{
-	Irupt_CloseWindow = 1,
-	Irupt_ReloadROMFile
 };
 typedef struct EmuInEvent
 {
@@ -144,10 +172,11 @@ typedef struct EmuWindow
 	HDC hDibDC;
 	SIZE dib_dims;
 
-	BYTE needs_clear, host_cursor, exec_guard, interrupt_action;
+	BYTE running, exec_state, needs_clear, host_cursor;
 
 	EmuInEvent *queue_buffer;
 	USHORT queue_count, queue_first;
+	ListLink work_link;
 	LONGLONG last_paint;
 
 	UxnScreen screen;
@@ -757,69 +786,116 @@ static BOOL IllegalInstrunctionDialog(EmuWindow *d)
 	ShowCursor(FALSE);
 	retry = res == IDRETRY;
 	if (retry) { d->box->core.pc++; d->box->core.fault_code = 0; }
+	/* TODO ^- skipping over div by 0 should push 0 onto stack, it's going to be unbalanced like this */
 	return retry;
 }
 
-static void SendInterruptAction(EmuWindow *d, BYTE type);
+static LinkedList emus_needing_work;
+
+static void ResetVM(EmuWindow *d)
+{
+	d->box->core.fault_code = 0;
+	d->exec_state = 0;
+	ZeroMemory(&d->box->work_stack, sizeof(Stack) * 2); /* optional for quick reload */
+	ZeroMemory(d->box->device_memory, sizeof d->box->device_memory); /* optional for quick reload */
+	ZeroMemory((char *)(d->box + 1), UXN_RAM_SIZE);
+	ZeroMemory(d->screen.palette, sizeof d->screen.palette); /* optional for quick reload */
+	ZeroMemory(d->screen.bg, d->screen.width * d->screen.height * 2);
+	ResetFiler(&d->filer);
+}
+
+static void PauseVM(EmuWindow *d)
+{
+	if (!d->running) return;
+	d->queue_count = 0;
+	d->running = 0;
+	KillTimer(d->hWnd, Screen60hzTimer);
+	SetHostCursorVisible(d, TRUE);
+	ListRemove(&emus_needing_work, d, work_link);
+}
+
+static void UnpauseVM(EmuWindow *d)
+{
+	if (d->running) return;
+	d->queue_count = 0;
+	d->running = 1;
+	SetTimer(d->hWnd, Screen60hzTimer, 16, NULL);
+	if (d->exec_state) ListPushBack(&emus_needing_work, d, work_link);
+}
 
 /* TODO there's something fancy we should do with the loop to make it tell if it ran out or not by return value, returning 0 when limit is 0 means we might have succeeded in reaching the null instruction on the last allowed step, so we need to do something else */
-static void RunUxn(EmuWindow *d, unsigned int pc)
+static void RunUxn(EmuWindow *d)
 {
-	UINT res; MSG msg; Uxn *u = &d->box->core;
+	UINT res; Uxn *u = &d->box->core;
 	LONGLONG total = 0, t_a, t_b, t_delta;
-	int event_interrupts = 0, instr_interrupts = 0;
-	SANITY_CHECK(d->exec_guard == 0);
-	if (!pc) return;
-	d->exec_guard = 1;
-	u->pc = pc;
+	int instr_interrupts = 0;
+	if (!u->pc) goto completed;
+	t_a = TimeStampNow();
 	for (;;)
 	{
-		t_a = TimeStampNow();
-		for (;;)
-		{
-			res = UxnExec(&d->box->core, 100000); /* about 1900 usecs on good hardware */
-			instr_interrupts++;
-			t_b = TimeStampNow();
-			t_delta = t_b - t_a;
-			if (u->fault_code && !IllegalInstrunctionDialog(d))
-			{
-				SendInterruptAction(d, Irupt_ReloadROMFile);
-				goto done;
-			}
-			if (res != 0) { total += t_delta; goto done; }
-			if (t_delta > ExecutionTimeLimit) { total += t_delta; break; }
-			/* total will include some non-Uxn work, but close enough */
-		}
-		event_interrupts++;
-		/* If we're going incredibly slow, occasionally force a repaint even though the Uxn program might not have finished drawing to them (ugly/incomplete image.) ApplyInputEvent will queue another repaint later to get a finished image. */
-		if (t_b - d->last_paint > RepaintTimeLimit) InvalidateUxnScreenRect(d);
-		for (;;)
-		{
-			if (!PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) break;
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
-			if (d->interrupt_action) goto done;
-		}
+		res = UxnExec(&d->box->core, 100000); /* about 1900 usecs on good hardware */
+		instr_interrupts++;
+		t_b = TimeStampNow();
+		t_delta = t_b - t_a;
+		// if (u->fault_code && !IllegalInstrunctionDialog(d)) goto died;
+		if (u->fault_code) goto died;
+		if (res != 0) { total += t_delta; goto completed; }
+		if (t_delta > ExecutionTimeLimit) { total += t_delta; goto residual; }
+		/* total will include some non-Uxn work, but close enough */
 	}
-done:
-	d->exec_guard = 0;
+died:
+	PauseVM(d);
+	InvalidateUxnScreenRect(d);
+	if (IllegalInstrunctionDialog(d)) UnpauseVM(d);
+	return;
+completed:
+	switch ((enum EmuIn)d->exec_state)
+	{
+	case EmuIn_CtrlDown:
+	case EmuIn_CtrlUp:
+	case EmuIn_MouseDown:
+	case EmuIn_MouseUp:
+	case EmuIn_Screen:
+		break;
+	case EmuIn_Start:
+		SetTimer(d->hWnd, Screen60hzTimer, 16, NULL);
+		break;
+	case EmuIn_KeyChar:
+		d->dev_ctrl->dat[3] = 0;
+		break;
+	case EmuIn_Wheel:
+		DEVPOKE16(d->dev_mouse, 0xa, 0);
+		DEVPOKE16(d->dev_mouse, 0xc, 0);
+		break;
+	}
+	d->exec_state = 0;
+residual:
+	if (d->running && (d->exec_state || d->queue_count))
+		ListPushBack(&emus_needing_work, d, work_link);
+	InvalidateUxnScreenRect(d);
+	/* TODO ^- don't cause a bunch of invalidates if we're only going to draw at 20hz anyway?
+	 * Not always a clear win -- it makes it buffer and process more mouse moves and redraw less frequently.
+	 * In programs like Left that actually makes it feel less responsive. But it "completes" more mouse move
+	 * vector calls.*/
+	if (TimeStampNow() - d->last_paint > RepaintTimeLimit) UpdateWindow(d->hWnd);
 }
+
 
 static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT y)
 {
+	Uint16 *pc = &d->box->core.pc;
 	switch (type)
 	{
 	case EmuIn_KeyChar:
 		d->dev_ctrl->dat[3] = bits;
-		RunUxn(d, GETVECTOR(d->dev_ctrl));
-		d->dev_ctrl->dat[3] = 0;
+		*pc = GETVECTOR(d->dev_ctrl);
 		break;
 	case EmuIn_CtrlDown:
 		d->dev_ctrl->dat[2] |= bits; goto run_ctrl;
 	case EmuIn_CtrlUp:
 		d->dev_ctrl->dat[2] &= ~bits;
 	run_ctrl:
-		RunUxn(d, GETVECTOR(d->dev_ctrl));
+		*pc = GETVECTOR(d->dev_ctrl);
 		break;
 	case EmuIn_MouseDown:
 		d->dev_mouse->dat[6] |= bits; goto mouse_xy;
@@ -828,39 +904,28 @@ static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT
 	mouse_xy:
 		DEVPOKE16(d->dev_mouse, 0x2, x)
 		DEVPOKE16(d->dev_mouse, 0x4, y)
-		RunUxn(d, GETVECTOR(d->dev_mouse));
+		*pc = GETVECTOR(d->dev_mouse);
 		break;
 	case EmuIn_Wheel:
 		DEVPOKE16(d->dev_mouse, 0xa, x);
 		DEVPOKE16(d->dev_mouse, 0xc, y);
-		RunUxn(d, GETVECTOR(d->dev_mouse));
-		DEVPOKE16(d->dev_mouse, 0xa, 0);
-		DEVPOKE16(d->dev_mouse, 0xc, 0);
+		*pc = GETVECTOR(d->dev_mouse);
 		break;
 	case EmuIn_Screen:
-		RunUxn(d, GETVECTOR(d->dev_screen));
+		*pc = GETVECTOR(d->dev_screen);
 		break;
 	case EmuIn_Start:
-		RunUxn(d, UXN_ROM_OFFSET);
-		SetTimer(d->hWnd, Screen60hzTimer, 16, NULL);
+		*pc = UXN_ROM_OFFSET;
 		break;
 	}
-	if (d->interrupt_action)
-	{
-		d->queue_count = 0;
-		PostMessage(d->hWnd, UXNMSG_ActionAfterInterrupt, 0, 0);
-		return;
-	}
-	InvalidateUxnScreenRect(d); /* Queue a repaint if there isn't already one */
-	/* We might have a lot of EmuIn events queued up in a row with no repaint. If it's been a long time since we repainted the screen, just force it now. */
-	if (TimeStampNow() - d->last_paint > RepaintTimeLimit) UpdateWindow(d->hWnd);
-	/* If we have any buffered input events, post a message that will make us process another one. */
-	if (d->queue_count) PostMessage(d->hWnd, UXNMSG_BufferedEvents, 0, 0);
+	d->exec_state = type;
+	RunUxn(d);
 }
 
 static void SendInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT y)
 {
-	if (!d->exec_guard && d->queue_count == 0) ApplyInputEvent(d, type, bits, x, y);
+	if (!d->running) return;
+	if (!d->exec_state && !d->queue_count) ApplyInputEvent(d, type, bits, x, y);
 	else /* busy */
 	{
 		EmuInEvent *evt;
@@ -871,31 +936,20 @@ static void SendInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT 
 	}
 }
 
-static void ApplyInterruptAction(EmuWindow *d, BYTE type)
+static void StartVM(EmuWindow *d)
 {
-	switch (type)
+	if (LoadROMIntoBox(d->box, d->rom_path))
 	{
-	case Irupt_CloseWindow: DestroyWindow(d->hWnd); break;
-	case Irupt_ReloadROMFile:
-	{
-		d->box->core.fault_code = 0;
-		ZeroMemory(&d->box->work_stack, sizeof(Stack) * 2); /* optional for quick reload */
-		ZeroMemory(d->box->device_memory, sizeof d->box->device_memory); /* optional for quick reload */
-		ZeroMemory((char *)(d->box + 1), UXN_RAM_SIZE);
-		ZeroMemory(d->screen.palette, sizeof d->screen.palette); /* optional for quick reload */
-		ZeroMemory(d->screen.bg, d->screen.width * d->screen.height * 2);
-		ResetFiler(&d->filer);
-		if (LoadROMIntoBox(d->box, d->rom_path)) SendInputEvent(d, EmuIn_Start, 0, 0, 0);
-		break;
-	}
+		d->running = 1;
+		SendInputEvent(d, EmuIn_Start, 0, 0, 0);
 	}
 }
 
-static void SendInterruptAction(EmuWindow *d, BYTE type)
+static void ReloadFromROMFile(EmuWindow *d)
 {
-	KillTimer(d->hWnd, Screen60hzTimer);
-	if (!d->exec_guard && d->queue_count == 0) ApplyInterruptAction(d, type);
-	else d->interrupt_action = type;
+	PauseVM(d);
+	ResetVM(d);
+	StartVM(d);
 }
 
 static LPCSTR EmuWinClass = TEXT("uxn_emu_win");
@@ -926,12 +980,11 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			filelen = lstrlen(filename);
 			if (filelen >= MAX_PATH) OutOfMemory(); /* wrong, better msg */
 			CopyMemory(d->rom_path, filename, (filelen + 1) * sizeof(TCHAR));
-			LoadROMIntoBox(d->box, d->rom_path);
-			SendInputEvent(d, EmuIn_Start, 0, 0, 0);
+			StartVM(d);
 			return 0;
 		}
 		case WM_CLOSE:
-			SendInterruptAction(d, Irupt_CloseWindow);
+			DestroyWindow(hwnd);
 			return 0;
 		case WM_DESTROY:
 			KillTimer(hwnd, Screen60hzTimer);
@@ -940,6 +993,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			ResetFiler(&d->filer);
 			if (d->hBMP) DeleteObject(d->hBMP);
 			if (d->hDibDC) DeleteDC(d->hDibDC);
+			ListRemove(&emus_needing_work, d, work_link);
 			HeapFree(GetProcessHeap(), 0, d);
 			PostQuitMessage(0);
 			return 0;
@@ -1017,7 +1071,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			mouse.x = LOWORD(lparam); mouse.y = HIWORD(lparam);
 			GetClientRect(hwnd, &crect);
 			GetUxnScreenRect(&crect, &d->screen, &srect);
-			mouse_in_uxn = PtInRect(&srect, mouse);
+			mouse_in_uxn = PtInRect(&srect, mouse) && d->running; /* TODO fix unpause without moving mouse */
 			SetHostCursorVisible(d, !mouse_in_uxn);
 			if (!mouse_in_uxn) break;
 			BindPointToLocalUxnScreen(&srect, &mouse); /* could save a GetClientRect call by passing it optionally... */
@@ -1074,7 +1128,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			case VK_LEFT:    mask = 0x40; break;
 			case VK_RIGHT:   mask = 0x80; break;
 
-			case VK_F4: if (msg == WM_KEYDOWN) SendInterruptAction(d, Irupt_ReloadROMFile); return 0;
+			case VK_F4: if (msg == WM_KEYDOWN) ReloadFromROMFile(d); return 0;
 			}
 			if (!mask) break;
 			SendInputEvent(d, msg == WM_KEYDOWN ? EmuIn_CtrlDown : EmuIn_CtrlUp, mask, 0, 0);
@@ -1093,29 +1147,21 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		{
 			HDROP hDrop = (HDROP)wparam;
 			if (!DragQueryFile(hDrop, 0, d->rom_path, MAX_PATH)) return 0;
-			SendInterruptAction(d, Irupt_ReloadROMFile);
+			ReloadFromROMFile(d);
 			return 0;
 		}
 
-		case UXNMSG_BufferedEvents:
-		{
-			EmuInEvent *evt;
-			SANITY_CHECK(d->queue_count > 0);
-			SANITY_CHECK(d->exec_guard == 0);
-			evt = &d->queue_buffer[d->queue_first];
-			d->queue_first = (d->queue_first + 1) % QUEUE_CAP;
-			d->queue_count--;
-			ApplyInputEvent(d, evt->type, evt->bits, evt->x, evt->y);
+		case UXNMSG_ContinueExec:
+			if (!d->running) return 0;
+			if (d->exec_state) RunUxn(d); /* Unfinished vector execution */
+			else if (d->queue_count) /* Buffered events */
+			{
+				EmuInEvent *evt = &d->queue_buffer[d->queue_first];
+				d->queue_first = (d->queue_first + 1) % QUEUE_CAP;
+				d->queue_count--;
+				ApplyInputEvent(d, evt->type, evt->bits, evt->x, evt->y);
+			}
 			return 0;
-		}
-		case UXNMSG_ActionAfterInterrupt:
-		{
-			BYTE type = d->interrupt_action;
-			SANITY_CHECK(d->queue_count == 0); /* let's see if this is true */
-			d->interrupt_action = 0; /* We can't set this after, the window may be destroyed */
-			ApplyInterruptAction(d, type);
-			return 0;
-		}
 	}
 	return DefWindowProc(hwnd, msg, wparam, lparam);
 }
@@ -1142,10 +1188,21 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	hWin = CreateUxnWindow(instance, TEXT("launcher.rom"));
 	ShowWindow(hWin, show_code);
 
-	while (GetMessage(&msg, NULL, 0, 0))
+	for (;;)
 	{
-		TranslateMessage(&msg);
-		DispatchMessage(&msg);
+		while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+		{
+			if (msg.message == WM_QUIT) goto quitting;
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+		}
+		while (emus_needing_work.front)
+		{
+			EmuWindow *d = ListPopFront(&emus_needing_work, EmuWindow, work_link);
+			PostMessage(d->hWnd, UXNMSG_ContinueExec, 0, 0);
+		}
+		WaitMessage();
 	}
+quitting:
 	return 0;
 }
