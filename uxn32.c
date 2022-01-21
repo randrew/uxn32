@@ -875,20 +875,20 @@ static void ApplyInterruptAction(EmuWindow *d, BYTE type)
 {
 	switch (type)
 	{
-		case Irupt_CloseWindow: DestroyWindow(d->hWnd); break;
-		case Irupt_ReloadROMFile:
-		{
-			d->box->core.fault_code = 0;
-			ZeroMemory(&d->box->work_stack, sizeof(Stack) * 2); /* optional for quick reload */
-			ZeroMemory(d->box->device_memory, sizeof d->box->device_memory); /* optional for quick reload */
-			ZeroMemory((char *)(d->box + 1), UXN_RAM_SIZE);
-			ZeroMemory(d->screen.palette, sizeof d->screen.palette); /* optional for quick reload */
-			ZeroMemory(d->screen.bg, d->screen.width * d->screen.height * 2);
-			ResetFiler(&d->filer);
-			if (LoadROMIntoBox(d->box, d->rom_path))
-				SendInputEvent(d, EmuIn_Start, 0, 0, 0);
-			break;
-		}
+	case Irupt_CloseWindow: DestroyWindow(d->hWnd); break;
+	case Irupt_ReloadROMFile:
+	{
+		d->box->core.fault_code = 0;
+		ZeroMemory(&d->box->work_stack, sizeof(Stack) * 2); /* optional for quick reload */
+		ZeroMemory(d->box->device_memory, sizeof d->box->device_memory); /* optional for quick reload */
+		ZeroMemory((char *)(d->box + 1), UXN_RAM_SIZE);
+		ZeroMemory(d->screen.palette, sizeof d->screen.palette); /* optional for quick reload */
+		ZeroMemory(d->screen.bg, d->screen.width * d->screen.height * 2);
+		ResetFiler(&d->filer);
+		if (LoadROMIntoBox(d->box, d->rom_path))
+			SendInputEvent(d, EmuIn_Start, 0, 0, 0);
+		break;
+	}
 	}
 }
 
