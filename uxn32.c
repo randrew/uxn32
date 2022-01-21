@@ -888,6 +888,18 @@ static void SendInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT 
 	}
 }
 
+static LPCSTR EmuWinClass = TEXT("uxn_emu_win");
+
+HWND CreateUxnWindow(HINSTANCE hInst, LPCSTR file)
+{
+	RECT rect;
+	rect.left = 0; rect.top = 0;
+	rect.right = rect.left + UXN_DEFAULT_WIDTH;
+	rect.bottom = rect.top + UXN_DEFAULT_HEIGHT;
+	AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
+	return CreateWindowEx(WS_EX_APPWINDOW, EmuWinClass, TEXT("Uxn"), WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, NULL, NULL, hInst, (void *)file);
+}
+
 static void ApplyInterruptAction(EmuWindow *d, BYTE type)
 {
 	switch (type)
@@ -1124,18 +1136,6 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		}
 	}
 	return DefWindowProc(hwnd, msg, wparam, lparam);
-}
-
-static LPCSTR EmuWinClass = TEXT("uxn_emu_win");
-
-HWND CreateUxnWindow(HINSTANCE hInst, LPCSTR file)
-{
-	RECT rect;
-	rect.left = 0; rect.top = 0;
-	rect.right = rect.left + UXN_DEFAULT_WIDTH;
-	rect.bottom = rect.top + UXN_DEFAULT_HEIGHT;
-	AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
-	return CreateWindowEx(WS_EX_APPWINDOW, EmuWinClass, TEXT("Uxn"), WS_OVERLAPPEDWINDOW, 200, 200, rect.right - rect.left, rect.bottom - rect.top, NULL, NULL, hInst, (void *)file);
 }
 
 int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
