@@ -594,7 +594,7 @@ Device *uxn_port(Uxn *u, Uint8 *devpage, Uint8 id, Uint8 (*deifn)(Device *d, Uin
 	return d;
 }
 
-void file_deo(Device *d, Uint8 port)
+void FileDevOutCb(Device *d, Uint8 port)
 {
 	DWORD result = 0, /* next inits suppress msvc warning */ out_len = 0; char *out = 0;
 	UxnFiler *f = FilerOfDevice(d);
@@ -660,7 +660,7 @@ void InitEmuWindow(EmuWindow *d, HWND hWnd)
 	/* unused   */ uxn_port(&box->core, box->device_memory,  0x7, nil_dei, nil_deo);
 	/* control  */ d->dev_ctrl = uxn_port(&box->core, box->device_memory,  0x8, nil_dei, nil_deo);
 	/* mouse    */ d->dev_mouse = uxn_port(&box->core, box->device_memory,  0x9, nil_dei, nil_deo);
-	/* file     */ uxn_port(&box->core, box->device_memory,  0xa, nil_dei, file_deo);
+	/* file     */ uxn_port(&box->core, box->device_memory,  0xa, nil_dei, FileDevOutCb);
 	/* datetime */ uxn_port(&box->core, box->device_memory,  0xb, SystemDevDateInCb, nil_deo);
 	/* unused   */ uxn_port(&box->core, box->device_memory,  0xc, nil_dei, nil_deo);
 	/* unused   */ uxn_port(&box->core, box->device_memory,  0xd, nil_dei, nil_deo);
@@ -885,8 +885,7 @@ static void ApplyInterruptAction(EmuWindow *d, BYTE type)
 		ZeroMemory(d->screen.palette, sizeof d->screen.palette); /* optional for quick reload */
 		ZeroMemory(d->screen.bg, d->screen.width * d->screen.height * 2);
 		ResetFiler(&d->filer);
-		if (LoadROMIntoBox(d->box, d->rom_path))
-			SendInputEvent(d, EmuIn_Start, 0, 0, 0);
+		if (LoadROMIntoBox(d->box, d->rom_path)) SendInputEvent(d, EmuIn_Start, 0, 0, 0);
 		break;
 	}
 	}
