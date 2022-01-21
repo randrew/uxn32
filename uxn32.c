@@ -142,7 +142,8 @@ typedef struct UxnFiler
 enum { Screen60hzTimer = 1 };
 enum
 {
-	UXNMSG_ContinueExec = WM_USER
+	UXNMSG_ContinueExec = WM_USER,
+	UXNMSG_BecomeClone,
 };
 enum EmuIn
 {
@@ -965,6 +966,13 @@ HWND CreateUxnWindow(HINSTANCE hInst, LPCSTR file)
 	return CreateWindowEx(WS_EX_APPWINDOW, EmuWinClass, TEXT("Uxn"), WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, NULL, NULL, hInst, (void *)file);
 }
 
+static void CloneWindow(EmuWindow *a)
+{
+	HWND hWnd = CreateUxnWindow((HINSTANCE)GetWindowLongPtr(a->hWnd, GWLP_HINSTANCE), NULL);
+	ShowWindow(hWnd, SW_SHOW);
+	PostMessage(hWnd, UXNMSG_BecomeClone, (WPARAM)a, 0);
+}
+
 static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
 	EmuWindow *d = (EmuWindow *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
@@ -978,10 +986,13 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)d);
 			DragAcceptFiles(hwnd, TRUE);
 			InitEmuWindow(d, hwnd);
-			filelen = lstrlen(filename);
+			filelen = filename ? lstrlen(filename) : 0;
 			if (filelen >= MAX_PATH) OutOfMemory(); /* wrong, better msg */
-			CopyMemory(d->rom_path, filename, (filelen + 1) * sizeof(TCHAR));
-			StartVM(d);
+			if (filelen)
+			{
+				CopyMemory(d->rom_path, filename, (filelen + 1) * sizeof(TCHAR));
+				StartVM(d);
+			}
 			return 0;
 		}
 		case WM_CLOSE:
@@ -1130,6 +1141,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			case VK_RIGHT:   mask = 0x80; break;
 
 			case VK_F4: if (msg == WM_KEYDOWN) ReloadFromROMFile(d); return 0;
+			case VK_F8: if (msg == WM_KEYDOWN) CloneWindow(d); return 0;
 			}
 			if (!mask) break;
 			SendInputEvent(d, msg == WM_KEYDOWN ? EmuIn_CtrlDown : EmuIn_CtrlUp, mask, 0, 0);
@@ -1163,6 +1175,23 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 				ApplyInputEvent(d, evt->type, evt->bits, evt->x, evt->y);
 			}
 			return 0;
+		case UXNMSG_BecomeClone:
+		{
+			EmuWindow *b = (EmuWindow *)wparam;
+			d->box->core.fault_code = b->box->core.fault_code;
+			d->exec_state = b->exec_state;
+			CopyMemory(&d->box->work_stack, &b->box->work_stack, sizeof(Stack) * 2);
+			CopyMemory(d->box->device_memory, b->box->device_memory, sizeof d->box->device_memory);
+			CopyMemory((char *)(d->box + 1), (char *)(b->box + 1), UXN_RAM_SIZE);
+			CopyMemory(d->screen.palette, b->screen.palette, sizeof d->screen.palette);
+			SetUxnScreenSize(&d->screen, b->screen.width, b->screen.height);
+			ResizeEmuWindow(d, b->screen.width, b->screen.height);
+			CopyMemory(d->screen.bg, b->screen.bg, d->screen.width * d->screen.height * 2);
+			/* can't copy filer state */
+			UnpauseVM(d);
+			UpdateWindow(d->hWnd);
+			return 0;
+		}
 	}
 	return DefWindowProc(hwnd, msg, wparam, lparam);
 }
