@@ -740,6 +740,19 @@ static void SetHostCursorVisible(EmuWindow *d, BOOL visible)
 {
 	if (d->host_cursor == visible) return;
 	d->host_cursor = visible;
+	/* Correctly handle moving mouse between 2 overlapped emu windows. Causes WM_MOUSELEAVE to be generated.
+	 * If we don't do this, cursor might not appear in non-client area.
+	 * Requires NT4 or above. Could replicate with timer and checking mouse pos.
+	 * Alternative: when an emu window takes the mouse, broadcast an event to the others? */
+	if (!visible)
+	{
+		TRACKMOUSEEVENT track;
+		track.cbSize = sizeof track;
+		track.dwFlags = TME_LEAVE;
+		track.hwndTrack = d->hWnd;
+		track.dwHoverTime = 0;
+		TrackMouseEvent(&track);
+	}
 	ShowCursor(visible);
 }
 
