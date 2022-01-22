@@ -79,8 +79,9 @@ CAPTION "About"
 FONT 8, "System"
 BEGIN
     ICON            IDI_UXN32,IDC_MYICON,14,9,20,20
-    LTEXT           "Uxn32 Version 1.0",IDC_STATIC,49,10,119,8,SS_NOPREFIX
-    LTEXT           "Copyright (C) 2022",IDC_STATIC,49,20,119,8
+    LTEXT           "Uxn32 Version 1.1",IDC_STATIC,49,10,119,8,SS_NOPREFIX
+    LTEXT           "Andrew Richards\n\nOriginal Uxn:\nDevine Lu Linvega\nAndrew Alderwick",
+                    IDC_STATIC,49,20,119,44
     DEFPUSHBUTTON   "OK",IDOK,195,6,30,11,WS_GROUP
 END
 
