@@ -1234,6 +1234,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 				OpenROMDialog(d);
 				return 0;
 			case IDM_EXIT: PostQuitMessage(0); return 0;
+			case IDM_CLONEWINDOW: CloneWindow(d); return 0;
 			case IDM_ABOUT:
 				DialogBox((HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), MAKEINTRESOURCE(IDD_ABOUTBOX), hwnd, AboutBoxProc);
 				break;

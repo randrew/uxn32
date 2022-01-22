@@ -45,6 +45,10 @@ BEGIN
         MENUITEM "Open ROM...",                 IDM_OPENROM
         MENUITEM "E&xit",                       IDM_EXIT
     END
+    POPUP "&Window"
+    BEGIN
+        MENUITEM "Clone Window",                IDM_CLONEWINDOW
+    END
     POPUP "&Help"
     BEGIN
         MENUITEM "&About...",                   IDM_ABOUT
