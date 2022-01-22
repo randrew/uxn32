@@ -150,6 +150,7 @@ enum EmuIn
 	EmuIn_KeyChar = 1,
 	EmuIn_CtrlDown,
 	EmuIn_CtrlUp,
+	EmuIn_ResetKeys,
 	EmuIn_MouseDown,
 	EmuIn_MouseUp,
 	EmuIn_Wheel,
@@ -158,8 +159,7 @@ enum EmuIn
 };
 typedef struct EmuInEvent
 {
-	BYTE type;
-	BYTE bits;
+	BYTE type, bits;
 	USHORT x, y;
 } EmuInEvent;
 
@@ -583,7 +583,7 @@ static DWORD FileDevWrite(UxnFiler *f, char *src, DWORD src_len, int flags)
 	}
 	if (f->hFile == INVALID_HANDLE_VALUE) return 0;
 	if (!WriteFile(f->hFile, src, src_len, &written, NULL)) {
-		ResetFiler(f);
+		ResetFiler(f); /* TODO signal error to user */
 		return 0;
 	}
 	return written;
@@ -793,6 +793,7 @@ static BOOL IllegalInstrunctionDialog(EmuWindow *d)
 }
 
 static LinkedList emus_needing_work;
+static int emu_window_count;
 
 static void ResetVM(EmuWindow *d)
 {
@@ -804,6 +805,16 @@ static void ResetVM(EmuWindow *d)
 	ZeroMemory(d->screen.palette, sizeof d->screen.palette); /* optional for quick reload */
 	ZeroMemory(d->screen.bg, d->screen.width * d->screen.height * 2);
 	ResetFiler(&d->filer);
+}
+
+static void SynthesizeMouseMoveToCurrent(EmuWindow *d)
+{
+	/* Tnstead of factoring out the event code to a function and having the WindowProc call it,this is a temp hacky solution, because I still haven't made up my mind about how it should look. */
+	POINT mouse; RECT crect;
+	if (GetCursorPos(&mouse) && ScreenToClient(d->hWnd, &mouse) && GetClientRect(d->hWnd, &crect) && PtInRect(&crect, mouse))
+		PostMessage(d->hWnd, WM_MOUSEMOVE, 0, MAKELPARAM(mouse.x, mouse.y));
+	else
+		SetHostCursorVisible(d, TRUE);
 }
 
 static void PauseVM(EmuWindow *d)
@@ -823,6 +834,8 @@ static void UnpauseVM(EmuWindow *d)
 	d->running = 1;
 	SetTimer(d->hWnd, Screen60hzTimer, 16, NULL);
 	if (d->exec_state) ListPushBack(&emus_needing_work, d, work_link);
+	SynthesizeMouseMoveToCurrent(d); /* Runs async for now */
+	/* TODO sync held keys directly or by PostMessage? directly probably OK? */
 }
 
 /* TODO there's something fancy we should do with the loop to make it tell if it ran out or not by return value, returning 0 when limit is 0 means we might have succeeded in reaching the null instruction on the last allowed step, so we need to do something else */
@@ -855,6 +868,7 @@ completed:
 	{
 	case EmuIn_CtrlDown:
 	case EmuIn_CtrlUp:
+	case EmuIn_ResetKeys:
 	case EmuIn_MouseDown:
 	case EmuIn_MouseUp:
 	case EmuIn_Screen:
@@ -892,10 +906,13 @@ static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT
 		d->dev_ctrl->dat[3] = bits;
 		*pc = GETVECTOR(d->dev_ctrl);
 		break;
-	case EmuIn_CtrlDown:
-		d->dev_ctrl->dat[2] |= bits; goto run_ctrl;
-	case EmuIn_CtrlUp:
-		d->dev_ctrl->dat[2] &= ~bits;
+	case EmuIn_CtrlDown: d->dev_ctrl->dat[2] |=  bits; goto run_ctrl;
+	case EmuIn_CtrlUp:   d->dev_ctrl->dat[2] &= ~bits; goto run_ctrl;
+	case EmuIn_ResetKeys:
+		/* If the requested keys held down match the existing, there's nothing more to do. */
+		/* Can't skip RunUxn() since we might need to queue more work. TODO could factor out. */
+		if (d->dev_ctrl->dat[2] == bits) { *pc = 0; break; }
+		d->dev_ctrl->dat[2] = bits;
 	run_ctrl:
 		*pc = GETVECTOR(d->dev_ctrl);
 		break;
@@ -938,6 +955,17 @@ static void SendInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT 
 	}
 }
 
+static void ReSyncHeldKeys(EmuWindow *d)
+{
+	unsigned int bits, i; static const BYTE vkmap[] = {
+		VK_CONTROL, 0x01, VK_MENU, 0x02, VK_SHIFT, 0x04, VK_HOME, 0x08,
+		VK_UP, 0x10, VK_DOWN, 0x20, VK_LEFT, 0x40, VK_RIGHT, 0x80,
+	};
+	/* TODO check if window has keyboard focus? */
+	for (bits = i = 0; i < sizeof vkmap;) if (GetKeyState(vkmap[i++]) & 0x8000) bits |= vkmap[i++];
+	SendInputEvent(d, EmuIn_ResetKeys, (BYTE)bits, 0, 0);
+}
+
 static void StartVM(EmuWindow *d)
 {
 	if (LoadROMIntoBox(d->box, d->rom_path))
@@ -952,6 +980,7 @@ static void ReloadFromROMFile(EmuWindow *d)
 	PauseVM(d);
 	ResetVM(d);
 	StartVM(d);
+	ReSyncHeldKeys(d); /* In case modifier keys are held during reset */
 }
 
 static LPCSTR EmuWinClass = TEXT("uxn_emu_win");
@@ -982,6 +1011,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		case WM_CREATE:
 		{
 			LPCSTR filename = ((CREATESTRUCT *)lparam)->lpCreateParams; int filelen;
+			emu_window_count++;
 			d = AllocZeroedOrFail(sizeof(EmuWindow));
 			SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)d);
 			DragAcceptFiles(hwnd, TRUE);
@@ -1007,7 +1037,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			if (d->hDibDC) DeleteDC(d->hDibDC);
 			ListRemove(&emus_needing_work, d, work_link);
 			HeapFree(GetProcessHeap(), 0, d);
-			PostQuitMessage(0);
+			if (!--emu_window_count) PostQuitMessage(0);
 			return 0;
 		case WM_PAINT:
 		{
@@ -1105,49 +1135,39 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		}
 		}
 
-		{ /* Keyboard input */
-		TCHAR keyChar;
-		case WM_CHAR:
+		case WM_KEYDOWN: case WM_SYSKEYDOWN: case WM_KEYUP: case WM_SYSKEYUP:
 		{
-			keyChar = (TCHAR)wparam;
-		as_wm_char:
+			int up = lparam & 1 << 31, was_down = lparam & 1 << 30, bits = 0; TCHAR keyChar;
+			switch ((int)wparam)
+			{
+			case VK_CONTROL: bits = 0x01; break;
+			case VK_MENU:    bits = 0x02; break;
+			case VK_SHIFT:   bits = 0x04; break;
+			case VK_HOME:    bits = 0x08; goto allow_key_repeat;
+			case VK_UP:      bits = 0x10; goto allow_key_repeat;
+			case VK_DOWN:    bits = 0x20; goto allow_key_repeat;
+			case VK_LEFT:    bits = 0x40; goto allow_key_repeat;
+			case VK_RIGHT:   bits = 0x80; goto allow_key_repeat;
+			/* Emulator function keys */
+			case VK_F4: if (!up) ReloadFromROMFile(d); return 0;
+			case VK_F5: if (!up) { if (d->running) PauseVM(d); else UnpauseVM(d); } return 0;
+			case VK_F8: if (!up) CloneWindow(d); return 0;
+			default: goto other_vkey;
+			}
+			if (!up && was_down) return 0;
+		allow_key_repeat:
+			SendInputEvent(d, up ? EmuIn_CtrlUp : EmuIn_CtrlDown, bits, 0, 0);
+			return 0;
+		other_vkey:
+			if (up || !(keyChar = MapVirtualKey(wparam, MAPVK_VK_TO_CHAR))) break;
+			/* Holding Alt or Ctrl causes characters to appear upper case, so if shift isn't held, turn 'em lower. */
+			if (keyChar >= 'A' && keyChar <= 'Z' && !(GetKeyState(VK_SHIFT) & 0x8000)) keyChar += 0x20;
 			/* Disallow control characters except tab, newline, etc. */
 			if (keyChar < 32 && keyChar != 8 && keyChar != 9 && keyChar != 10 && keyChar != 13 && keyChar != 27) break;
 			SendInputEvent(d, EmuIn_KeyChar, (BYTE)keyChar, 0, 0);
 			return 0;
 		}
-		case WM_KEYDOWN:
-		{
-			int old_mask = d->dev_ctrl->dat[2];
-			if (old_mask & (0x01 | 0x02) && (keyChar = MapVirtualKey(wparam, MAPVK_VK_TO_CHAR)))
-			{
-				/* Make lower case if upper case */
-				if (!(old_mask & 0x04) && keyChar >= 'A' && keyChar <= 'Z') keyChar += 0x20;
-				goto as_wm_char;
-			}
-		}
-		case WM_KEYUP:
-		{
-			int vKey = (int)wparam, mask = 0;
-			switch (vKey)
-			{
-			case VK_CONTROL: mask = 0x01; break;
-			case VK_MENU:    mask = 0x02; break; /* alt key */
-			case VK_SHIFT:   mask = 0x04; break;
-			case VK_HOME:    mask = 0x08; break;
-			case VK_UP:      mask = 0x10; break;
-			case VK_DOWN:    mask = 0x20; break;
-			case VK_LEFT:    mask = 0x40; break;
-			case VK_RIGHT:   mask = 0x80; break;
 
-			case VK_F4: if (msg == WM_KEYDOWN) ReloadFromROMFile(d); return 0;
-			case VK_F8: if (msg == WM_KEYDOWN) CloneWindow(d); return 0;
-			}
-			if (!mask) break;
-			SendInputEvent(d, msg == WM_KEYDOWN ? EmuIn_CtrlDown : EmuIn_CtrlUp, mask, 0, 0);
-			return 0;
-		}
-		}
 		case WM_NCMOUSEMOVE:
 		case WM_MOUSELEAVE:
 			SetHostCursorVisible(d, TRUE);
@@ -1157,12 +1177,9 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			SendInputEvent(d, EmuIn_Screen, 0, 0, 0);
 			return 0;
 		case WM_DROPFILES:
-		{
-			HDROP hDrop = (HDROP)wparam;
-			if (!DragQueryFile(hDrop, 0, d->rom_path, MAX_PATH)) return 0;
+			if (!DragQueryFile((HDROP)wparam, 0, d->rom_path, MAX_PATH)) return 0;
 			ReloadFromROMFile(d);
 			return 0;
-		}
 
 		case UXNMSG_ContinueExec:
 			if (!d->running) return 0;
