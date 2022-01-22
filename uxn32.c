@@ -893,12 +893,12 @@ static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT
 		d->dev_ctrl->dat[3] = bits;
 		*pc = GETVECTOR(d->dev_ctrl);
 		break;
-	case EmuIn_CtrlDown:
-		d->dev_ctrl->dat[2] |= bits; goto run_ctrl;
-	case EmuIn_CtrlUp:
-		d->dev_ctrl->dat[2] &= ~bits; goto run_ctrl;
+	case EmuIn_CtrlDown: d->dev_ctrl->dat[2] |=  bits; goto run_ctrl;
+	case EmuIn_CtrlUp:   d->dev_ctrl->dat[2] &= ~bits; goto run_ctrl;
 	case EmuIn_ResetKeys:
-		if (d->dev_ctrl->dat[2] == bits) { d->exec_state = 0; return; }
+		/* If the requested keys held down match the existing, there's nothing more to do. */
+		/* Can't skip RunUxn() since we might need to queue more work. TODO could factor out. */
+		if (d->dev_ctrl->dat[2] == bits) { *pc = 0; break; }
 		d->dev_ctrl->dat[2] = bits;
 	run_ctrl:
 		*pc = GETVECTOR(d->dev_ctrl);
