@@ -1094,48 +1094,35 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		}
 		}
 
-		{ /* Keyboard input */
-		TCHAR keyChar;
-		case WM_CHAR:
+		case WM_KEYDOWN: case WM_SYSKEYDOWN: case WM_KEYUP: case WM_SYSKEYUP:
 		{
-			keyChar = (TCHAR)wparam;
-		as_wm_char:
+			int up = lparam & 1 << 31, was_down = lparam & 1 << 30, bits = 0; TCHAR keyChar;
+			switch ((int)wparam)
+			{
+			case VK_CONTROL: bits = 0x01; break;
+			case VK_MENU:    bits = 0x02; break;
+			case VK_SHIFT:   bits = 0x04; break;
+			case VK_HOME:    bits = 0x08; goto allow_key_repeat;
+			case VK_UP:      bits = 0x10; goto allow_key_repeat;
+			case VK_DOWN:    bits = 0x20; goto allow_key_repeat;
+			case VK_LEFT:    bits = 0x40; goto allow_key_repeat;
+			case VK_RIGHT:   bits = 0x80; goto allow_key_repeat;
+			default: goto other_vkey;
+			}
+			if (!up && was_down) return 0;
+		allow_key_repeat:
+			SendInputEvent(d, up ? EmuIn_CtrlUp : EmuIn_CtrlDown, bits, 0, 0);
+			return 0;
+		other_vkey:
+			if (up || !(keyChar = MapVirtualKey(wparam, MAPVK_VK_TO_CHAR))) break;
+			/* Holding Alt or Ctrl causes characters to appear upper case, so if shift isn't held, turn 'em lower. */
+			if (keyChar >= 'A' && keyChar <= 'Z' && !(GetKeyState(VK_SHIFT) & 0x8000)) keyChar += 0x20;
 			/* Disallow control characters except tab, newline, etc. */
 			if (keyChar < 32 && keyChar != 8 && keyChar != 9 && keyChar != 10 && keyChar != 13 && keyChar != 27) break;
 			SendInputEvent(d, EmuIn_KeyChar, (BYTE)keyChar, 0, 0);
 			return 0;
 		}
-		case WM_KEYDOWN:
-		{
-			int old_mask = d->dev_ctrl->dat[2];
-			if (old_mask & (0x01 | 0x02) && (keyChar = MapVirtualKey(wparam, MAPVK_VK_TO_CHAR)))
-			{
-				/* Make lower case if upper case */
-				if (!(old_mask & 0x04) && keyChar >= 'A' && keyChar <= 'Z') keyChar += 0x20;
-				goto as_wm_char;
-			}
-		}
-		case WM_KEYUP:
-		{
-			int vKey = (int)wparam, mask = 0;
-			switch (vKey)
-			{
-			case VK_CONTROL: mask = 0x01; break;
-			case VK_MENU:    mask = 0x02; break; /* alt key */
-			case VK_SHIFT:   mask = 0x04; break;
-			case VK_HOME:    mask = 0x08; break;
-			case VK_UP:      mask = 0x10; break;
-			case VK_DOWN:    mask = 0x20; break;
-			case VK_LEFT:    mask = 0x40; break;
-			case VK_RIGHT:   mask = 0x80; break;
 
-			case VK_F4: if (msg == WM_KEYDOWN) ReloadFromROMFile(d); return 0;
-			}
-			if (!mask) break;
-			SendInputEvent(d, msg == WM_KEYDOWN ? EmuIn_CtrlDown : EmuIn_CtrlUp, mask, 0, 0);
-			return 0;
-		}
-		}
 		case WM_NCMOUSEMOVE:
 		case WM_MOUSELEAVE:
 			SetHostCursorVisible(d, TRUE);
