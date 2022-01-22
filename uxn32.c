@@ -158,8 +158,7 @@ enum EmuIn
 };
 typedef struct EmuInEvent
 {
-	BYTE type;
-	BYTE bits;
+	BYTE type, bits;
 	USHORT x, y;
 } EmuInEvent;
 
