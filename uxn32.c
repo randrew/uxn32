@@ -145,7 +145,7 @@ enum { Screen60hzTimer = 1 };
 enum
 {
 	UXNMSG_ContinueExec = WM_USER,
-	UXNMSG_BecomeClone,
+	UXNMSG_BecomeClone
 };
 enum EmuIn
 {
@@ -987,7 +987,7 @@ static void ReloadFromROMFile(EmuWindow *d)
 
 static void OpenROMDialog(EmuWindow *d)
 {
-	BOOL res; TCHAR filename[MAX_PATH]; int filelen;
+	TCHAR filename[MAX_PATH]; int filelen;
 	OPENFILENAME ofn;
 	filename[0] = 0;
 
@@ -1183,7 +1183,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			break;
 		case WM_KEYDOWN: case WM_SYSKEYDOWN: case WM_KEYUP: case WM_SYSKEYUP:
 		{
-			int up = lparam & 1 << 31, was_down = lparam & 1 << 30, bits = 0; TCHAR keyChar;
+			int up = (int)lparam & 1 << 31, was_down = lparam & 1 << 30, bits = 0; TCHAR keyChar;
 			switch ((int)wparam)
 			{
 			case VK_CONTROL: bits = 0x01; break;
