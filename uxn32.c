@@ -1151,12 +1151,9 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			SendInputEvent(d, EmuIn_Screen, 0, 0, 0);
 			return 0;
 		case WM_DROPFILES:
-		{
-			HDROP hDrop = (HDROP)wparam;
-			if (!DragQueryFile(hDrop, 0, d->rom_path, MAX_PATH)) return 0;
+			if (!DragQueryFile((HDROP)wparam, 0, d->rom_path, MAX_PATH)) return 0;
 			ReloadFromROMFile(d);
 			return 0;
-		}
 
 		case UXNMSG_ContinueExec:
 			if (!d->running) return 0;
