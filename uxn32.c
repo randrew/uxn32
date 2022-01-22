@@ -1230,9 +1230,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		case WM_COMMAND:
 			switch (LOWORD(wparam))
 			{
-			case IDM_OPENROM:
-				OpenROMDialog(d);
-				return 0;
+			case IDM_OPENROM: OpenROMDialog(d); return 0;
 			case IDM_EXIT: PostQuitMessage(0); return 0;
 			case IDM_CLONEWINDOW: CloneWindow(d); return 0;
 			case IDM_ABOUT:
