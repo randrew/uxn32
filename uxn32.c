@@ -1107,6 +1107,8 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			case VK_DOWN:    bits = 0x20; goto allow_key_repeat;
 			case VK_LEFT:    bits = 0x40; goto allow_key_repeat;
 			case VK_RIGHT:   bits = 0x80; goto allow_key_repeat;
+			/* Emulator function keys */
+			case VK_F4: if (msg == WM_KEYDOWN) ReloadFromROMFile(d); return 0;
 			default: goto other_vkey;
 			}
 			if (!up && was_down) return 0;
