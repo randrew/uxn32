@@ -28,10 +28,10 @@ Uxn32 TODO
 - [ ] Add pixel doubling/scaling.
 - [ ] Audio output.
 - [ ] Add console input and output.
-- [ ] Add File, View, etc. menus.
+- [x] ~~Add File, View, etc. menus.~~
 - [ ] Add preferences.
 - [ ] Add a graphical debugger.
-- [ ] Add "About" dialog box. (Currently sitting unused in the resources file.)
+- [x] ~~Add "About" dialog box. (Currently sitting unused in the resources file.)~~
 - [ ] Add a preference to set filesystem sandbox directory, and to restrict read and write operations. (Filesystem sandboxing is currently based on the current working directory.)
 - [ ] Fix missing and inconsistent 'static' on functions.
 - [ ] Fix not redrawing the empty area around the Uxn virtual screen in the window client area when dirtied due to external reasons (like dragging a window over it in a non-composited Windows desktop.)
