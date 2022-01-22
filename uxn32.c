@@ -805,6 +805,16 @@ static void ResetVM(EmuWindow *d)
 	ResetFiler(&d->filer);
 }
 
+static void SynthesizeMouseMoveToCurrent(EmuWindow *d)
+{
+	/* Tnstead of factoring out the event code to a function and having the WindowProc call it,this is a temp hacky solution, because I still haven't made up my mind about how it should look. */
+	POINT mouse; RECT crect;
+	if (GetCursorPos(&mouse) && ScreenToClient(d->hWnd, &mouse) && GetClientRect(d->hWnd, &crect) && PtInRect(&crect, mouse))
+		PostMessage(d->hWnd, WM_MOUSEMOVE, 0, MAKELPARAM(mouse.x, mouse.y));
+	else
+		SetHostCursorVisible(d, TRUE);
+}
+
 static void PauseVM(EmuWindow *d)
 {
 	if (!d->running) return;
@@ -822,6 +832,8 @@ static void UnpauseVM(EmuWindow *d)
 	d->running = 1;
 	SetTimer(d->hWnd, Screen60hzTimer, 16, NULL);
 	if (d->exec_state) ListPushBack(&emus_needing_work, d, work_link);
+	SynthesizeMouseMoveToCurrent(d); /* Runs async for now */
+	/* TODO sync held keys directly or by PostMessage? directly probably OK? */
 }
 
 /* TODO there's something fancy we should do with the loop to make it tell if it ran out or not by return value, returning 0 when limit is 0 means we might have succeeded in reaching the null instruction on the last allowed step, so we need to do something else */
@@ -1125,6 +1137,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			case VK_RIGHT:   bits = 0x80; goto allow_key_repeat;
 			/* Emulator function keys */
 			case VK_F4: if (!up) ReloadFromROMFile(d); return 0;
+			case VK_F5: if (!up) { if (d->running) PauseVM(d); else UnpauseVM(d); } return 0;
 			default: goto other_vkey;
 			}
 			if (!up && was_down) return 0;
