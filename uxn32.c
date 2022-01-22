@@ -149,6 +149,7 @@ enum EmuIn
 	EmuIn_KeyChar = 1,
 	EmuIn_CtrlDown,
 	EmuIn_CtrlUp,
+	EmuIn_ResetKeys,
 	EmuIn_MouseDown,
 	EmuIn_MouseUp,
 	EmuIn_Wheel,
@@ -854,6 +855,7 @@ completed:
 	{
 	case EmuIn_CtrlDown:
 	case EmuIn_CtrlUp:
+	case EmuIn_ResetKeys:
 	case EmuIn_MouseDown:
 	case EmuIn_MouseUp:
 	case EmuIn_Screen:
@@ -894,7 +896,10 @@ static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT
 	case EmuIn_CtrlDown:
 		d->dev_ctrl->dat[2] |= bits; goto run_ctrl;
 	case EmuIn_CtrlUp:
-		d->dev_ctrl->dat[2] &= ~bits;
+		d->dev_ctrl->dat[2] &= ~bits; goto run_ctrl;
+	case EmuIn_ResetKeys:
+		if (d->dev_ctrl->dat[2] == bits) { d->exec_state = 0; return; }
+		d->dev_ctrl->dat[2] = bits;
 	run_ctrl:
 		*pc = GETVECTOR(d->dev_ctrl);
 		break;
@@ -937,6 +942,17 @@ static void SendInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT 
 	}
 }
 
+static void ReSyncHeldKeys(EmuWindow *d)
+{
+	unsigned int bits, i; static const BYTE vkmap[] = {
+		VK_CONTROL, 0x01, VK_MENU, 0x02, VK_SHIFT, 0x04, VK_HOME, 0x08,
+		VK_UP, 0x10, VK_DOWN, 0x20, VK_LEFT, 0x40, VK_RIGHT, 0x80,
+	};
+	/* TODO check if window has keyboard focus? */
+	for (bits = i = 0; i < sizeof vkmap;) if (GetKeyState(vkmap[i++]) & 0x8000) bits |= vkmap[i++];
+	SendInputEvent(d, EmuIn_ResetKeys, (BYTE)bits, 0, 0);
+}
+
 static void StartVM(EmuWindow *d)
 {
 	if (LoadROMIntoBox(d->box, d->rom_path))
@@ -951,6 +967,7 @@ static void ReloadFromROMFile(EmuWindow *d)
 	PauseVM(d);
 	ResetVM(d);
 	StartVM(d);
+	ReSyncHeldKeys(d); /* In case modifier keys are held during reset */
 }
 
 static LPCSTR EmuWinClass = TEXT("uxn_emu_win");
@@ -1108,7 +1125,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			case VK_LEFT:    bits = 0x40; goto allow_key_repeat;
 			case VK_RIGHT:   bits = 0x80; goto allow_key_repeat;
 			/* Emulator function keys */
-			case VK_F4: if (msg == WM_KEYDOWN) ReloadFromROMFile(d); return 0;
+			case VK_F4: if (!up) ReloadFromROMFile(d); return 0;
 			default: goto other_vkey;
 			}
 			if (!up && was_down) return 0;
