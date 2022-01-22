@@ -792,6 +792,7 @@ static BOOL IllegalInstrunctionDialog(EmuWindow *d)
 }
 
 static LinkedList emus_needing_work;
+static int emu_window_count;
 
 static void ResetVM(EmuWindow *d)
 {
@@ -1002,6 +1003,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		case WM_CREATE:
 		{
 			LPCSTR filename = ((CREATESTRUCT *)lparam)->lpCreateParams; int filelen;
+			emu_window_count++;
 			d = AllocZeroedOrFail(sizeof(EmuWindow));
 			SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)d);
 			DragAcceptFiles(hwnd, TRUE);
@@ -1024,7 +1026,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			if (d->hDibDC) DeleteDC(d->hDibDC);
 			ListRemove(&emus_needing_work, d, work_link);
 			HeapFree(GetProcessHeap(), 0, d);
-			PostQuitMessage(0);
+			if (!--emu_window_count) PostQuitMessage(0);
 			return 0;
 		case WM_PAINT:
 		{
