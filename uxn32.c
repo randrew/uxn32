@@ -4,6 +4,7 @@
 #include <windows.h>
 #include <shellapi.h>
 #include <shlwapi.h>
+#include <commdlg.h>
 
 #if !defined(_WIN64) && _WINVER < 0x0500
 #define GetWindowLongPtrA   GetWindowLongA
@@ -39,6 +40,7 @@ typedef LONG LONG_PTR;
 #pragma comment(lib, "gdi32.lib")
 #pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "shlwapi.lib")
+#pragma comment(lib, "comdlg32.lib")
 
 #include "core32.h"
 
@@ -358,7 +360,7 @@ static void ResizeEmuWindow(EmuWindow *d, LONG width, LONG height)
 	RECT c, r;
 	c.left = 0; c.top = 0;
 	c.right = width; c.bottom = height;
-	AdjustWindowRect(&c, GetWindowLong(d->hWnd, GWL_STYLE), FALSE); /* note: no spam protection from Uxn program yet */
+	AdjustWindowRect(&c, GetWindowLong(d->hWnd, GWL_STYLE), TRUE); /* note: no spam protection from Uxn program yet */
 	GetWindowRect(d->hWnd, &r);
 	MoveWindow(d->hWnd, r.left, r.top, c.right - c.left, c.bottom - c.top, TRUE);
 	/* Seems like the repaint from this is always async. We need the TRUE flag for repainting or the non-client area will be messed up on non-DWM. */
@@ -982,6 +984,48 @@ static void ReloadFromROMFile(EmuWindow *d)
 	ReSyncHeldKeys(d); /* In case modifier keys are held during reset */
 }
 
+static void OpenROMDialog(EmuWindow *d)
+{
+	BOOL res; TCHAR filename[MAX_PATH]; int filelen;
+	OPENFILENAME ofn;
+	filename[0] = 0;
+
+	ZeroMemory(&ofn, sizeof ofn);
+	ofn.lStructSize = sizeof ofn;
+	ofn.hwndOwner = d->hWnd;
+	ofn.lpstrFile = filename;
+	ofn.nMaxFile = sizeof filename;
+	ofn.lpstrFilter = TEXT("Uxn ROM\0*.ROM\0All\0*.*\0");
+	ofn.nFilterIndex = 1;
+	ofn.lpstrFileTitle = NULL;
+	ofn.nMaxFileTitle = 0;
+	ofn.lpstrInitialDir = NULL;
+	ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+
+	if (!GetOpenFileName(&ofn)) return;
+	filelen = lstrlen(filename);
+	CopyMemory(d->rom_path, filename, (filelen + 1) * sizeof(TCHAR));
+	ReloadFromROMFile(d);
+}
+
+static LRESULT CALLBACK AboutBoxProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	switch (message)
+	{
+	case WM_INITDIALOG:
+		return TRUE;
+
+	case WM_COMMAND:
+		if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL)
+		{
+			EndDialog(hDlg, LOWORD(wParam));
+			return TRUE;
+		}
+		break;
+	}
+	return FALSE;
+}
+
 static LPCSTR EmuWinClass = TEXT("uxn_emu_win");
 
 HWND CreateUxnWindow(HINSTANCE hInst, LPCSTR file)
@@ -990,7 +1034,7 @@ HWND CreateUxnWindow(HINSTANCE hInst, LPCSTR file)
 	rect.left = 0; rect.top = 0;
 	rect.right = rect.left + UXN_DEFAULT_WIDTH;
 	rect.bottom = rect.top + UXN_DEFAULT_HEIGHT;
-	AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
+	AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, TRUE);
 	return CreateWindowEx(WS_EX_APPWINDOW, EmuWinClass, TEXT("Uxn"), WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, NULL, NULL, hInst, (void *)file);
 }
 
@@ -1171,6 +1215,19 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			ReloadFromROMFile(d);
 			return 0;
 
+		case WM_COMMAND:
+			switch (LOWORD(wparam))
+			{
+			case IDM_OPENROM:
+				OpenROMDialog(d);
+				return 0;
+			case IDM_EXIT: PostQuitMessage(0); return 0;
+			case IDM_ABOUT:
+				DialogBox((HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), MAKEINTRESOURCE(IDD_ABOUTBOX), hwnd, AboutBoxProc);
+				break;
+			}
+			break;
+
 		case UXNMSG_ContinueExec:
 			if (!d->running) return 0;
 			if (d->exec_state) RunUxn(d); /* Unfinished vector execution */
@@ -1198,6 +1255,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	wc.cbSize = sizeof wc;
 	wc.lpfnWndProc = WindowProc;
 	wc.lpszClassName = EmuWinClass;
+	wc.lpszMenuName = MAKEINTRESOURCE(IDC_UXN32);
 	wc.hCursor = LoadCursor(NULL, IDC_ARROW);
 	wc.hIcon = LoadIcon(instance, (LPCTSTR)IDI_UXN32); // use this one
 	// wc.hIconSm = LoadIcon(instance, (LPCTSTR)IDI_UXN32);
