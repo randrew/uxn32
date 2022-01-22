@@ -1123,7 +1123,9 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			return 0;
 		}
 		}
-
+		case WM_SYSCHAR: /* Suppress menu accelerators when VM focused and running */
+			if (d->running && !d->host_cursor) return 0;
+			break;
 		case WM_KEYDOWN: case WM_SYSKEYDOWN: case WM_KEYUP: case WM_SYSKEYUP:
 		{
 			int up = lparam & 1 << 31, was_down = lparam & 1 << 30, bits = 0; TCHAR keyChar;
