@@ -582,7 +582,7 @@ static DWORD FileDevWrite(UxnFiler *f, char *src, DWORD src_len, int flags)
 	}
 	if (f->hFile == INVALID_HANDLE_VALUE) return 0;
 	if (!WriteFile(f->hFile, src, src_len, &written, NULL)) {
-		ResetFiler(f);
+		ResetFiler(f); /* TODO signal error to user */
 		return 0;
 	}
 	return written;
