@@ -42,12 +42,17 @@ IDC_UXN32 MENU DISCARDABLE
 BEGIN
     POPUP "&File"
     BEGIN
-        MENUITEM "Open ROM...",                 IDM_OPENROM
+        MENUITEM "&Open ROM...",                IDM_OPENROM
+        MENUITEM "&Reload from ROM\tF4",        IDM_RELOAD
+        MENUITEM SEPARATOR
+        MENUITEM "Close Uxn",                   IDM_CLOSEWINDOW
+        MENUITEM "&Duplicate Uxn",              IDM_CLONEWINDOW
+        MENUITEM SEPARATOR
         MENUITEM "E&xit",                       IDM_EXIT
     END
-    POPUP "&Window"
+    POPUP "&View"
     BEGIN
-        MENUITEM "Clone Window",                IDM_CLONEWINDOW
+        MENUITEM "Toggle &Zoom\tF1",            IDM_TOGGLEZOOM
     END
     POPUP "&Help"
     BEGIN
@@ -63,8 +68,9 @@ END
 
 IDC_UXN32 ACCELERATORS MOVEABLE PURE 
 BEGIN
-    "?",            IDM_ABOUT,              ASCII,  ALT
-    "/",            IDM_ABOUT,              ASCII,  ALT
+    VK_F1,          IDM_TOGGLEZOOM,         VIRTKEY, NOINVERT
+    VK_F2,          IDM_CLONEWINDOW,        VIRTKEY, NOINVERT
+    VK_F4,          IDM_RELOAD,             VIRTKEY, NOINVERT
 END
 
 

@@ -1198,12 +1198,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			case VK_RIGHT:   bits = 0x80; goto allow_key_repeat;
 
 			/* Emulator function keys */
-			case VK_F1:
-				if (!up) { d->viewport_scale = d->viewport_scale == 1 ? 2 : 1; RefitEmuWindow(d); }
-				return 0;
-			case VK_F4: if (!up) ReloadFromROMFile(d); return 0;
 			case VK_F5: if (!up) { if (d->running) PauseVM(d); else UnpauseVM(d); } return 0;
-			case VK_F8: if (!up) CloneWindow(d); return 0;
 			default: goto other_vkey;
 			}
 			if (!up && was_down) return 0;
@@ -1239,6 +1234,9 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			case IDM_OPENROM: OpenROMDialog(d); return 0;
 			case IDM_EXIT: PostQuitMessage(0); return 0;
 			case IDM_CLONEWINDOW: CloneWindow(d); return 0;
+			case IDM_TOGGLEZOOM: d->viewport_scale = d->viewport_scale == 1 ? 2 : 1; RefitEmuWindow(d); return 0;
+			case IDM_RELOAD: ReloadFromROMFile(d); return 0;
+			case IDM_CLOSEWINDOW: PostMessage(hwnd, WM_CLOSE, 0, 0); return 0;
 			case IDM_ABOUT:
 				DialogBox((HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), MAKEINTRESOURCE(IDD_ABOUTBOX), hwnd, AboutBoxProc);
 				break;
@@ -1282,7 +1280,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
 {
 	WNDCLASSEX wc; HWND hWin;
-	MSG msg;
+	MSG msg; HACCEL hAccel;
 	(void)command_line; (void)prev_instance;
 	QueryPerformanceFrequency(&_perfcount_freq);
 	ExecutionTimeLimit = _perfcount_freq.QuadPart / 20;
@@ -1298,6 +1296,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	wc.style = CS_HREDRAW | CS_VREDRAW;
 	// wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
 	RegisterClassEx(&wc);
+	hAccel = LoadAccelerators(instance, (LPCSTR)IDC_UXN32);
 
 	hWin = CreateUxnWindow(instance, TEXT("launcher.rom"));
 	ShowWindow(hWin, show_code);
@@ -1307,6 +1306,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 		while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
 		{
 			if (msg.message == WM_QUIT) goto quitting;
+			if (TranslateAccelerator(msg.hwnd, hAccel, &msg)) continue;
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		}
