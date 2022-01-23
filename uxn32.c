@@ -1197,8 +1197,8 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			case VK_LEFT:    bits = 0x40; goto allow_key_repeat;
 			case VK_RIGHT:   bits = 0x80; goto allow_key_repeat;
 
-			/* Emulator function keys */
-			case VK_F5: if (!up) { if (d->running) PauseVM(d); else UnpauseVM(d); } return 0;
+			/* Add quick debug keys here */
+			/* case VK_F12: if (!up) {  } return 0; */
 			default: goto other_vkey;
 			}
 			if (!up && was_down) return 0;
@@ -1231,14 +1231,15 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		case WM_COMMAND:
 			switch (LOWORD(wparam))
 			{
-			case IDM_OPENROM: OpenROMDialog(d); return 0;
+			case IDM_ABOUT:
+				DialogBox((HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), MAKEINTRESOURCE(IDD_ABOUTBOX), hwnd, AboutBoxProc);
 			case IDM_EXIT: PostQuitMessage(0); return 0;
+			case IDM_OPENROM: OpenROMDialog(d); return 0;
 			case IDM_CLONEWINDOW: CloneWindow(d); return 0;
 			case IDM_TOGGLEZOOM: d->viewport_scale = d->viewport_scale == 1 ? 2 : 1; RefitEmuWindow(d); return 0;
 			case IDM_RELOAD: ReloadFromROMFile(d); return 0;
 			case IDM_CLOSEWINDOW: PostMessage(hwnd, WM_CLOSE, 0, 0); return 0;
-			case IDM_ABOUT:
-				DialogBox((HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), MAKEINTRESOURCE(IDD_ABOUTBOX), hwnd, AboutBoxProc);
+			case IDM_PAUSE: if (d->running) PauseVM(d); else UnpauseVM(d); return 0;
 				break;
 			}
 			break;

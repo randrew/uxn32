@@ -54,6 +54,10 @@ BEGIN
     BEGIN
         MENUITEM "Toggle &Zoom\tF1",            IDM_TOGGLEZOOM
     END
+    POPUP "&Control"
+    BEGIN
+        MENUITEM "&Pause/Unpause\tF8",          IDM_PAUSE
+    END
     POPUP "&Help"
     BEGIN
         MENUITEM "&About...",                   IDM_ABOUT
@@ -71,6 +75,7 @@ BEGIN
     VK_F1,          IDM_TOGGLEZOOM,         VIRTKEY, NOINVERT
     VK_F2,          IDM_CLONEWINDOW,        VIRTKEY, NOINVERT
     VK_F4,          IDM_RELOAD,             VIRTKEY, NOINVERT
+    VK_F8,          IDM_PAUSE,              VIRTKEY, NOINVERT
 END
 
 
