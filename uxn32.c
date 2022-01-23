@@ -43,7 +43,6 @@ typedef LONG LONG_PTR;
 #define MAPVK_VK_TO_CHAR (2)
 #endif
 
-
 #define OFFSET_OF(s, m) ((SIZE_T)&(((s*)0)->m))
 #define OUTER_OF(outer, type, field) ((type *) ((char *)(outer) - OFFSET_OF(type, field)))
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
@@ -59,10 +58,10 @@ typedef LONG LONG_PTR;
 #define UXN_RAM_SIZE (0x10000u)
 #define UXN_ROM_OFFSET (0x0100u)
 
-#define DEVPEEK16(d, o, x) { (o) = ((d)->dat[(x)] << 8) + (d)->dat[(x) + 1]; }
-#define DEVPOKE16(d, a, v) { (d)->dat[(a)] = (v) >> 8; (d)->dat[(a) + 1] = (v); }
-#define DEVPOKE16X2(d, a, v1, v2) { DEVPOKE16(d, a, v1) DEVPOKE16(d, a + 2, v2) }
-/* ^ TODO remove if unused */
+#define DEVPEEK(d, o, x) ((o) = ((d)->dat[(x)] << 8) + (d)->dat[(x) + 1])
+#define DEVPOKE(d, a, v) ((d)->dat[(a)] = (v) >> 8, (d)->dat[(a) + 1] = (v))
+#define DEVPEEK2(d, o1, o2, a) (DEVPEEK(d, o1, a), DEVPEEK(d, o2, a + 2))
+#define DEVPOKE2(d, a, v1, v2) (DEVPOKE(d, a, v1), DEVPOKE(d, a + 2, v2))
 #define GETVECTOR(d) ((d)->dat[0] << 8 | (d)->dat[1])
 
 static LARGE_INTEGER _perfcount_freq;
@@ -375,12 +374,11 @@ void ScreenDevOutCb(Device *d, Uint8 port)
 	case 0x5:
 	{
 		DWORD w, h;
-		DEVPEEK16(d, w, 0x2) DEVPEEK16(d, h, 0x4)
+		DEVPEEK2(d, w, h, 0x2);
 		if (w > 1024 || h > 1024)
 		{
 			/* If the size is unacceptable, write back the old one */
-			DEVPOKE16(d, 0x2, screen->width)
-			DEVPOKE16(d, 0x4, screen->height)
+			DEVPOKE2(d, 0x2, screen->width, screen->height);
 		}
 		else
 		{
@@ -394,12 +392,11 @@ void ScreenDevOutCb(Device *d, Uint8 port)
 		Uint16 x, y;
 		Uint8 layer = d->dat[0xe] & 0x40, *pixels = layer ? screen->fg : screen->bg;
 		int width = screen->width;
-		DEVPEEK16(d, x, 0x8);
-		DEVPEEK16(d, y, 0xa);
+		DEVPEEK2(d, x, y, 0x8);
 		if (x < width && y < screen->height) /* poke pixel */
 			pixels[x + y * width] = d->dat[0xe] & 0x3;
-		if(d->dat[0x6] & 0x01) DEVPOKE16(d, 0x8, x + 1); /* auto x+1 */
-		if(d->dat[0x6] & 0x02) DEVPOKE16(d, 0xa, y + 1); /* auto y+1 */
+		if(d->dat[0x6] & 0x01) DEVPOKE(d, 0x8, x + 1); /* auto x+1 */
+		if(d->dat[0x6] & 0x02) DEVPOKE(d, 0xa, y + 1); /* auto y+1 */
 		break;
 	}
 	case 0xf:
@@ -407,14 +404,13 @@ void ScreenDevOutCb(Device *d, Uint8 port)
 		UINT x, y, addr, tmp, advnc = d->dat[0x6], sprite = d->dat[0xf];
 		UINT twobpp = !!(sprite & 0x80);
 		Uint8 *layer_pixels = (sprite & 0x40) ? screen->fg : screen->bg;
-		DEVPEEK16(d, x, 0x8);
-		DEVPEEK16(d, y, 0xa);
-		DEVPEEK16(d, addr, 0xc);
+		DEVPEEK2(d, x, y, 0x8);
+		DEVPEEK(d, addr, 0xc);
 		DrawUxnSprite(screen, layer_pixels, x, y, &u->ram[addr], sprite & 0xf, sprite & 0x10, sprite & 0x20, twobpp);
 		/* auto addr+length */
-		if(advnc & 0x04) { tmp = addr + 8 + twobpp * 8; DEVPOKE16(d, 0xc, tmp); }
-		if(advnc & 0x01) { tmp = x + 8; DEVPOKE16(d, 0x8, tmp); } /* auto x+8 */
-		if(advnc & 0x02) { tmp = y + 8; DEVPOKE16(d, 0xa, tmp); } /* auto y+8 */
+		if(advnc & 0x04) { tmp = addr + 8 + twobpp * 8; DEVPOKE(d, 0xc, tmp); }
+		if(advnc & 0x01) { tmp = x + 8; DEVPOKE(d, 0x8, tmp); } /* auto x+8 */
+		if(advnc & 0x02) { tmp = y + 8; DEVPOKE(d, 0xa, tmp); } /* auto y+8 */
 		break;
 	}
 	}
@@ -510,7 +506,7 @@ static void FileDevPathChange(Device *d)
 	UxnFiler *f = FilerOfDevice(d);
 	Uxn *u = d->u; /* TODO */
 	ResetFiler(f);
-	DEVPEEK16(d, addr, 0x8);
+	DEVPEEK(d, addr, 0x8);
 	avail = UXN_RAM_SIZE - addr;
 	in_mem = (char *)u->ram + addr;
 	if (avail > MAX_PATH) avail = MAX_PATH;
@@ -638,8 +634,8 @@ void FileDevOutCb(Device *d, Uint8 port)
 	case 0xd: peek_at = 0xc; goto calc;
 	case 0xf: peek_at = 0xe; goto calc;
 	calc:
-		DEVPEEK16(d, dst, peek_at);
-		DEVPEEK16(d, out_len, 0xa);
+		DEVPEEK(d, dst, peek_at);
+		DEVPEEK(d, out_len, 0xa);
 		avail = UXN_RAM_SIZE - dst;
 		if (out_len > avail) out_len = avail;
 		out = (char *)u->ram + dst;
@@ -653,7 +649,7 @@ void FileDevOutCb(Device *d, Uint8 port)
 	}
 	return;
 result:
-	DEVPOKE16(d, 0x2, result);
+	DEVPOKE(d, 0x2, result);
 }
 
 #define console_deo nil_deo
@@ -882,8 +878,7 @@ completed:
 		d->dev_ctrl->dat[3] = 0;
 		break;
 	case EmuIn_Wheel:
-		DEVPOKE16(d->dev_mouse, 0xa, 0);
-		DEVPOKE16(d->dev_mouse, 0xc, 0);
+		DEVPOKE2(d->dev_mouse, 0xa, 0, 0);
 		break;
 	}
 	d->exec_state = 0;
@@ -923,13 +918,11 @@ static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT
 	case EmuIn_MouseUp:
 		d->dev_mouse->dat[6] &= ~bits;
 	mouse_xy:
-		DEVPOKE16(d->dev_mouse, 0x2, x)
-		DEVPOKE16(d->dev_mouse, 0x4, y)
+		DEVPOKE2(d->dev_mouse, 0x2, x, y);
 		*pc = GETVECTOR(d->dev_mouse);
 		break;
 	case EmuIn_Wheel:
-		DEVPOKE16(d->dev_mouse, 0xa, x);
-		DEVPOKE16(d->dev_mouse, 0xc, y);
+		DEVPOKE2(d->dev_mouse, 0xa, x, y);
 		*pc = GETVECTOR(d->dev_mouse);
 		break;
 	case EmuIn_Screen:
