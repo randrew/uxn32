@@ -986,6 +986,7 @@ static void ReloadFromROMFile(EmuWindow *d)
 	ResetVM(d);
 	StartVM(d);
 	ReSyncHeldKeys(d); /* In case modifier keys are held during reset */
+	SynthesizeMouseMoveToCurrent(d); /* still has a brief flicker of wrong cursor... oh well */
 }
 
 static void OpenROMDialog(EmuWindow *d)
