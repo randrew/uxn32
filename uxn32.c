@@ -1,10 +1,17 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include "resource.h"
+#include "core32.h"
 #include <windows.h>
 #include <shellapi.h>
 #include <shlwapi.h>
 #include <commdlg.h>
+
+#pragma comment(lib, "user32.lib")
+#pragma comment(lib, "gdi32.lib")
+#pragma comment(lib, "shell32.lib")
+#pragma comment(lib, "shlwapi.lib")
+#pragma comment(lib, "comdlg32.lib")
 
 #if !defined(_WIN64) && _WINVER < 0x0500
 #define GetWindowLongPtrA   GetWindowLongA
@@ -13,11 +20,16 @@
 #define SetWindowLongPtrA   SetWindowLongA
 #define SetWindowLongPtrW   SetWindowLongW
 #define SetWindowLongPtr    SetWindowLong
+#define GWLP_WNDPROC    GWL_WNDPROC
+#define GWLP_HINSTANCE  GWL_HINSTANCE
+#define GWLP_HWNDPARENT GWL_HWNDPARENT
+#define GWLP_USERDATA   GWL_USERDATA
+#define GWLP_ID         GWL_ID
+#define DWLP_MSGRESULT  DWL_MSGRESULT
+#define DWLP_DLGPROC    DWL_DLGPROC
+#define DWLP_USER       DWL_USER
 typedef LONG LONG_PTR;
-#define GWLP_USERDATA GWL_USERDATA
-#define GWLP_HINSTANCE GWL_HINSTANCE
 #endif
-
 #ifndef INVALID_FILE_ATTRIBUTES
 #define INVALID_FILE_ATTRIBUTES ((DWORD)-1)
 #endif
@@ -28,16 +40,9 @@ typedef LONG LONG_PTR;
 #define WM_MOUSELEAVE 0x02A3
 #endif
 #ifndef MAPVK_VK_TO_CHAR
-#define MAPVK_VK_TO_CHAR    (2)
+#define MAPVK_VK_TO_CHAR (2)
 #endif
 
-#pragma comment(lib, "user32.lib")
-#pragma comment(lib, "gdi32.lib")
-#pragma comment(lib, "shell32.lib")
-#pragma comment(lib, "shlwapi.lib")
-#pragma comment(lib, "comdlg32.lib")
-
-#include "core32.h"
 
 #define OFFSET_OF(s, m) ((SIZE_T)&(((s*)0)->m))
 #define OUTER_OF(outer, type, field) ((type *) ((char *)(outer) - OFFSET_OF(type, field)))
