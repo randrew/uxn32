@@ -54,7 +54,7 @@ BEGIN
     BEGIN
         MENUITEM "Toggle &Zoom\tF1",            IDM_TOGGLEZOOM
     END
-    POPUP "&Control"
+    POPUP "&Tools"
     BEGIN
         MENUITEM "&Pause/Unpause\tF8",          IDM_PAUSE
     END
