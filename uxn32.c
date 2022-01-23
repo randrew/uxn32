@@ -728,21 +728,19 @@ static void SetUpBitmapInfo(BITMAPINFO *bmi, int width, int height)
 	bmi->bmiHeader.biCompression = BI_RGB;
 }
 
-static void CalcUxnViewport(HWND hWnd, UxnScreen *screen, RECT *out_rect, LONG *out_scale)
+static void CalcUxnViewport(EmuWindow *d)
 {
-	RECT crect; LONG s_width, s_height, s_width2, s_height2, s_x, s_y;
-	GetClientRect(hWnd, &crect);
-	s_width = screen->width, s_height = screen->height;
-	s_width2 = s_width * 2, s_height2 = s_height * 2;
-	if (s_width2 <= crect.right && s_height2 <= crect.bottom)
+	RECT crect, *vprect = &d->viewport_rect; LONG s_width, s_height;
+	GetClientRect(d->hWnd, &crect);
+	s_width = d->screen.width * 2, s_height = d->screen.height * 2;
+	if (s_width <= crect.right && s_height <= crect.bottom) d->viewport_scale = 2;
+	else
 	{
-		s_width = s_width2, s_height = s_height2;
-		*out_scale = 2;
+		d->viewport_scale = 1;
+		s_width = d->screen.width, s_height = d->screen.height;
 	}
-	else *out_scale = 1;
-	s_x = (crect.right - s_width) / 2, s_y = (crect.bottom - s_height) / 2;
-	out_rect->left = s_x; out_rect->top = s_y;
-	out_rect->right = s_x + s_width; out_rect->bottom = s_y + s_height;
+	vprect->left = (crect.right - s_width) / 2, vprect->top = (crect.bottom - s_height) / 2;
+	vprect->right = vprect->left + s_width; vprect->bottom = vprect->top + s_height;
 }
 
 /* If in_rect is 0 size or smaller in a dimension, the point will rest against the left or top, so that bounding a point to a 0,0,0,0 rectangle puts the point at 0,0 */
@@ -1015,6 +1013,7 @@ static void OpenROMDialog(EmuWindow *d)
 
 static LRESULT CALLBACK AboutBoxProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
+	(void)lParam;
 	switch (message)
 	{
 	case WM_INITDIALOG:
@@ -1144,7 +1143,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			return 0;
 		}
 		case WM_SIZE:
-			CalcUxnViewport(d->hWnd, &d->screen, &d->viewport_rect, &d->viewport_scale);
+			CalcUxnViewport(d);
 			d->needs_clear = 1;
 			return 0;
 
