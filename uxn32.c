@@ -1265,8 +1265,10 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			CopyMemory((char *)(d->box + 1), (char *)(b->box + 1), UXN_RAM_SIZE);
 			CopyMemory(d->screen.palette, b->screen.palette, sizeof d->screen.palette);
 			SetUxnScreenSize(&d->screen, b->screen.width, b->screen.height);
+			d->viewport_scale = b->viewport_scale;
 			RefitEmuWindow(d);
 			CopyMemory(d->screen.bg, b->screen.bg, d->screen.width * d->screen.height * 2);
+			CopyMemory(d->rom_path, b->rom_path, MAX_PATH);
 			/* can't copy filer state */
 			UnpauseVM(d);
 			UpdateWindow(d->hWnd);
