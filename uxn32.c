@@ -9,18 +9,13 @@
 #if !defined(_WIN64) && _WINVER < 0x0500
 #define GetWindowLongPtrA   GetWindowLongA
 #define GetWindowLongPtrW   GetWindowLongW
+#define GetWindowLongPtr    GetWindowLong
 #define SetWindowLongPtrA   SetWindowLongA
 #define SetWindowLongPtrW   SetWindowLongW
+#define SetWindowLongPtr    SetWindowLong
 typedef LONG LONG_PTR;
 #define GWLP_USERDATA GWL_USERDATA
 #define GWLP_HINSTANCE GWL_HINSTANCE
-#ifdef UNICODE
-#define GetWindowLongPtr  GetWindowLongPtrW
-#define SetWindowLongPtr  SetWindowLongPtrW
-#else
-#define GetWindowLongPtr  GetWindowLongPtrA
-#define SetWindowLongPtr  SetWindowLongPtrA
-#endif // !UNICODE
 #endif
 
 #ifndef INVALID_FILE_ATTRIBUTES
