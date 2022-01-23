@@ -357,11 +357,11 @@ Uint8 ScreenDevInCb(Device *d, Uint8 port)
 	}
 }
 
-static void ResizeEmuWindow(EmuWindow *d, LONG width, LONG height)
+static void RefitEmuWindow(EmuWindow *d)
 {
 	RECT c, r;
 	c.left = 0; c.top = 0;
-	c.right = width; c.bottom = height;
+	c.right = d->screen.width * d->viewport_scale; c.bottom = d->screen.height * d->viewport_scale;
 	AdjustWindowRect(&c, GetWindowLong(d->hWnd, GWL_STYLE), TRUE); /* note: no spam protection from Uxn program yet */
 	GetWindowRect(d->hWnd, &r);
 	MoveWindow(d->hWnd, r.left, r.top, c.right - c.left, c.bottom - c.top, TRUE);
@@ -385,7 +385,7 @@ void ScreenDevOutCb(Device *d, Uint8 port)
 		else
 		{
 			SetUxnScreenSize(screen, w, h);
-			ResizeEmuWindow(EmuOfDevice(d), screen->width, screen->height);
+			RefitEmuWindow(EmuOfDevice(d));
 		}
 		break;
 	}
@@ -1195,7 +1195,11 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			case VK_DOWN:    bits = 0x20; goto allow_key_repeat;
 			case VK_LEFT:    bits = 0x40; goto allow_key_repeat;
 			case VK_RIGHT:   bits = 0x80; goto allow_key_repeat;
+
 			/* Emulator function keys */
+			case VK_F1:
+				if (!up) { d->viewport_scale = d->viewport_scale == 1 ? 2 : 1; RefitEmuWindow(d); }
+				return 0;
 			case VK_F4: if (!up) ReloadFromROMFile(d); return 0;
 			case VK_F5: if (!up) { if (d->running) PauseVM(d); else UnpauseVM(d); } return 0;
 			case VK_F8: if (!up) CloneWindow(d); return 0;
@@ -1261,7 +1265,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			CopyMemory((char *)(d->box + 1), (char *)(b->box + 1), UXN_RAM_SIZE);
 			CopyMemory(d->screen.palette, b->screen.palette, sizeof d->screen.palette);
 			SetUxnScreenSize(&d->screen, b->screen.width, b->screen.height);
-			ResizeEmuWindow(d, b->screen.width, b->screen.height);
+			RefitEmuWindow(d);
 			CopyMemory(d->screen.bg, b->screen.bg, d->screen.width * d->screen.height * 2);
 			/* can't copy filer state */
 			UnpauseVM(d);
