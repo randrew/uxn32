@@ -808,6 +808,7 @@ static void ResetVM(EmuWindow *d)
 	d->exec_state = 0;
 	ZeroMemory(&d->box->work_stack, sizeof(Stack) * 2); /* optional for quick reload */
 	ZeroMemory(d->box->device_memory, sizeof d->box->device_memory); /* optional for quick reload */
+	DEVPOKE2(d->dev_screen, 0x2, d->screen.width, d->screen.height); /* Restore this in case ROM reads it */
 	ZeroMemory((char *)(d->box + 1), UXN_RAM_SIZE);
 	ZeroMemory(d->screen.palette, sizeof d->screen.palette); /* optional for quick reload */
 	ZeroMemory(d->screen.bg, d->screen.width * d->screen.height * 2);
