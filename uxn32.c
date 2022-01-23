@@ -182,6 +182,8 @@ typedef struct EmuWindow
 	ListLink work_link;
 	LONGLONG last_paint;
 
+	RECT viewport_rect;
+	LONG viewport_scale; /* really only need 1 bit for this... */
 	UxnScreen screen;
 	UxnFiler filer;
 
@@ -699,6 +701,7 @@ void InitEmuWindow(EmuWindow *d, HWND hWnd)
 	d->box = box;
 	d->host_cursor = TRUE;
 	d->hWnd = hWnd; /* TODO cleanup reorder these assignments */
+	d->viewport_scale = 1;
 	SetUxnScreenSize(&d->screen, UXN_DEFAULT_WIDTH, UXN_DEFAULT_HEIGHT);
 #if 0 /* TODO test if there's any penalty for allocating this stuff in WM_PAINT */
 	HDC hDC = GetDC(hwnd);
@@ -725,14 +728,23 @@ static void SetUpBitmapInfo(BITMAPINFO *bmi, int width, int height)
 	bmi->bmiHeader.biCompression = BI_RGB;
 }
 
-/* Will not be clipped to the client rect. May exceed it in any dimension. Use IntersectRect if you need it clipped. */
-static void GetUxnScreenRect(RECT *in_clientrect, UxnScreen *screen, RECT *out_rect)
+static void CalcUxnViewport(HWND hWnd, UxnScreen *screen, RECT *out_rect, LONG *out_scale)
 {
-	LONG s_width = screen->width, s_height = screen->height;
-	LONG s_x = (in_clientrect->right - s_width) / 2, s_y = (in_clientrect->bottom - s_height) / 2;
+	RECT crect; LONG s_width, s_height, s_width2, s_height2, s_x, s_y;
+	GetClientRect(hWnd, &crect);
+	s_width = screen->width, s_height = screen->height;
+	s_width2 = s_width * 2, s_height2 = s_height * 2;
+	if (s_width2 <= crect.right && s_height2 <= crect.bottom)
+	{
+		s_width = s_width2, s_height = s_height2;
+		*out_scale = 2;
+	}
+	else *out_scale = 1;
+	s_x = (crect.right - s_width) / 2, s_y = (crect.bottom - s_height) / 2;
 	out_rect->left = s_x; out_rect->top = s_y;
 	out_rect->right = s_x + s_width; out_rect->bottom = s_y + s_height;
 }
+
 /* If in_rect is 0 size or smaller in a dimension, the point will rest against the left or top, so that bounding a point to a 0,0,0,0 rectangle puts the point at 0,0 */
 static void BoundPointInRect(POINT *point, RECT *rect)
 {
@@ -742,10 +754,11 @@ static void BoundPointInRect(POINT *point, RECT *rect)
 	if (point->y < rect->top) point->y = rect->top;
 }
 
-static void BindPointToLocalUxnScreen(RECT *in_screenrect, POINT *in_out_mousepoint)
+static void BindPointToLocalUxnScreen(RECT *in_screenrect, LONG scale, POINT *in_out_mousepoint)
 {
 	BoundPointInRect(in_out_mousepoint, in_screenrect);
 	in_out_mousepoint->x -= in_screenrect->left; in_out_mousepoint->y -= in_screenrect->top;
+	if (scale == 2) { in_out_mousepoint->x /= 2;in_out_mousepoint->y /= 2; }
 }
 
 static void SetHostCursorVisible(EmuWindow *d, BOOL visible)
@@ -770,10 +783,8 @@ static void SetHostCursorVisible(EmuWindow *d, BOOL visible)
 
 static void InvalidateUxnScreenRect(EmuWindow *d)
 {
-	RECT crect, srect;
-	GetClientRect(d->hWnd, &crect);
-	GetUxnScreenRect(&crect, &d->screen, &srect);
-	InvalidateRect(d->hWnd, &srect, FALSE);
+	if (d->viewport_rect.right && d->viewport_rect.bottom)
+		InvalidateRect(d->hWnd, &d->viewport_rect, FALSE);
 }
 
 static BOOL IllegalInstrunctionDialog(EmuWindow *d)
@@ -1042,7 +1053,6 @@ static void CloneWindow(EmuWindow *a)
 static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
 	EmuWindow *d = (EmuWindow *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
-	RECT crect, srect;
 	switch (msg)
 	{
 		case WM_CREATE:
@@ -1078,9 +1088,8 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			return 0;
 		case WM_PAINT:
 		{
-			PAINTSTRUCT ps; HDC hDC; BITMAPINFO bmi;
+			PAINTSTRUCT ps; HDC hDC; BITMAPINFO bmi; RECT crect;
 			GetClientRect(hwnd, &crect);
-			GetUxnScreenRect(&crect, &d->screen, &srect);
 			SetUpBitmapInfo(&bmi, d->screen.width, d->screen.height);
 			if (d->dib_dims.cx != d->screen.width || d->dib_dims.cy != d->screen.height)
 			{
@@ -1126,12 +1135,16 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			// SetDIBits(d->hDibDC, d->hBMP, 0, UXN_DEFAULT_HEIGHT, d->screen.pixels, &bmi, DIB_RGB_COLORS);
 			SelectObject(d->hDibDC, d->hBMP);
 			// StretchBlt(hDC, 0, 0, UXN_DEFAULT_WIDTH, UXN_DEFAULT_HEIGHT, d->hDibDC, 0, 0, UXN_DEFAULT_WIDTH, UXN_DEFAULT_HEIGHT, SRCCOPY);
-			BitBlt(hDC, srect.left, srect.top, d->screen.width, d->screen.height, d->hDibDC, 0, 0, SRCCOPY);
+			if (d->viewport_scale == 1)
+				BitBlt(hDC, d->viewport_rect.left, d->viewport_rect.top, d->screen.width, d->screen.height, d->hDibDC, 0, 0, SRCCOPY);
+			else
+				StretchBlt(hDC, d->viewport_rect.left, d->viewport_rect.top, d->viewport_rect.right - d->viewport_rect.left, d->viewport_rect.bottom - d->viewport_rect.top, d->hDibDC, 0, 0, d->screen.width, d->screen.height, SRCCOPY);
 			EndPaint(hwnd, &ps);
 			d->last_paint = TimeStampNow();
 			return 0;
 		}
 		case WM_SIZE:
+			CalcUxnViewport(d->hWnd, &d->screen, &d->viewport_rect, &d->viewport_scale);
 			d->needs_clear = 1;
 			return 0;
 
@@ -1148,12 +1161,10 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		{
 			POINT mouse; BOOL mouse_in_uxn;
 			mouse.x = LOWORD(lparam); mouse.y = HIWORD(lparam);
-			GetClientRect(hwnd, &crect);
-			GetUxnScreenRect(&crect, &d->screen, &srect);
-			mouse_in_uxn = PtInRect(&srect, mouse) && d->running; /* TODO fix unpause without moving mouse */
+			mouse_in_uxn = PtInRect(&d->viewport_rect, mouse) && d->running; /* TODO fix unpause without moving mouse */
 			SetHostCursorVisible(d, !mouse_in_uxn);
 			if (!mouse_in_uxn) break;
-			BindPointToLocalUxnScreen(&srect, &mouse); /* could save a GetClientRect call by passing it optionally... */
+			BindPointToLocalUxnScreen(&d->viewport_rect, d->viewport_scale, &mouse); /* could save a GetClientRect call by passing it optionally... */
 			SendInputEvent(d, mode, bits, (USHORT)mouse.x, (USHORT)mouse.y);
 			return 0;
 		}
@@ -1161,9 +1172,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		{
 			POINT mouse; short zDelta = (short)HIWORD(wparam);
 			mouse.x = LOWORD(lparam); mouse.y = HIWORD(lparam);
-			GetClientRect(hwnd, &crect);
-			GetUxnScreenRect(&crect, &d->screen, &srect);
-			if (!PtInRect(&srect, mouse)) break;
+			if (!PtInRect(&d->viewport_rect, mouse)) break;
 			/* could set mouse x,y pos here if we wanted to */
 			/* TODO no x axis scrolling yet */
 			/* TODO accumulate error from division */
