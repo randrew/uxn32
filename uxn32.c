@@ -48,9 +48,9 @@ typedef LONG LONG_PTR;
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #ifdef NDEBUG
-#define SANITY_CHECK(a)
+#define DEBUG_CHECK(a)
 #else
-#define SANITY_CHECK(a) { if (!(a)) DebugBreak(); }
+#define DEBUG_CHECK(a) { if (!(a)) DebugBreak(); }
 #endif
 
 #define UXN_DEFAULT_WIDTH (64 * 8)
@@ -85,7 +85,7 @@ typedef struct LinkedList { struct ListLink *front, *back; } LinkedList;
 static ListLink * _impl_ListPopFront(LinkedList *list)
 {
 	ListLink *a = list->front;
-	SANITY_CHECK(a);
+	DEBUG_CHECK(a);
 	list->front = a->next;
 	if (a == list->back) list->back = NULL;
 	else a->next = list->front->prev = NULL;
@@ -93,7 +93,7 @@ static ListLink * _impl_ListPopFront(LinkedList *list)
 }
 static void _impl_ListPushBack(LinkedList *list, ListLink *node)
 {
-	SANITY_CHECK(node->prev == NULL && node->next == NULL);
+	DEBUG_CHECK(node->prev == NULL && node->next == NULL);
 	if (list->back) { node->prev = list->back; list->back->next = node; }
 	else { list->front = node; }
 	list->back = node;
@@ -101,13 +101,13 @@ static void _impl_ListPushBack(LinkedList *list, ListLink *node)
 static void _impl_ListRemove(LinkedList *list, ListLink *a)
 {
 	if (list->front != a && !a->prev) return; /* Do nothing if not in list */
-	SANITY_CHECK((a == list->back)  == (a->next == NULL));
-	SANITY_CHECK((a == list->front) == (a->prev == NULL));
-    if (a->prev) a->prev->next = a->next;
-    else         list->front   = a->next;
-    if (a->next) a->next->prev = a->prev;
-    else         list->back    = a->prev;
-    a->next = a->prev = NULL;
+	DEBUG_CHECK((a == list->back)  == (a->next == NULL));
+	DEBUG_CHECK((a == list->front) == (a->prev == NULL));
+	if (a->prev) a->prev->next = a->next;
+	else list->front = a->next;
+	if (a->next) a->next->prev = a->prev;
+	else list->back = a->prev;
+	a->next = a->prev = NULL;
 }
 #define ListPopFront(list, type, link_field) OUTER_OF(_impl_ListPopFront(list), type, link_field)
 #define ListPushBack(list, a, link_field) _impl_ListPushBack((list), &(a)->link_field)
