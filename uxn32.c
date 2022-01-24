@@ -1286,7 +1286,11 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			if (d->hDibDC) DeleteDC(d->hDibDC);
 			if (d->wave_out)
 			{
-				if (d->wave_out->hWaveOut) waveOutClose(d->wave_out->hWaveOut);
+				if (d->wave_out->hWaveOut)
+				{
+					waveOutPause(d->wave_out->hWaveOut);
+					waveOutClose(d->wave_out->hWaveOut);
+				}
 				HeapFree(GetProcessHeap(), 0, d->wave_out);
 			}
 			ListRemove(&emus_needing_work, d, work_link);
