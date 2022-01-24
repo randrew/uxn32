@@ -6,12 +6,14 @@
 #include <shellapi.h>
 #include <shlwapi.h>
 #include <commdlg.h>
+#include <mmsystem.h>
 
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "gdi32.lib")
 #pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "shlwapi.lib")
 #pragma comment(lib, "comdlg32.lib")
+#pragma comment(lib, "winmm.lib")
 
 #if !defined(_WIN64) && _WINVER < 0x0500
 #define GetWindowLongPtrA   GetWindowLongA
@@ -29,6 +31,8 @@
 #define DWLP_DLGPROC    DWL_DLGPROC
 #define DWLP_USER       DWL_USER
 typedef LONG LONG_PTR;
+typedef unsigned long ULONG_PTR, *PULONG_PTR;
+typedef ULONG_PTR DWORD_PTR, *PDWORD_PTR;
 #endif
 #ifndef INVALID_FILE_ATTRIBUTES
 #define INVALID_FILE_ATTRIBUTES ((DWORD)-1)
@@ -113,6 +117,29 @@ static void _impl_ListRemove(LinkedList *list, ListLink *a)
 #define ListPushBack(list, a, link_field) _impl_ListPushBack((list), &(a)->link_field)
 #define ListRemove(list, a, link_field) _impl_ListRemove((list), &(a->link_field))
 
+#define UXN_SAMPLE_RATE 44100
+#define UXN_VOICES 4
+
+typedef struct UxnVoice {
+	Uint8 *addr;
+	Uint32 count, advance, period, age, a, d, s, r;
+	Uint16 i, len;
+	Sint8 volume[2];
+	Uint8 pitch, repeat;
+} UxnVoice;
+
+typedef struct UxnSynth {
+	UxnVoice voices[UXN_VOICES];
+} UxnSynth;
+
+typedef struct UxnWaveOut {
+	HWAVEOUT hWaveOut;
+	WAVEHDR waveHdrs[2];
+	SHORT *sampleBuffers[2];
+	BYTE pick;
+	BYTE ready;
+} UxnWaveOut;
+
 typedef struct UxnBox
 {
 	void *user;
@@ -186,6 +213,8 @@ typedef struct EmuWindow
 	LONG viewport_scale; /* really only need 1 bit for this... */
 	UxnScreen screen;
 	UxnFiler filer;
+	UxnSynth synth;
+	UxnWaveOut *wave_out;
 
 	TCHAR rom_path[MAX_PATH];
 } EmuWindow;
@@ -615,6 +644,178 @@ static DWORD FileDevDelete(UxnFiler *f)
 	return result ? 0 : 1;
 }
 
+#define NOTE_PERIOD (UXN_SAMPLE_RATE * 0x4000 / 11025)
+#define ADSR_STEP (UXN_SAMPLE_RATE / 0xf)
+
+static const Uint32 advances[12] = {
+	0x80000, 0x879c8, 0x8facd, 0x9837f, 0xa1451, 0xaadc1,
+	0xb504f, 0xbfc88, 0xcb2ff, 0xd7450, 0xe411f, 0xf1a1c
+};
+
+static INT VoiceEnvelope(UxnVoice *c, Uint32 age)
+{
+	if(!c->r) return 0x0888;
+	if(age < c->a) return 0x0888 * age / c->a;
+	if(age < c->d) return 0x0444 * (2 * c->d - c->a - age) / (c->d - c->a);
+	if(age < c->s) return 0x0444;
+	if(age < c->r) return 0x0444 * (c->r - age) / (c->r - c->s);
+	c->advance = 0;
+	return 0x0000;
+}
+
+int VoiceRender(UxnVoice *c, SHORT *out, SHORT *end)
+{
+	INT s;
+	if (!c->advance || !c->period) return 0;
+	while (out < end)
+	{
+		c->count += c->advance;
+		c->i += c->count / c->period; /* TODO div and also remainder? yikes */
+		c->count %= c->period;
+		if (c->i >= c->len)
+		{
+			if (!c->repeat) { c->advance = 0; break; }
+			c->i %= c->len;
+		}
+		s = (Sint8)(c->addr[c->i] + 0x80) * VoiceEnvelope(c, c->age++);
+		*out++ += s * c->volume[0] / 0x180;
+		*out++ += s * c->volume[1] / 0x180;
+	}
+	/* if(!c->advance) audio_is_finished(c); */
+	return 1;
+}
+
+void VoiceStart(UxnVoice *c, Uint16 adsr, Uint8 pitch)
+{
+	if (pitch < 108 && c->len)
+		c->advance = advances[pitch % 12] >> (8 - pitch / 12);
+	else
+	{
+		c->advance = 0;
+		return;
+	}
+	c->a = ADSR_STEP * (adsr >> 12);
+	c->d = ADSR_STEP * (adsr >> 8 & 0xf) + c->a;
+	c->s = ADSR_STEP * (adsr >> 4 & 0xf) + c->d;
+	c->r = ADSR_STEP * (adsr >> 0 & 0xf) + c->s;
+	c->age = 0;
+	c->i = 0;
+	if(c->len <= 0x100) /* single cycle mode */
+		c->period = NOTE_PERIOD * 337 / 2 / c->len;
+	else /* sample repeat mode */
+		c->period = NOTE_PERIOD;
+}
+
+Uint8 VoiceCalcVU(UxnVoice *c)
+{
+	int i;
+	INT sum[2] = {0, 0};
+	if (!c->advance || !c->period) return 0;
+	for (i = 0; i < 2; i++)
+	{
+		if (!c->volume[i]) continue;
+		sum[i] = 1 + VoiceEnvelope(c, c->age) * c->volume[i] / 0x800;
+		if (sum[i] > 0xf) sum[i] = 0xf;
+	}
+	return (sum[0] << 4) | sum[1];
+}
+
+#define AUDIO_BUF_SAMPLES 2048
+
+static void WriteOutSynths(EmuWindow *d)
+{
+	WAVEHDR *hdr = &d->wave_out->waveHdrs[d->wave_out->pick];
+	SHORT *samples = d->wave_out->sampleBuffers[d->wave_out->pick];
+	MMRESULT res; int i, still_running;
+	if (!d->wave_out->hWaveOut) return;
+	d->wave_out->pick = 1 - d->wave_out->pick;
+	ZeroMemory(hdr, sizeof(WAVEHDR));
+	hdr->dwBufferLength = AUDIO_BUF_SAMPLES * 2 * sizeof(SHORT);
+	hdr->lpData = (LPSTR)samples;
+	ZeroMemory(samples, AUDIO_BUF_SAMPLES * 2 * sizeof(SHORT));
+	for (i = still_running = 0; i < UXN_VOICES; i++)
+	{
+		still_running |= VoiceRender(&d->synth.voices[i], samples, samples + AUDIO_BUF_SAMPLES * 2);
+	}
+	res = waveOutPrepareHeader(d->wave_out->hWaveOut, hdr, sizeof(WAVEHDR));
+	res = waveOutWrite(d->wave_out->hWaveOut, hdr, sizeof(WAVEHDR));
+}
+
+static void CALLBACK WaveOutCallback(
+	HWAVEOUT  hwo,
+	UINT      uMsg,
+	DWORD_PTR dwInstance,
+	DWORD_PTR dwParam1,
+	DWORD_PTR dwParam2)
+{
+	EmuWindow *d = (EmuWindow *)dwInstance;
+	switch (uMsg)
+	{
+	case WOM_OPEN: break;
+	case WOM_CLOSE: d->wave_out->hWaveOut = NULL; break;
+	case WOM_DONE:
+		waveOutUnprepareHeader(hwo, (WAVEHDR *)dwParam1, sizeof(WAVEHDR));
+		WriteOutSynths(d);
+		break;
+	}
+}
+
+static void InitWaveOutAudio(EmuWindow *d)
+{
+	MMRESULT mmRes;
+	WAVEFORMATEX pcm; /* PCMWAVEFORMAT will not work on 64-bit due to padding, MS docs are fucked */
+	DEBUG_CHECK(d->wave_out == 0);
+	d->wave_out = AllocZeroedOrFail(sizeof(UxnWaveOut));
+	d->wave_out->sampleBuffers[0] = AllocZeroedOrFail(AUDIO_BUF_SAMPLES * 2 * sizeof(SHORT) * 2);
+	d->wave_out->sampleBuffers[1] = d->wave_out->sampleBuffers[0] + AUDIO_BUF_SAMPLES * 2;
+	ZeroMemory(&pcm, sizeof pcm);
+	pcm.wFormatTag = WAVE_FORMAT_PCM;
+	pcm.nChannels = 2;
+	pcm.nSamplesPerSec = 44100;
+	pcm.nAvgBytesPerSec = 44100 * 4;
+	pcm.nBlockAlign = 4;
+	pcm.wBitsPerSample = 16;
+	mmRes = waveOutOpen(&d->wave_out->hWaveOut, WAVE_MAPPER, (LPCWAVEFORMATEX)&pcm, (DWORD_PTR)WaveOutCallback, (DWORD_PTR)d, CALLBACK_FUNCTION);
+	if (mmRes == 0)
+	{
+		WriteOutSynths(d);
+		WriteOutSynths(d);
+	}
+}
+
+static Uint8 AudioDevInCb(Device *dev, Uint8 port)
+{
+	UxnBox *box = OUTER_OF(dev->u, UxnBox, core); /* TODO you know this mess */
+	EmuWindow *win = (EmuWindow *)box->user;
+	UxnVoice *voice = &win->synth.voices[dev - win->dev_audio0];
+	if (!win->wave_out || !win->wave_out->hWaveOut) return dev->dat[port];
+	switch (port)
+	{
+	case 0x4: return VoiceCalcVU(voice);
+	case 0x2: DEVPOKE(dev, 0x2, voice->i); break;
+	}
+	return dev->dat[port];
+}
+
+void AudioDevOutCb(Device *dev, Uint8 port)
+{
+	UxnBox *box = OUTER_OF(dev->u, UxnBox, core); /* TODO you know this mess */
+	EmuWindow *win = (EmuWindow *)box->user;
+	UxnVoice *voice = &win->synth.voices[dev - win->dev_audio0];
+	Uint16 addr, adsr;
+	if (port != 0xF) return;
+	if (!win->wave_out) InitWaveOutAudio(win);
+	if (!win->wave_out->hWaveOut) return;
+	DEVPEEK(dev, adsr, 0x8);
+	DEVPEEK(dev, voice->len, 0xa);
+	DEVPEEK(dev, addr, 0xc);
+	voice->addr = &box->core.ram[addr]; /* TODO out of bounds possible? */
+	voice->volume[0] = dev->dat[0xe] >> 4;
+	voice->volume[1] = dev->dat[0xe] & 0xf;
+	voice->repeat = !(dev->dat[0xf] & 0x80);
+	VoiceStart(voice, adsr, dev->dat[0xf] & 0x7f);
+}
+
 Device *uxn_port(Uxn *u, Uint8 *devpage, Uint8 id, Uint8 (*deifn)(Device *d, Uint8 port), void (*deofn)(Device *d, Uint8 port))
 {
 	Device *d = &u->dev[id];
@@ -684,10 +885,10 @@ void InitEmuWindow(EmuWindow *d, HWND hWnd)
 	/* system   */ uxn_port(&box->core, box->device_memory, 0x0, SystemDevInCb, SystemDevOutCb);
 	/* console  */ uxn_port(&box->core, box->device_memory, 0x1, nil_dei, console_deo); /* ask if this should be shown in a console window on win32 and whether or not uxn roms tend to just passively poop out stuff in the background */
 	/* screen   */ d->dev_screen = uxn_port(&box->core, box->device_memory,  0x2, ScreenDevInCb, ScreenDevOutCb);
-	/* audio0   */ d->dev_audio0 = uxn_port(&box->core, box->device_memory,  0x3, audio_dei, audio_deo);
-	/* audio1   */ uxn_port(&box->core, box->device_memory,  0x4, audio_dei, audio_deo);
-	/* audio2   */ uxn_port(&box->core, box->device_memory,  0x5, audio_dei, audio_deo);
-	/* audio3   */ uxn_port(&box->core, box->device_memory,  0x6, audio_dei, audio_deo);
+	/* audio0   */ d->dev_audio0 = uxn_port(&box->core, box->device_memory,  0x3, AudioDevInCb, AudioDevOutCb);
+	/* audio1   */ uxn_port(&box->core, box->device_memory,  0x4, AudioDevInCb, AudioDevOutCb);
+	/* audio2   */ uxn_port(&box->core, box->device_memory,  0x5, AudioDevInCb, AudioDevOutCb);
+	/* audio3   */ uxn_port(&box->core, box->device_memory,  0x6, AudioDevInCb, AudioDevOutCb);
 	/* unused   */ uxn_port(&box->core, box->device_memory,  0x7, nil_dei, nil_deo);
 	/* control  */ d->dev_ctrl = uxn_port(&box->core, box->device_memory,  0x8, nil_dei, nil_deo);
 	/* mouse    */ d->dev_mouse = uxn_port(&box->core, box->device_memory,  0x9, nil_dei, nil_deo);
@@ -1083,6 +1284,11 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			ResetFiler(&d->filer);
 			if (d->hBMP) DeleteObject(d->hBMP);
 			if (d->hDibDC) DeleteDC(d->hDibDC);
+			if (d->wave_out)
+			{
+				if (d->wave_out->hWaveOut) waveOutClose(d->wave_out->hWaveOut);
+				HeapFree(GetProcessHeap(), 0, d->wave_out);
+			}
 			ListRemove(&emus_needing_work, d, work_link);
 			HeapFree(GetProcessHeap(), 0, d);
 			if (!--emu_window_count) PostQuitMessage(0);
