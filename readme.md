@@ -26,7 +26,8 @@ Uxn32 TODO
 
 - [x] ~~Add drag'n'drop ROM loading.~~
 - [x] ~~Add pixel doubling/scaling.~~
-- [ ] Audio output.
+- [x] ~~Audio output.~~
+- [ ] Volume control.
 - [ ] Add console input and output.
 - [x] ~~Add File, View, etc. menus.~~
 - [ ] Add toggle to show/hide menu bar.
