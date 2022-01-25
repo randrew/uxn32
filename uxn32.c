@@ -1351,6 +1351,14 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			}
 			return 0;
 		}
+		case WM_GETMINMAXINFO:
+		{
+			MINMAXINFO *info = (MINMAXINFO *)lparam;
+			/* Prevent window from becoming so narrow that the menu bar wraps. */
+			/* Could make this dynamically smaller when we add menu bar hiding. */
+			info->ptMinTrackSize.x = info->ptMinTrackSize.y = 185;
+			return 0;
+		}
 		case WM_SIZE:
 			CalcUxnViewport(d);
 			d->needs_clear = 1;
