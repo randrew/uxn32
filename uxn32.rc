@@ -90,7 +90,7 @@ CAPTION "About"
 FONT 8, "System"
 BEGIN
     ICON            IDI_UXN32,IDC_MYICON,5,5,20,20,SS_SUNKEN
-    LTEXT           "Uxn32 Version 1.2b\nAndrew Richards",IDC_STATIC,30,5,65,
+    LTEXT           "Uxn32 Version 1.2\nAndrew Richards",IDC_STATIC,30,5,65,
                     20,SS_NOPREFIX
     LTEXT           "Original Uxn:\nDevine Lu Linvega\nAndrew Alderwick",
                     IDC_STATIC,30,30,65,25
