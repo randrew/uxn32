@@ -1044,7 +1044,7 @@ static void UnpauseVM(EmuWindow *d)
 	SetTimer(d->hWnd, Screen60hzTimer, 16, NULL);
 	if (d->exec_state) ListPushBack(&emus_needing_work, d, work_link);
 	SynthesizeMouseMoveToCurrent(d); /* Runs async for now */
-	/* TODO sync held keys directly or by PostMessage? directly probably OK? */
+	/* Syncing held keys isn't so easy... */
 }
 
 /* TODO there's something fancy we should do with the loop to make it tell if it ran out or not by return value, returning 0 when limit is 0 means we might have succeeded in reaching the null instruction on the last allowed step, so we need to do something else */
@@ -1161,17 +1161,6 @@ static void SendInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT 
 	}
 }
 
-static void ReSyncHeldKeys(EmuWindow *d)
-{
-	unsigned int bits, i; static const BYTE vkmap[] = {
-		VK_CONTROL, 0x01, VK_MENU, 0x02, VK_SHIFT, 0x04, VK_HOME, 0x08,
-		VK_UP, 0x10, VK_DOWN, 0x20, VK_LEFT, 0x40, VK_RIGHT, 0x80,
-	};
-	/* TODO check if window has keyboard focus? */
-	for (bits = i = 0; i < sizeof vkmap;) if (GetKeyState(vkmap[i++]) & 0x8000) bits |= vkmap[i++];
-	SendInputEvent(d, EmuIn_ResetKeys, (BYTE)bits, 0, 0);
-}
-
 static void StartVM(EmuWindow *d)
 {
 	if (LoadROMIntoBox(d->box, d->rom_path))
@@ -1186,8 +1175,8 @@ static void ReloadFromROMFile(EmuWindow *d)
 	PauseVM(d);
 	ResetVM(d);
 	StartVM(d);
-	ReSyncHeldKeys(d); /* In case modifier keys are held during reset */
-	SynthesizeMouseMoveToCurrent(d); /* still has a brief flicker of wrong cursor... oh well */
+	SynthesizeMouseMoveToCurrent(d); /* Still has a brief flicker of wrong cursor... oh well */
+	/* We want to resync the held keys here, but it's not safe to do so, because we get garbage results from GetKeyState() and GetAsyncKeyState() if the open file dialog has just recently been closed by the user. There are also similar issues with syncing key state when reactivating the window by clicking on the title bar while holding modifiers. So forget about it for now.*/
 }
 
 static void OpenROMDialog(EmuWindow *d)
@@ -1390,7 +1379,13 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			return 0;
 		}
 		}
-		case WM_SYSCHAR: /* Suppress menu accelerators when VM focused and running */
+		case WM_ACTIVATE: /* When losing focus, clear any held keys so that they aren't stuck down */
+			if (LOWORD(wparam) == WA_INACTIVE)
+		case WM_ENTERMENULOOP:
+				SendInputEvent(d, EmuIn_ResetKeys, 0, 0, 0);
+			/* This doesn't fix starting to hold a key down before activating this window, but that seems to be hard due to garbage GetKeyState() after a dialog closes or when clicking on the window title bar. */
+			break;
+		case WM_SYSCHAR: /* Suppress Alt+letter menu accelerators when VM is focused and running */
 			if (d->running && !d->host_cursor) return 0;
 			break;
 		case WM_KEYDOWN: case WM_SYSKEYDOWN: case WM_KEYUP: case WM_SYSKEYUP:
