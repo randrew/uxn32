@@ -5,6 +5,8 @@ Uxn32 - Uxn Emulator for Win32
 
 Uxn32 is a graphical emulator for the [Uxn](https://wiki.xxiivv.com/site/uxn.html) virtual machine.
 
+**[&gt; Download the latest Uxn32 Essentials Pack](https://github.com/randrew/uxn32/releases/latest/download/uxn32-essentials.zip)** <br>Uxn32.exe plus a collection of pre-built ROMs ready to play.
+
 Features
 --------
 
@@ -19,7 +21,7 @@ Features
 Use
 ---
 
-Download the pre-built [Uxn32 Essentials Pack - a bundle of Uxn32.exe and a collection of ROMs](https://github.com/randrew/uxn32/releases/download/latest/uxn32-essentials.zip). Unzip into a new directory and run Uxn32.exe.
+Download the pre-built [Uxn32 Essentials Pack - a bundle of Uxn32.exe and a collection of ROMs](https://github.com/randrew/uxn32/releases/latest/download/uxn32-essentials.zip). Unzip into a new directory and run Uxn32.exe.
 
 Uxn32 TODO
 ----------
