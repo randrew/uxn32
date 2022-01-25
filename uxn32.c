@@ -1418,7 +1418,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		other_vkey:
 			if (up || !(keyChar = MapVirtualKey(wparam, MAPVK_VK_TO_CHAR))) break;
 			/* Holding Alt or Ctrl causes characters to appear upper case, so if shift isn't held, turn 'em lower. */
-			if (keyChar >= 'A' && keyChar <= 'Z' && !(GetKeyState(VK_SHIFT) & 0x8000)) keyChar += 0x20;
+			if (keyChar >= 'A' && keyChar <= 'Z' && !(!(GetKeyState(VK_SHIFT) & 0x8000) ^ !(GetKeyState(VK_CAPITAL)))) keyChar += 0x20;
 			/* Disallow control characters except tab, newline, etc. */
 			if (keyChar < 32 && keyChar != 8 && keyChar != 9 && keyChar != 10 && keyChar != 13 && keyChar != 27) break;
 			SendInputEvent(d, EmuIn_KeyChar, (BYTE)keyChar, 0, 0);
