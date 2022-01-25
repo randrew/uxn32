@@ -45,7 +45,7 @@ BEGIN
         MENUITEM "&Open ROM...",                IDM_OPENROM
         MENUITEM "&Reload from ROM\tF4",        IDM_RELOAD
         MENUITEM SEPARATOR
-        MENUITEM "&Duplicate Uxn",              IDM_CLONEWINDOW
+        MENUITEM "&Duplicate Uxn\tF2",          IDM_CLONEWINDOW
         MENUITEM "Close Uxn",                   IDM_CLOSEWINDOW
         MENUITEM SEPARATOR
         MENUITEM "E&xit",                       IDM_EXIT
