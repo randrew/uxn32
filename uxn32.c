@@ -167,7 +167,7 @@ typedef struct UxnFiler
 	} state;
 } UxnFiler;
 
-enum { Screen60hzTimer = 1 };
+enum { Screen60hzTimer = 1, InitAudioTimer };
 enum
 {
 	UXNMSG_ContinueExec = WM_USER,
@@ -216,6 +216,7 @@ typedef struct EmuWindow
 	UxnSynth synth;
 	UxnWaveOut *wave_out;
 
+	BYTE needs_audio; /* 3 states, 0: not needed, 1: plz init, 2: init started */
 	TCHAR rom_path[MAX_PATH];
 } EmuWindow;
 
@@ -804,8 +805,6 @@ void AudioDevOutCb(Device *dev, Uint8 port)
 	UxnVoice *voice = &win->synth.voices[dev - win->dev_audio0];
 	Uint16 addr, adsr;
 	if (port != 0xF) return;
-	if (!win->wave_out) InitWaveOutAudio(win);
-	if (!win->wave_out->hWaveOut) return;
 	DEVPEEK(dev, adsr, 0x8);
 	DEVPEEK(dev, voice->len, 0xa);
 	DEVPEEK(dev, addr, 0xc);
@@ -814,6 +813,8 @@ void AudioDevOutCb(Device *dev, Uint8 port)
 	voice->volume[1] = dev->dat[0xe] & 0xf;
 	voice->repeat = !(dev->dat[0xf] & 0x80);
 	VoiceStart(voice, adsr, dev->dat[0xf] & 0x7f);
+	/* Defer initializing audio until after at least one paint event, because the window might not be visible yet, and this can cause a 50ms+ freeze, increasing the delay before the window is shown. */
+	if (!win->needs_audio) win->needs_audio = 1;
 }
 
 Device *uxn_port(Uxn *u, Uint8 *devpage, Uint8 id, Uint8 (*deifn)(Device *d, Uint8 port), void (*deofn)(Device *d, Uint8 port))
@@ -1340,6 +1341,12 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 				StretchBlt(hDC, d->viewport_rect.left, d->viewport_rect.top, d->viewport_rect.right - d->viewport_rect.left, d->viewport_rect.bottom - d->viewport_rect.top, d->hDibDC, 0, 0, d->screen.width, d->screen.height, SRCCOPY);
 			EndPaint(hwnd, &ps);
 			d->last_paint = TimeStampNow();
+			if (d->needs_audio == 1)
+			{
+				d->needs_audio = 2;
+				SetTimer(d->hWnd, InitAudioTimer, 100, NULL);
+				/* Deferring audio init with PostMessage still causes some mild weirdness -- the taskbar icon will sometimes be invisible before showing up. 50ms+ blocking from waveOutOpen is enough to cause that and possibly other issues, so let's defer it even longer with a timer. */
+			}
 			return 0;
 		}
 		case WM_SIZE:
@@ -1425,8 +1432,15 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			SetHostCursorVisible(d, TRUE);
 			break;
 		case WM_TIMER:
+			switch (wparam)
+			{
+			case Screen60hzTimer: SendInputEvent(d, EmuIn_Screen, 0, 0, 0); return 0;
+			case InitAudioTimer:
+				KillTimer(hwnd, InitAudioTimer);
+				if (!d->wave_out) InitWaveOutAudio(d);
+				return 0;
+			}
 			if (wparam != Screen60hzTimer) break;
-			SendInputEvent(d, EmuIn_Screen, 0, 0, 0);
 			return 0;
 		case WM_DROPFILES:
 			if (!DragQueryFile((HDROP)wparam, 0, d->rom_path, MAX_PATH)) return 0;
