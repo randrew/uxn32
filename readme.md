@@ -3,9 +3,13 @@ Uxn32 - Uxn Emulator for Win32
 
 ![](https://raw.githubusercontent.com/wiki/randrew/uxn32/uxn32-banner.png)
 
-Uxn32 is a graphical emulator for the [Uxn](https://wiki.xxiivv.com/site/uxn.html) virtual machine.
+Uxn32 is a graphical emulator for the [Uxn](https://100r.co/site/uxn.html) virtual machine.
 
-**[&gt; Download the latest Uxn32 Essentials Pack](https://github.com/randrew/uxn32/releases/latest/download/uxn32-essentials.zip)** <br>Uxn32.exe plus a collection of pre-built ROMs ready to play.
+---
+
+**[&gt; Download the latest Uxn32 Essentials Pack &lt;](https://github.com/randrew/uxn32/releases/latest/download/uxn32-essentials.zip)** <br>Uxn32.exe plus a collection of pre-built ROMs ready to play.
+
+---
 
 Features
 --------
@@ -17,6 +21,8 @@ Features
 * Uxn programs receive events at full speed and repaint immediately. Got a 240hz display? Now your Uxn drawing program can make use of it.
 * Pre-emptive execution, so it won't freeze up if the Uxn program goes into an infinite loop, unlike the SDL2 version.
 * Compiles with: every version of Visual Studio back to and including VC6, Clang, clang-cl, MinGW clang, and probably GCC if you change a couple of lines.
+
+![](https://raw.githubusercontent.com/wiki/randrew/uxn32/uxn32-1.2-screenshot.gif)
 
 Use
 ---
