@@ -679,8 +679,8 @@ int VoiceRender(UxnVoice *c, SHORT *out, SHORT *end)
 			c->i %= c->len;
 		}
 		s = (Sint8)(c->addr[c->i] + 0x80) * VoiceEnvelope(c, c->age++);
-		*out++ += s * c->volume[0] / 0x180;
-		*out++ += s * c->volume[1] / 0x180;
+		*out++ += s * c->volume[0] / (0x180 * 2); /* Original: / (0x180 * 1) */
+		*out++ += s * c->volume[1] / (0x180 * 2); /* Temporarily make this quieter until we add volume slider */
 	}
 	/* if(!c->advance) audio_is_finished(c); */
 	return 1;
@@ -779,6 +779,8 @@ static void InitWaveOutAudio(EmuWindow *d)
 	mmRes = waveOutOpen(&d->wave_out->hWaveOut, WAVE_MAPPER, (LPCWAVEFORMATEX)&pcm, (DWORD_PTR)WaveOutCallback, (DWORD_PTR)d, CALLBACK_FUNCTION);
 	if (mmRes == 0)
 	{
+		/* Can't use this yet, as it will overwrite user control of the Windows mixer */
+		/* waveOutSetVolume(d->wave_out->hWaveOut, MAKELONG(0xAAAA, 0xAAAA)); */
 		WriteOutSynths(d);
 		WriteOutSynths(d);
 	}
