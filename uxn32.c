@@ -583,7 +583,7 @@ static DWORD FileDevRead(UxnFiler *f, char *dst, DWORD dst_len)
 	}
 	if (f->hFind != INVALID_HANDLE_VALUE) {
 		for (;;) {
-			// DWORD copy = WideCharToMultiByte(1252, 0, )
+			/* DWORD copy = WideCharToMultiByte(1252, 0, ) */
 			DWORD written;
 			if (find_data->cFileName[0] == '.' && find_data->cFileName[1] == 0) goto next;
 			written = PrintDirListRow(dst, dst_len, find_data->cFileName, find_data->nFileSizeLow, find_data->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY);
@@ -1060,7 +1060,7 @@ static void RunUxn(EmuWindow *d)
 		instr_interrupts++;
 		t_b = TimeStampNow();
 		t_delta = t_b - t_a;
-		// if (u->fault_code && !IllegalInstrunctionDialog(d)) goto died;
+		/* if (u->fault_code && !IllegalInstrunctionDialog(d)) goto died; */
 		if (u->fault_code) goto died;
 		if (res != 0) { total += t_delta; goto completed; }
 		if (t_delta > ExecutionTimeLimit) { total += t_delta; goto residual; }
@@ -1313,8 +1313,8 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			if (!d->hBMP || !d->hDibDC) return 0; /* TODO should at least clear window */
 			{
 				DIBSECTION sec; UxnScreen *p = &d->screen;
-				// SIZE_T width = MIN(p->width, sec.dsBm.bmWidth), height = MIN(p->height, sec.dsBm.bmHeight);
-				// TODO deal with bitmap possibly having padding
+				/* SIZE_T width = MIN(p->width, sec.dsBm.bmWidth), height = MIN(p->height, sec.dsBm.bmHeight); */
+				/* TODO deal with bitmap possibly having padding */
 				int i, size = p->width * p->height; ULONG palette[16];
 				GetObject(d->hBMP, sizeof sec, &sec);
 				for (i = 0; i < 16; i++)
@@ -1329,9 +1329,9 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 				Rectangle(hDC, 0, 0, crect.right, crect.bottom);
 				d->needs_clear = 0;
 			}
-			// One-line version, doesn't need the retained stuff, but probably slower
-			// SetDIBitsToDevice(hDC, 0, 0, UXN_DEFAULT_WIDTH, UXN_DEFAULT_HEIGHT, 0, 0, 0, UXN_DEFAULT_HEIGHT, uxn_screen.pixels, &bmi, DIB_RGB_COLORS);
-			// SetDIBits(d->hDibDC, d->hBMP, 0, UXN_DEFAULT_HEIGHT, d->screen.pixels, &bmi, DIB_RGB_COLORS);
+			/* One-line version, doesn't need the retained stuff, but probably slower: */
+			/* SetDIBitsToDevice(hDC, 0, 0, UXN_DEFAULT_WIDTH, UXN_DEFAULT_HEIGHT, 0, 0, 0, UXN_DEFAULT_HEIGHT, uxn_screen.pixels, &bmi, DIB_RGB_COLORS); */
+			/* SetDIBits(d->hDibDC, d->hBMP, 0, UXN_DEFAULT_HEIGHT, d->screen.pixels, &bmi, DIB_RGB_COLORS); */
 			SelectObject(d->hDibDC, d->hBMP);
 			if (d->viewport_scale == 1)
 				BitBlt(hDC, d->viewport_rect.left, d->viewport_rect.top, d->screen.width, d->screen.height, d->hDibDC, 0, 0, SRCCOPY);
@@ -1518,10 +1518,10 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	wc.lpszClassName = EmuWinClass;
 	wc.lpszMenuName = MAKEINTRESOURCE(IDC_UXN32);
 	wc.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wc.hIcon = LoadIcon(instance, (LPCTSTR)IDI_UXN32); // use this one
-	// wc.hIconSm = LoadIcon(instance, (LPCTSTR)IDI_UXN32);
+	wc.hIcon = LoadIcon(instance, (LPCTSTR)IDI_UXN32); /* use this one */
+	/* wc.hIconSm = LoadIcon(instance, (LPCTSTR)IDI_UXN32); */
 	wc.style = CS_HREDRAW | CS_VREDRAW;
-	// wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH);
+	/* wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH); */
 	RegisterClassEx(&wc);
 	hAccel = LoadAccelerators(instance, (LPCSTR)IDC_UXN32);
 
