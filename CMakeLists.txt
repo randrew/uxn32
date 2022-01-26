@@ -17,8 +17,8 @@ if (IS_MSVC)
     add_definitions(-D_CRT_SECURE_NO_WARNINGS -D_NO_CRT_STDIO_INLINE)
     set(MSVC_WARNING_FLAGS
         /Wall   # enable all warnings
-        /wd4068 # unknown pragmas
         /wd4619 # unknown disabled warning
+        /wd4068 # unknown pragmas
         /wd4365 # signed/unsigned mismatch
         /wd4242 # integer narrowing, uxn contains many implicit narrowing conversions
         /wd4267 # more integer narrowing conversions
@@ -35,15 +35,10 @@ if (IS_MSVC)
         /wd4946 # reinterpret cast used between related types
         /wd4371 # layout of class may have changed from previous version of compiler
         /wd5045 # spectre mitigation would have been used with /Qspectre
-        /wd4464 # relative include path contains ..
-        /wd4668 # SDL2 missing preprocessor warning
-        /wd4996 # iso c unlink name
         /wd4623 /wd4625 /wd4626 /wd5026 /wd5027 # C++ OOP garbage
         )
     string(REPLACE ";" " " MSVC_WARNING_FLAGS "${MSVC_WARNING_FLAGS}")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${MSVC_WARNING_FLAGS}")
-    # False positive for uninitialized variable in screen.c
-    set_source_files_properties(src/devices/screen.c PROPERTIES COMPILE_FLAGS /wd4701)
 endif ()
 
 if (IS_CLANG OR IS_CLANG_CL)
