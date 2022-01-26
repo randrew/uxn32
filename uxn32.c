@@ -742,12 +742,7 @@ static void WriteOutSynths(EmuWindow *d)
 	res = waveOutWrite(d->wave_out->hWaveOut, hdr, sizeof(WAVEHDR));
 }
 
-static void CALLBACK WaveOutCallback(
-	HWAVEOUT  hwo,
-	UINT      uMsg,
-	DWORD_PTR dwInstance,
-	DWORD_PTR dwParam1,
-	DWORD_PTR dwParam2)
+static void CALLBACK WaveOutCallback(HWAVEOUT hwo, UINT uMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2)
 {
 	EmuWindow *d = (EmuWindow *)dwInstance;
 	switch (uMsg)
@@ -759,6 +754,7 @@ static void CALLBACK WaveOutCallback(
 		WriteOutSynths(d);
 		break;
 	}
+	(void)dwParam2;
 }
 
 static void InitWaveOutAudio(EmuWindow *d)
