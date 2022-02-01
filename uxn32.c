@@ -1446,8 +1446,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 				if (!d->wave_out) InitWaveOutAudio(d);
 				return 0;
 			}
-			if (wparam != Screen60hzTimer) break;
-			return 0;
+			break;
 		case WM_DROPFILES:
 			if (!DragQueryFile((HDROP)wparam, 0, d->rom_path, MAX_PATH)) return 0;
 			ReloadFromROMFile(d);
