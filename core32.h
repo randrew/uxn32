@@ -10,7 +10,7 @@ copyright notice and this permission notice appear in all copies.
 THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
 WITH REGARD TO THIS SOFTWARE.
 */
-
+#pragma warning(disable:4244) /* Noisy VC6 warning. Can't disable with flag */
 typedef unsigned char Uint8;
 typedef signed char Sint8;
 typedef unsigned short Uint16;
