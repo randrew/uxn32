@@ -854,8 +854,6 @@ result:
 }
 
 #define console_deo nil_deo
-#define audio_dei nil_dei
-#define audio_deo nil_deo
 
 BOOL LoadROMIntoBox(UxnBox *box, LPCSTR filename)
 {
