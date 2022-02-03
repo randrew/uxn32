@@ -399,7 +399,8 @@ static void DevOut_Screen(Device *d, Uint8 port)
 {
 	UxnScreen *screen = ScreenOfDevice(d);
 	Uxn *u = d->u; /* TODO */
-	switch(port) {
+	switch (port)
+	{
 	case 0x5:
 	{
 		DWORD w, h;
@@ -418,9 +419,8 @@ static void DevOut_Screen(Device *d, Uint8 port)
 	}
 	case 0xe:
 	{
-		Uint16 x, y;
-		Uint8 layer = d->dat[0xe] & 0x40, *pixels = layer ? screen->fg : screen->bg;
-		int width = screen->width;
+		UINT x, y, width = screen->width, layer = d->dat[0xe] & 0x40;
+		Uint8 *pixels = layer ? screen->fg : screen->bg;
 		DEVPEEK2(d, x, y, 0x8);
 		if (x < width && y < screen->height) /* poke pixel */
 			pixels[x + y * width] = d->dat[0xe] & 0x3;
