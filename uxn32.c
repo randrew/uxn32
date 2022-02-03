@@ -370,7 +370,7 @@ static UxnScreen * ScreenOfDevice(Device *d)
 	return &((EmuWindow *)box->user)->screen;
 }
 
-static Uint8 ScreenDevInCb(Device *d, Uint8 port)
+static Uint8 DevIn_Screen(Device *d, Uint8 port)
 {
 	UxnScreen *screen = ScreenOfDevice(d);
 	switch(port)
@@ -395,7 +395,7 @@ static void RefitEmuWindow(EmuWindow *d)
 	/* Seems like the repaint from this is always async. We need the TRUE flag for repainting or the non-client area will be messed up on non-DWM. */
 }
 
-static void ScreenDevOutCb(Device *d, Uint8 port)
+static void DevOut_Screen(Device *d, Uint8 port)
 {
 	UxnScreen *screen = ScreenOfDevice(d);
 	Uxn *u = d->u; /* TODO */
@@ -445,7 +445,7 @@ static void ScreenDevOutCb(Device *d, Uint8 port)
 	}
 }
 
-static Uint8 SystemDevInCb(Device *d, Uint8 port)
+static Uint8 DevIn_System(Device *d, Uint8 port)
 {
 	switch (port)
 	{
@@ -455,7 +455,7 @@ static Uint8 SystemDevInCb(Device *d, Uint8 port)
 	return d->dat[port];
 }
 
-static void SystemDevOutCb(Device *d, Uint8 port)
+static void DevOut_System(Device *d, Uint8 port)
 {
 	switch (port)
 	{
@@ -480,7 +480,7 @@ static void SystemDevOutCb(Device *d, Uint8 port)
 	}
 }
 
-static Uint8 SystemDevDateInCb(Device *d, Uint8 port)
+static Uint8 DevIn_DateTime(Device *d, Uint8 port)
 {
 	SYSTEMTIME t; TIME_ZONE_INFORMATION zone;
 	GetLocalTime(&t);
@@ -778,7 +778,7 @@ static void InitWaveOutAudio(EmuWindow *d)
 	}
 }
 
-static Uint8 AudioDevInCb(Device *dev, Uint8 port)
+static Uint8 DevIn_Audio(Device *dev, Uint8 port)
 {
 	UxnBox *box = OUTER_OF(dev->u, UxnBox, core); /* TODO you know this mess */
 	EmuWindow *win = (EmuWindow *)box->user;
@@ -792,7 +792,7 @@ static Uint8 AudioDevInCb(Device *dev, Uint8 port)
 	return dev->dat[port];
 }
 
-void AudioDevOutCb(Device *dev, Uint8 port)
+void DevOut_Audio(Device *dev, Uint8 port)
 {
 	UxnBox *box = OUTER_OF(dev->u, UxnBox, core); /* TODO you know this mess */
 	EmuWindow *win = (EmuWindow *)box->user;
@@ -821,7 +821,7 @@ Device *uxn_port(Uxn *u, Uint8 *devpage, Uint8 id, Uint8 (*deifn)(Device *d, Uin
 	return d;
 }
 
-void FileDevOutCb(Device *d, Uint8 port)
+void DevOut_File(Device *d, Uint8 port)
 {
 	DWORD result = 0, /* next inits suppress msvc warning */ out_len = 0; char *out = 0;
 	UxnFiler *f = FilerOfDevice(d);
@@ -850,7 +850,7 @@ result:
 	DEVPOKE(d, 0x2, result);
 }
 
-#define ConsoleDevOutProc DummyDevOutProc
+#define DevOut_Console DevOut_Dummy
 
 BOOL LoadROMIntoBox(UxnBox *box, LPCSTR filename)
 {
@@ -865,8 +865,8 @@ BOOL LoadROMIntoBox(UxnBox *box, LPCSTR filename)
 	return result;
 }
 
-static Uint8 DummyDevInProc(Device *d, Uint8 port) { return d->dat[port]; }
-static void  DummyDevOutProc(Device *d, Uint8 port) { (void)d;(void)port; }
+static Uint8 DevIn_Dummy(Device *d, Uint8 port) { return d->dat[port]; }
+static void  DevOut_Dummy(Device *d, Uint8 port) { (void)d;(void)port; }
 
 void InitEmuWindow(EmuWindow *d, HWND hWnd)
 {
@@ -878,22 +878,22 @@ void InitEmuWindow(EmuWindow *d, HWND hWnd)
 	box->core.ram = (Uint8 *)main_ram;
 	box->core.wst = &box->work_stack;
 	box->core.rst = &box->ret_stack;
-	/* system   */ uxn_port(&box->core, box->device_memory, 0x0, SystemDevInCb, SystemDevOutCb);
-	/* console  */ uxn_port(&box->core, box->device_memory, 0x1, DummyDevInProc, ConsoleDevOutProc); /* ask if this should be shown in a console window on win32 and whether or not uxn roms tend to just passively poop out stuff in the background */
-	/* screen   */ d->dev_screen = uxn_port(&box->core, box->device_memory,  0x2, ScreenDevInCb, ScreenDevOutCb);
-	/* audio0   */ d->dev_audio0 = uxn_port(&box->core, box->device_memory,  0x3, AudioDevInCb, AudioDevOutCb);
-	/* audio1   */ uxn_port(&box->core, box->device_memory,  0x4, AudioDevInCb, AudioDevOutCb);
-	/* audio2   */ uxn_port(&box->core, box->device_memory,  0x5, AudioDevInCb, AudioDevOutCb);
-	/* audio3   */ uxn_port(&box->core, box->device_memory,  0x6, AudioDevInCb, AudioDevOutCb);
-	/* unused   */ uxn_port(&box->core, box->device_memory,  0x7, DummyDevInProc, DummyDevOutProc);
-	/* control  */ d->dev_ctrl = uxn_port(&box->core, box->device_memory,  0x8, DummyDevInProc, DummyDevOutProc);
-	/* mouse    */ d->dev_mouse = uxn_port(&box->core, box->device_memory,  0x9, DummyDevInProc, DummyDevOutProc);
-	/* file     */ uxn_port(&box->core, box->device_memory,  0xa, DummyDevInProc, FileDevOutCb);
-	/* datetime */ uxn_port(&box->core, box->device_memory,  0xb, SystemDevDateInCb, DummyDevOutProc);
-	/* unused   */ uxn_port(&box->core, box->device_memory,  0xc, DummyDevInProc, DummyDevOutProc);
-	/* unused   */ uxn_port(&box->core, box->device_memory,  0xd, DummyDevInProc, DummyDevOutProc);
-	/* unused   */ uxn_port(&box->core, box->device_memory,  0xe, DummyDevInProc, DummyDevOutProc);
-	/* unused   */ uxn_port(&box->core, box->device_memory,  0xf, DummyDevInProc, DummyDevOutProc);
+	/* system   */ uxn_port(&box->core, box->device_memory, 0x0, DevIn_System, DevOut_System);
+	/* console  */ uxn_port(&box->core, box->device_memory, 0x1, DevIn_Dummy, DevOut_Console); /* ask if this should be shown in a console window on win32 and whether or not uxn roms tend to just passively poop out stuff in the background */
+	/* screen   */ d->dev_screen = uxn_port(&box->core, box->device_memory,  0x2, DevIn_Screen, DevOut_Screen);
+	/* audio0   */ d->dev_audio0 = uxn_port(&box->core, box->device_memory,  0x3, DevIn_Audio, DevOut_Audio);
+	/* audio1   */ uxn_port(&box->core, box->device_memory,  0x4, DevIn_Audio, DevOut_Audio);
+	/* audio2   */ uxn_port(&box->core, box->device_memory,  0x5, DevIn_Audio, DevOut_Audio);
+	/* audio3   */ uxn_port(&box->core, box->device_memory,  0x6, DevIn_Audio, DevOut_Audio);
+	/* unused   */ uxn_port(&box->core, box->device_memory,  0x7, DevIn_Dummy, DevOut_Dummy);
+	/* control  */ d->dev_ctrl = uxn_port(&box->core, box->device_memory,  0x8, DevIn_Dummy, DevOut_Dummy);
+	/* mouse    */ d->dev_mouse = uxn_port(&box->core, box->device_memory,  0x9, DevIn_Dummy, DevOut_Dummy);
+	/* file     */ uxn_port(&box->core, box->device_memory,  0xa, DevIn_Dummy, DevOut_File);
+	/* datetime */ uxn_port(&box->core, box->device_memory,  0xb, DevIn_DateTime, DevOut_Dummy);
+	/* unused   */ uxn_port(&box->core, box->device_memory,  0xc, DevIn_Dummy, DevOut_Dummy);
+	/* unused   */ uxn_port(&box->core, box->device_memory,  0xd, DevIn_Dummy, DevOut_Dummy);
+	/* unused   */ uxn_port(&box->core, box->device_memory,  0xe, DevIn_Dummy, DevOut_Dummy);
+	/* unused   */ uxn_port(&box->core, box->device_memory,  0xf, DevIn_Dummy, DevOut_Dummy);
 
 	d->box = box;
 	d->host_cursor = TRUE;
