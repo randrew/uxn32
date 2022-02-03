@@ -120,6 +120,13 @@ static void _impl_ListRemove(LinkedList *list, ListLink *a)
 #define UXN_SAMPLE_RATE 44100
 #define UXN_VOICES 4
 
+typedef struct UxnBox
+{
+	void *user;
+	Uxn core;
+	Stack work_stack, ret_stack;
+	Uint8 device_memory[256];
+} UxnBox;
 typedef struct UxnVoice
 {
 	Uint8 *addr;
@@ -135,13 +142,6 @@ typedef struct UxnWaveOut
 	SHORT *sampleBuffers[2];
 	BYTE which_buffer;
 } UxnWaveOut;
-typedef struct UxnBox
-{
-	void *user;
-	Uxn core;
-	Stack work_stack, ret_stack;
-	Uint8 device_memory[256];
-} UxnBox;
 typedef struct UxnScreen
 {
 	Uint32 palette[4];
