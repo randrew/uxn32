@@ -219,9 +219,6 @@ typedef struct EmuWindow
 	TCHAR rom_path[MAX_PATH];
 } EmuWindow;
 
-static Uint8 nil_dei(Device *d, Uint8 port) { return d->dat[port]; }
-static void  nil_deo(Device *d, Uint8 port) { (void)d;(void)port; }
-
 static int VFmtBox(HWND hWnd, LPCSTR title, UINT flags, char const *fmt, va_list ap)
 {
 	char buffer[1024];
@@ -853,7 +850,7 @@ result:
 	DEVPOKE(d, 0x2, result);
 }
 
-#define console_deo nil_deo
+#define ConsoleDevOutProc DummyDevOutProc
 
 BOOL LoadROMIntoBox(UxnBox *box, LPCSTR filename)
 {
@@ -868,6 +865,9 @@ BOOL LoadROMIntoBox(UxnBox *box, LPCSTR filename)
 	return result;
 }
 
+static Uint8 DummyDevInProc(Device *d, Uint8 port) { return d->dat[port]; }
+static void  DummyDevOutProc(Device *d, Uint8 port) { (void)d;(void)port; }
+
 void InitEmuWindow(EmuWindow *d, HWND hWnd)
 {
 	char *main_ram;
@@ -879,21 +879,21 @@ void InitEmuWindow(EmuWindow *d, HWND hWnd)
 	box->core.wst = &box->work_stack;
 	box->core.rst = &box->ret_stack;
 	/* system   */ uxn_port(&box->core, box->device_memory, 0x0, SystemDevInCb, SystemDevOutCb);
-	/* console  */ uxn_port(&box->core, box->device_memory, 0x1, nil_dei, console_deo); /* ask if this should be shown in a console window on win32 and whether or not uxn roms tend to just passively poop out stuff in the background */
+	/* console  */ uxn_port(&box->core, box->device_memory, 0x1, DummyDevInProc, ConsoleDevOutProc); /* ask if this should be shown in a console window on win32 and whether or not uxn roms tend to just passively poop out stuff in the background */
 	/* screen   */ d->dev_screen = uxn_port(&box->core, box->device_memory,  0x2, ScreenDevInCb, ScreenDevOutCb);
 	/* audio0   */ d->dev_audio0 = uxn_port(&box->core, box->device_memory,  0x3, AudioDevInCb, AudioDevOutCb);
 	/* audio1   */ uxn_port(&box->core, box->device_memory,  0x4, AudioDevInCb, AudioDevOutCb);
 	/* audio2   */ uxn_port(&box->core, box->device_memory,  0x5, AudioDevInCb, AudioDevOutCb);
 	/* audio3   */ uxn_port(&box->core, box->device_memory,  0x6, AudioDevInCb, AudioDevOutCb);
-	/* unused   */ uxn_port(&box->core, box->device_memory,  0x7, nil_dei, nil_deo);
-	/* control  */ d->dev_ctrl = uxn_port(&box->core, box->device_memory,  0x8, nil_dei, nil_deo);
-	/* mouse    */ d->dev_mouse = uxn_port(&box->core, box->device_memory,  0x9, nil_dei, nil_deo);
-	/* file     */ uxn_port(&box->core, box->device_memory,  0xa, nil_dei, FileDevOutCb);
-	/* datetime */ uxn_port(&box->core, box->device_memory,  0xb, SystemDevDateInCb, nil_deo);
-	/* unused   */ uxn_port(&box->core, box->device_memory,  0xc, nil_dei, nil_deo);
-	/* unused   */ uxn_port(&box->core, box->device_memory,  0xd, nil_dei, nil_deo);
-	/* unused   */ uxn_port(&box->core, box->device_memory,  0xe, nil_dei, nil_deo);
-	/* unused   */ uxn_port(&box->core, box->device_memory,  0xf, nil_dei, nil_deo);
+	/* unused   */ uxn_port(&box->core, box->device_memory,  0x7, DummyDevInProc, DummyDevOutProc);
+	/* control  */ d->dev_ctrl = uxn_port(&box->core, box->device_memory,  0x8, DummyDevInProc, DummyDevOutProc);
+	/* mouse    */ d->dev_mouse = uxn_port(&box->core, box->device_memory,  0x9, DummyDevInProc, DummyDevOutProc);
+	/* file     */ uxn_port(&box->core, box->device_memory,  0xa, DummyDevInProc, FileDevOutCb);
+	/* datetime */ uxn_port(&box->core, box->device_memory,  0xb, SystemDevDateInCb, DummyDevOutProc);
+	/* unused   */ uxn_port(&box->core, box->device_memory,  0xc, DummyDevInProc, DummyDevOutProc);
+	/* unused   */ uxn_port(&box->core, box->device_memory,  0xd, DummyDevInProc, DummyDevOutProc);
+	/* unused   */ uxn_port(&box->core, box->device_memory,  0xe, DummyDevInProc, DummyDevOutProc);
+	/* unused   */ uxn_port(&box->core, box->device_memory,  0xf, DummyDevInProc, DummyDevOutProc);
 
 	d->box = box;
 	d->host_cursor = TRUE;
