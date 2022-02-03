@@ -1431,6 +1431,11 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			return 0;
 		case TimerID_InitAudio:
 			KillTimer(hwnd, TimerID_InitAudio);
+			/* In Windows XP VM, debugger attached with audio playing can cause program to freeze.
+			 * Should probably modify this or remove it once we have a muting option. */
+#if !defined(NDEBUG) && WINVER < 0x0500
+			if (!IsDebuggerPresent())
+#endif
 			if (!d->wave_out) InitWaveOutAudio(d);
 			return 0;
 		}
