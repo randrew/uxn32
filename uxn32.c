@@ -128,10 +128,6 @@ typedef struct UxnVoice {
 	Uint8 repeat;
 } UxnVoice;
 
-typedef struct UxnSynth {
-	UxnVoice voices[UXN_VOICES];
-} UxnSynth;
-
 typedef struct UxnWaveOut {
 	HWAVEOUT hWaveOut;
 	WAVEHDR waveHdrs[2];
@@ -213,7 +209,7 @@ typedef struct EmuWindow
 	LONG viewport_scale; /* really only need 1 bit for this... */
 	UxnScreen screen;
 	UxnFiler filer;
-	UxnSynth synth;
+	UxnVoice synth_voices[UXN_VOICES];
 	UxnWaveOut *wave_out;
 
 	BYTE needs_audio; /* 3 states, 0: not needed, 1: plz init, 2: init started */
@@ -732,7 +728,7 @@ static void WriteOutSynths(EmuWindow *d)
 	ZeroMemory(samples, AUDIO_BUF_SAMPLES * 2 * sizeof(SHORT));
 	for (i = still_running = 0; i < UXN_VOICES; i++)
 	{
-		still_running |= VoiceRender(&d->synth.voices[i], samples, samples + AUDIO_BUF_SAMPLES * 2);
+		still_running |= VoiceRender(&d->synth_voices[i], samples, samples + AUDIO_BUF_SAMPLES * 2);
 	}
 	res = waveOutPrepareHeader(wave_out->hWaveOut, hdr, sizeof(WAVEHDR));
 	res = waveOutWrite(wave_out->hWaveOut, hdr, sizeof(WAVEHDR));
@@ -782,7 +778,7 @@ static Uint8 DevIn_Audio(Device *dev, Uint8 port)
 {
 	UxnBox *box = OUTER_OF(dev->u, UxnBox, core); /* TODO you know this mess */
 	EmuWindow *win = (EmuWindow *)box->user;
-	UxnVoice *voice = &win->synth.voices[dev - win->dev_audio0];
+	UxnVoice *voice = &win->synth_voices[dev - win->dev_audio0];
 	if (!win->wave_out || !win->wave_out->hWaveOut) return dev->dat[port];
 	switch (port)
 	{
@@ -796,7 +792,7 @@ void DevOut_Audio(Device *dev, Uint8 port)
 {
 	UxnBox *box = OUTER_OF(dev->u, UxnBox, core); /* TODO you know this mess */
 	EmuWindow *win = (EmuWindow *)box->user;
-	UxnVoice *voice = &win->synth.voices[dev - win->dev_audio0];
+	UxnVoice *voice = &win->synth_voices[dev - win->dev_audio0];
 	Uint16 addr, adsr;
 	if (port != 0xF) return;
 	DEVPEEK(dev, adsr, 0x8);
