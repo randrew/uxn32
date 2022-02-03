@@ -535,7 +535,8 @@ static void FileDevPathChange(Device *d)
 	avail = UXN_RAM_SIZE - addr;
 	in_mem = (char *)u->ram + addr;
 	if (avail > MAX_PATH) avail = MAX_PATH;
-	for (i = 0;; i++) {
+	for (i = 0;; i++)
+	{
 		if (i >= avail) goto error;
 		if (!(tmp[i] = in_mem[i])) break;
 	}
@@ -816,7 +817,8 @@ void DevOut_File(Device *d, Uint8 port)
 	DWORD result = 0, /* next inits suppress msvc warning */ out_len = 0; char *out = 0;
 	UxnFiler *f = FilerOfDevice(d);
 	Uxn *u = d->u; /* TODO */
-	switch(port) { /* These need write location and size */
+	switch (port) /* These need write location and size */
+	{
 	int peek_at; DWORD dst, avail;
 	case 0x5: peek_at = 0x4; goto calc;
 	case 0xd: peek_at = 0xc; goto calc;
@@ -828,7 +830,8 @@ void DevOut_File(Device *d, Uint8 port)
 		if (out_len > avail) out_len = avail;
 		out = (char *)u->ram + dst;
 	}
-	switch(port) {
+	switch (port)
+	{
 	case 0x5: result = FileDevStat(f, out, out_len); goto result;
 	case 0x6: result = FileDevDelete(f); goto result;
 	case 0x9: result = 0; FileDevPathChange(d); goto result;
