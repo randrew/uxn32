@@ -369,7 +369,7 @@ static UxnScreen * ScreenOfDevice(Device *d)
 static Uint8 DevIn_Screen(Device *d, Uint8 port)
 {
 	UxnScreen *screen = ScreenOfDevice(d);
-	switch(port)
+	switch (port)
 	{
 	case 0x2: return screen->width >> 8;
 	case 0x3: return screen->width;
@@ -871,8 +871,7 @@ static void InitEmuWindow(EmuWindow *d, HWND hWnd)
 	box->core.ram = (Uint8 *)main_ram;
 	box->core.wst = &box->work_stack;
 	box->core.rst = &box->ret_stack;
-#define DEVICE_AT(portnum, in_fn, out_fn) \
-    (dev = box->core.dev + portnum, dev->u = &box->core, dev->dei = in_fn, dev->deo = out_fn, dev->dat = box->device_memory + portnum * 0x10)
+#define DEVICE_AT(portnum, in_fn, out_fn) (dev = box->core.dev + portnum, dev->u = &box->core, dev->dei = in_fn, dev->deo = out_fn, dev->dat = box->device_memory + portnum * 0x10)
 	/* System   */ DEVICE_AT(0x0, DevIn_System, DevOut_System);
 	/* Console  */ DEVICE_AT(0x1, DevIn_Dummy,  DevOut_Console);
 	/* Screen   */ DEVICE_AT(0x2, DevIn_Screen, DevOut_Screen);  d->dev_screen = dev;
