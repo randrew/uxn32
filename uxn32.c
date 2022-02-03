@@ -120,21 +120,21 @@ static void _impl_ListRemove(LinkedList *list, ListLink *a)
 #define UXN_SAMPLE_RATE 44100
 #define UXN_VOICES 4
 
-typedef struct UxnVoice {
+typedef struct UxnVoice
+{
 	Uint8 *addr;
 	Uint32 count, advance, period, age, a, d, s, r;
 	Uint16 i, len;
 	Sint8 volume[2];
 	Uint8 repeat;
 } UxnVoice;
-
-typedef struct UxnWaveOut {
+typedef struct UxnWaveOut
+{
 	HWAVEOUT hWaveOut;
 	WAVEHDR waveHdrs[2];
 	SHORT *sampleBuffers[2];
 	BYTE which_buffer;
 } UxnWaveOut;
-
 typedef struct UxnBox
 {
 	void *user;
@@ -162,12 +162,8 @@ typedef struct UxnFiler
 	} state;
 } UxnFiler;
 
-enum { Screen60hzTimer = 1, InitAudioTimer };
-enum
-{
-	UXNMSG_ContinueExec = WM_USER,
-	UXNMSG_BecomeClone
-};
+enum { TimerID_Screen60hz = 1, TimerID_InitAudio };
+enum { UXNMSG_ContinueExec = WM_USER, UXNMSG_BecomeClone };
 enum EmuIn
 {
 	EmuIn_KeyChar = 1,
@@ -1021,7 +1017,7 @@ static void PauseVM(EmuWindow *d)
 	if (!d->running) return;
 	d->queue_count = 0;
 	d->running = 0;
-	KillTimer(d->hWnd, Screen60hzTimer);
+	KillTimer(d->hWnd, TimerID_Screen60hz);
 	SetHostCursorVisible(d, TRUE);
 	ListRemove(&emus_needing_work, d, work_link);
 }
@@ -1031,7 +1027,7 @@ static void UnpauseVM(EmuWindow *d)
 	if (d->running) return;
 	d->queue_count = 0;
 	d->running = 1;
-	SetTimer(d->hWnd, Screen60hzTimer, 16, NULL);
+	SetTimer(d->hWnd, TimerID_Screen60hz, 16, NULL);
 	if (d->exec_state) ListPushBack(&emus_needing_work, d, work_link);
 	SynthesizeMouseMoveToCurrent(d); /* Runs async for now */
 	/* Syncing held keys isn't so easy... */
@@ -1073,7 +1069,7 @@ completed:
 	case EmuIn_Screen:
 		break;
 	case EmuIn_Start:
-		SetTimer(d->hWnd, Screen60hzTimer, 16, NULL);
+		SetTimer(d->hWnd, TimerID_Screen60hz, 16, NULL);
 		break;
 	case EmuIn_KeyChar:
 		d->dev_ctrl->dat[3] = 0;
@@ -1257,7 +1253,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		DestroyWindow(hwnd);
 		return 0;
 	case WM_DESTROY:
-		KillTimer(hwnd, Screen60hzTimer);
+		KillTimer(hwnd, TimerID_Screen60hz);
 		FreeUxnBox(d->box);
 		FreeUxnScreen(&d->screen);
 		ResetFiler(&d->filer);
@@ -1333,7 +1329,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		if (d->needs_audio == 1)
 		{
 			d->needs_audio = 2;
-			SetTimer(d->hWnd, InitAudioTimer, 100, NULL);
+			SetTimer(d->hWnd, TimerID_InitAudio, 100, NULL);
 			/* Deferring audio init with PostMessage still causes some mild weirdness -- the taskbar icon will sometimes be invisible before showing up. 50ms+ blocking from waveOutOpen is enough to cause that and possibly other issues, so let's defer it even longer with a timer. */
 		}
 		return 0;
@@ -1430,11 +1426,11 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	case WM_TIMER:
 		switch (wparam)
 		{
-		case Screen60hzTimer:
+		case TimerID_Screen60hz:
 			SendInputEvent(d, EmuIn_Screen, 0, 0, 0);
 			return 0;
-		case InitAudioTimer:
-			KillTimer(hwnd, InitAudioTimer);
+		case TimerID_InitAudio:
+			KillTimer(hwnd, TimerID_InitAudio);
 			if (!d->wave_out) InitWaveOutAudio(d);
 			return 0;
 		}
