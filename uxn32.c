@@ -136,8 +136,7 @@ typedef struct UxnWaveOut {
 	HWAVEOUT hWaveOut;
 	WAVEHDR waveHdrs[2];
 	SHORT *sampleBuffers[2];
-	BYTE pick;
-	BYTE ready;
+	BYTE pick, ready;
 } UxnWaveOut;
 
 typedef struct UxnBox
@@ -725,11 +724,12 @@ Uint8 VoiceCalcVU(UxnVoice *c)
 
 static void WriteOutSynths(EmuWindow *d)
 {
-	WAVEHDR *hdr = &d->wave_out->waveHdrs[d->wave_out->pick];
-	SHORT *samples = d->wave_out->sampleBuffers[d->wave_out->pick];
+	UxnWaveOut *wave_out = d->wave_out;
+	WAVEHDR *hdr = &wave_out->waveHdrs[wave_out->pick];
+	SHORT *samples = wave_out->sampleBuffers[wave_out->pick];
 	MMRESULT res; int i, still_running;
-	if (!d->wave_out->hWaveOut) return;
-	d->wave_out->pick = 1 - d->wave_out->pick;
+	if (!wave_out->hWaveOut) return;
+	wave_out->pick = 1 - wave_out->pick;
 	ZeroMemory(hdr, sizeof(WAVEHDR));
 	hdr->dwBufferLength = AUDIO_BUF_SAMPLES * 2 * sizeof(SHORT);
 	hdr->lpData = (LPSTR)samples;
@@ -738,8 +738,8 @@ static void WriteOutSynths(EmuWindow *d)
 	{
 		still_running |= VoiceRender(&d->synth.voices[i], samples, samples + AUDIO_BUF_SAMPLES * 2);
 	}
-	res = waveOutPrepareHeader(d->wave_out->hWaveOut, hdr, sizeof(WAVEHDR));
-	res = waveOutWrite(d->wave_out->hWaveOut, hdr, sizeof(WAVEHDR));
+	res = waveOutPrepareHeader(wave_out->hWaveOut, hdr, sizeof(WAVEHDR));
+	res = waveOutWrite(wave_out->hWaveOut, hdr, sizeof(WAVEHDR));
 }
 
 static void CALLBACK WaveOutCallback(HWAVEOUT hwo, UINT uMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2)
