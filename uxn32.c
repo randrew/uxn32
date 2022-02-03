@@ -427,8 +427,8 @@ void ScreenDevOutCb(Device *d, Uint8 port)
 		DEVPEEK2(d, x, y, 0x8);
 		if (x < width && y < screen->height) /* poke pixel */
 			pixels[x + y * width] = d->dat[0xe] & 0x3;
-		if(d->dat[0x6] & 0x01) DEVPOKE(d, 0x8, x + 1); /* auto x+1 */
-		if(d->dat[0x6] & 0x02) DEVPOKE(d, 0xa, y + 1); /* auto y+1 */
+		if (d->dat[0x6] & 0x01) DEVPOKE(d, 0x8, x + 1); /* auto x+1 */
+		if (d->dat[0x6] & 0x02) DEVPOKE(d, 0xa, y + 1); /* auto y+1 */
 		break;
 	}
 	case 0xf:
@@ -440,9 +440,9 @@ void ScreenDevOutCb(Device *d, Uint8 port)
 		DEVPEEK(d, addr, 0xc);
 		DrawUxnSprite(screen, layer_pixels, x, y, &u->ram[addr], sprite & 0xf, sprite & 0x10, sprite & 0x20, twobpp);
 		/* auto addr+length */
-		if(advnc & 0x04) { tmp = addr + 8 + twobpp * 8; DEVPOKE(d, 0xc, tmp); }
-		if(advnc & 0x01) { tmp = x + 8; DEVPOKE(d, 0x8, tmp); } /* auto x+8 */
-		if(advnc & 0x02) { tmp = y + 8; DEVPOKE(d, 0xa, tmp); } /* auto y+8 */
+		if (advnc & 0x04) { tmp = addr + 8 + twobpp * 8; DEVPOKE(d, 0xc, tmp); }
+		if (advnc & 0x01) { tmp = x + 8; DEVPOKE(d, 0x8, tmp); } /* auto x+8 */
+		if (advnc & 0x02) { tmp = y + 8; DEVPOKE(d, 0xa, tmp); } /* auto y+8 */
 		break;
 	}
 	}
