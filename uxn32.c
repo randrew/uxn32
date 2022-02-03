@@ -357,19 +357,19 @@ static void FreeUxnScreen(UxnScreen *p)
 	if (p->bg) HeapFree(GetProcessHeap(), 0, p->bg);
 }
 
-EmuWindow * EmuOfDevice(Device *d) /* TODO these are kinda dumb, clean when making Devices better */
+static EmuWindow * EmuOfDevice(Device *d) /* TODO these are kinda dumb, clean when making Devices better */
 {
 	UxnBox *box = OUTER_OF(d->u, UxnBox, core);
 	return (EmuWindow *)box->user;
 }
 
-UxnScreen * ScreenOfDevice(Device *d)
+static UxnScreen * ScreenOfDevice(Device *d)
 {
 	UxnBox *box = OUTER_OF(d->u, UxnBox, core);
 	return &((EmuWindow *)box->user)->screen;
 }
 
-Uint8 ScreenDevInCb(Device *d, Uint8 port)
+static Uint8 ScreenDevInCb(Device *d, Uint8 port)
 {
 	UxnScreen *screen = ScreenOfDevice(d);
 	switch(port)
@@ -394,7 +394,7 @@ static void RefitEmuWindow(EmuWindow *d)
 	/* Seems like the repaint from this is always async. We need the TRUE flag for repainting or the non-client area will be messed up on non-DWM. */
 }
 
-void ScreenDevOutCb(Device *d, Uint8 port)
+static void ScreenDevOutCb(Device *d, Uint8 port)
 {
 	UxnScreen *screen = ScreenOfDevice(d);
 	Uxn *u = d->u; /* TODO */
@@ -444,7 +444,7 @@ void ScreenDevOutCb(Device *d, Uint8 port)
 	}
 }
 
-Uint8 SystemDevInCb(Device *d, Uint8 port)
+static Uint8 SystemDevInCb(Device *d, Uint8 port)
 {
 	switch (port)
 	{
@@ -454,7 +454,7 @@ Uint8 SystemDevInCb(Device *d, Uint8 port)
 	return d->dat[port];
 }
 
-void SystemDevOutCb(Device *d, Uint8 port)
+static void SystemDevOutCb(Device *d, Uint8 port)
 {
 	switch (port)
 	{
@@ -467,7 +467,7 @@ void SystemDevOutCb(Device *d, Uint8 port)
 		UxnScreen *p = ScreenOfDevice(d);
 		Uint8* addr = &d->dat[0x8];
 		int i, shift;
-		for(i = 0, shift = 4; i < 4; ++i, shift ^= 4)
+		for (i = 0, shift = 4; i < 4; ++i, shift ^= 4)
 		{
 			Uint8
 				r = (addr[0 + i / 2] >> shift) & 0x0f,
