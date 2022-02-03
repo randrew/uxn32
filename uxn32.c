@@ -125,7 +125,7 @@ typedef struct UxnVoice {
 	Uint32 count, advance, period, age, a, d, s, r;
 	Uint16 i, len;
 	Sint8 volume[2];
-	Uint8 pitch, repeat;
+	Uint8 repeat;
 } UxnVoice;
 
 typedef struct UxnSynth {
@@ -136,7 +136,7 @@ typedef struct UxnWaveOut {
 	HWAVEOUT hWaveOut;
 	WAVEHDR waveHdrs[2];
 	SHORT *sampleBuffers[2];
-	BYTE pick, ready;
+	BYTE which_buffer;
 } UxnWaveOut;
 
 typedef struct UxnBox
@@ -419,7 +419,7 @@ static void DevOut_Screen(Device *d, Uint8 port)
 	}
 	case 0xe:
 	{
-		UINT x, y, width = screen->width, layer = d->dat[0xe] & 0x40;
+		LONG x, y, width = screen->width, layer = d->dat[0xe] & 0x40;
 		Uint8 *pixels = layer ? screen->fg : screen->bg;
 		DEVPEEK2(d, x, y, 0x8);
 		if (x < width && y < screen->height) /* poke pixel */
@@ -721,11 +721,11 @@ static Uint8 VoiceCalcVU(UxnVoice *c)
 static void WriteOutSynths(EmuWindow *d)
 {
 	UxnWaveOut *wave_out = d->wave_out;
-	WAVEHDR *hdr = &wave_out->waveHdrs[wave_out->pick];
-	SHORT *samples = wave_out->sampleBuffers[wave_out->pick];
+	WAVEHDR *hdr = &wave_out->waveHdrs[wave_out->which_buffer];
+	SHORT *samples = wave_out->sampleBuffers[wave_out->which_buffer];
 	MMRESULT res; int i, still_running;
 	if (!wave_out->hWaveOut) return;
-	wave_out->pick = 1 - wave_out->pick;
+	wave_out->which_buffer = 1 - wave_out->which_buffer;
 	ZeroMemory(hdr, sizeof(WAVEHDR));
 	hdr->dwBufferLength = AUDIO_BUF_SAMPLES * 2 * sizeof(SHORT);
 	hdr->lpData = (LPSTR)samples;
