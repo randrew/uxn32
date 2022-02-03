@@ -1230,260 +1230,260 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	EmuWindow *d = (EmuWindow *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
 	switch (msg)
 	{
-		case WM_CREATE:
+	case WM_CREATE:
+	{
+		LPCSTR filename = ((CREATESTRUCT *)lparam)->lpCreateParams; int filelen;
+		emu_window_count++;
+		d = AllocZeroedOrFail(sizeof(EmuWindow));
+		SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)d);
+		DragAcceptFiles(hwnd, TRUE);
+		InitEmuWindow(d, hwnd);
+		filelen = filename ? lstrlen(filename) : 0;
+		if (filelen >= MAX_PATH) OutOfMemory(); /* wrong, better msg */
+		if (filelen)
 		{
-			LPCSTR filename = ((CREATESTRUCT *)lparam)->lpCreateParams; int filelen;
-			emu_window_count++;
-			d = AllocZeroedOrFail(sizeof(EmuWindow));
-			SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)d);
-			DragAcceptFiles(hwnd, TRUE);
-			InitEmuWindow(d, hwnd);
-			filelen = filename ? lstrlen(filename) : 0;
-			if (filelen >= MAX_PATH) OutOfMemory(); /* wrong, better msg */
-			if (filelen)
-			{
-				CopyMemory(d->rom_path, filename, (filelen + 1) * sizeof(TCHAR));
-				StartVM(d);
-			}
-			return 0;
+			CopyMemory(d->rom_path, filename, (filelen + 1) * sizeof(TCHAR));
+			StartVM(d);
 		}
-		case WM_CLOSE:
-			DestroyWindow(hwnd);
-			return 0;
-		case WM_DESTROY:
-			KillTimer(hwnd, Screen60hzTimer);
-			FreeUxnBox(d->box);
-			FreeUxnScreen(&d->screen);
-			ResetFiler(&d->filer);
+		return 0;
+	}
+	case WM_CLOSE:
+		DestroyWindow(hwnd);
+		return 0;
+	case WM_DESTROY:
+		KillTimer(hwnd, Screen60hzTimer);
+		FreeUxnBox(d->box);
+		FreeUxnScreen(&d->screen);
+		ResetFiler(&d->filer);
+		if (d->hBMP) DeleteObject(d->hBMP);
+		if (d->hDibDC) DeleteDC(d->hDibDC);
+		if (d->wave_out)
+		{
+			if (d->wave_out->hWaveOut)
+			{
+				waveOutPause(d->wave_out->hWaveOut);
+				waveOutClose(d->wave_out->hWaveOut);
+			}
+			HeapFree(GetProcessHeap(), 0, d->wave_out);
+		}
+		ListRemove(&emus_needing_work, d, work_link);
+		HeapFree(GetProcessHeap(), 0, d);
+		if (!--emu_window_count) PostQuitMessage(0);
+		return 0;
+	case WM_PAINT:
+	{
+		PAINTSTRUCT ps; HDC hDC; BITMAPINFO bmi; RECT crect;
+		GetClientRect(hwnd, &crect);
+		SetUpBitmapInfo(&bmi, d->screen.width, d->screen.height);
+		if (d->dib_dims.cx != d->screen.width || d->dib_dims.cy != d->screen.height)
+		{
 			if (d->hBMP) DeleteObject(d->hBMP);
 			if (d->hDibDC) DeleteDC(d->hDibDC);
-			if (d->wave_out)
+			if (d->screen.width > 0 && d->screen.height > 0)
 			{
-				if (d->wave_out->hWaveOut)
-				{
-					waveOutPause(d->wave_out->hWaveOut);
-					waveOutClose(d->wave_out->hWaveOut);
-				}
-				HeapFree(GetProcessHeap(), 0, d->wave_out);
+				hDC = GetDC(hwnd);
+				d->hDibDC = CreateCompatibleDC(hDC);
+				d->hBMP = CreateDIBSection(d->hDibDC, &bmi, DIB_RGB_COLORS, NULL, NULL, 0);
+				ReleaseDC(hwnd, hDC);
 			}
-			ListRemove(&emus_needing_work, d, work_link);
-			HeapFree(GetProcessHeap(), 0, d);
-			if (!--emu_window_count) PostQuitMessage(0);
-			return 0;
-		case WM_PAINT:
-		{
-			PAINTSTRUCT ps; HDC hDC; BITMAPINFO bmi; RECT crect;
-			GetClientRect(hwnd, &crect);
-			SetUpBitmapInfo(&bmi, d->screen.width, d->screen.height);
-			if (d->dib_dims.cx != d->screen.width || d->dib_dims.cy != d->screen.height)
-			{
-				if (d->hBMP) DeleteObject(d->hBMP);
-				if (d->hDibDC) DeleteDC(d->hDibDC);
-				if (d->screen.width > 0 && d->screen.height > 0)
-				{
-					hDC = GetDC(hwnd);
-					d->hDibDC = CreateCompatibleDC(hDC);
-					d->hBMP = CreateDIBSection(d->hDibDC, &bmi, DIB_RGB_COLORS, NULL, NULL, 0);
-					ReleaseDC(hwnd, hDC);
-				}
-				else
-				{
-					d->hBMP = NULL;
-					d->hDibDC = NULL;
-				}
-				d->dib_dims.cx = d->screen.width;
-				d->dib_dims.cy = d->screen.height;
-				d->needs_clear = 1;
-			}
-			if (!d->hBMP || !d->hDibDC) return 0; /* TODO should at least clear window */
-			{
-				DIBSECTION sec; UxnScreen *p = &d->screen;
-				/* SIZE_T width = MIN(p->width, sec.dsBm.bmWidth), height = MIN(p->height, sec.dsBm.bmHeight); */
-				/* TODO deal with bitmap possibly having padding */
-				int i, size = p->width * p->height; ULONG palette[16];
-				GetObject(d->hBMP, sizeof sec, &sec);
-				for (i = 0; i < 16; i++)
-					palette[i] = p->palette[(i >> 2) ? (i >> 2) : (i & 3)];
-				for (i = 0; i < size; i++)
-					((ULONG *)sec.dsBm.bmBits)[i] = palette[p->fg[i] << 2 | p->bg[i]];
-			}
-			hDC = BeginPaint(hwnd, &ps);
-			if (d->needs_clear)
-			{
-				SelectObject(hDC, GetStockObject(BLACK_BRUSH));
-				Rectangle(hDC, 0, 0, crect.right, crect.bottom);
-				d->needs_clear = 0;
-			}
-			/* One-line version, doesn't need the retained stuff, but probably slower: */
-			/* SetDIBitsToDevice(hDC, 0, 0, UXN_DEFAULT_WIDTH, UXN_DEFAULT_HEIGHT, 0, 0, 0, UXN_DEFAULT_HEIGHT, uxn_screen.pixels, &bmi, DIB_RGB_COLORS); */
-			/* SetDIBits(d->hDibDC, d->hBMP, 0, UXN_DEFAULT_HEIGHT, d->screen.pixels, &bmi, DIB_RGB_COLORS); */
-			SelectObject(d->hDibDC, d->hBMP);
-			if (d->viewport_scale == 1)
-				BitBlt(hDC, d->viewport_rect.left, d->viewport_rect.top, d->screen.width, d->screen.height, d->hDibDC, 0, 0, SRCCOPY);
 			else
-				StretchBlt(hDC, d->viewport_rect.left, d->viewport_rect.top, d->viewport_rect.right - d->viewport_rect.left, d->viewport_rect.bottom - d->viewport_rect.top, d->hDibDC, 0, 0, d->screen.width, d->screen.height, SRCCOPY);
-			EndPaint(hwnd, &ps);
-			d->last_paint = TimeStampNow();
-			if (d->needs_audio == 1)
 			{
-				d->needs_audio = 2;
-				SetTimer(d->hWnd, InitAudioTimer, 100, NULL);
-				/* Deferring audio init with PostMessage still causes some mild weirdness -- the taskbar icon will sometimes be invisible before showing up. 50ms+ blocking from waveOutOpen is enough to cause that and possibly other issues, so let's defer it even longer with a timer. */
+				d->hBMP = NULL;
+				d->hDibDC = NULL;
 			}
-			return 0;
-		}
-		case WM_GETMINMAXINFO:
-		{
-			MINMAXINFO *info = (MINMAXINFO *)lparam;
-			/* Prevent window from becoming so narrow that the menu bar wraps. */
-			/* Could make this dynamically smaller when we add menu bar hiding. */
-			info->ptMinTrackSize.x = info->ptMinTrackSize.y = 185;
-			return 0;
-		}
-		case WM_SIZE:
-			CalcUxnViewport(d);
+			d->dib_dims.cx = d->screen.width;
+			d->dib_dims.cy = d->screen.height;
 			d->needs_clear = 1;
-			return 0;
+		}
+		if (!d->hBMP || !d->hDibDC) return 0; /* TODO should at least clear window */
+		{
+			DIBSECTION sec; UxnScreen *p = &d->screen;
+			/* SIZE_T width = MIN(p->width, sec.dsBm.bmWidth), height = MIN(p->height, sec.dsBm.bmHeight); */
+			/* TODO deal with bitmap possibly having padding */
+			int i, size = p->width * p->height; ULONG palette[16];
+			GetObject(d->hBMP, sizeof sec, &sec);
+			for (i = 0; i < 16; i++)
+				palette[i] = p->palette[(i >> 2) ? (i >> 2) : (i & 3)];
+			for (i = 0; i < size; i++)
+				((ULONG *)sec.dsBm.bmBits)[i] = palette[p->fg[i] << 2 | p->bg[i]];
+		}
+		hDC = BeginPaint(hwnd, &ps);
+		if (d->needs_clear)
+		{
+			SelectObject(hDC, GetStockObject(BLACK_BRUSH));
+			Rectangle(hDC, 0, 0, crect.right, crect.bottom);
+			d->needs_clear = 0;
+		}
+		/* One-line version, doesn't need the retained stuff, but probably slower: */
+		/* SetDIBitsToDevice(hDC, 0, 0, UXN_DEFAULT_WIDTH, UXN_DEFAULT_HEIGHT, 0, 0, 0, UXN_DEFAULT_HEIGHT, uxn_screen.pixels, &bmi, DIB_RGB_COLORS); */
+		/* SetDIBits(d->hDibDC, d->hBMP, 0, UXN_DEFAULT_HEIGHT, d->screen.pixels, &bmi, DIB_RGB_COLORS); */
+		SelectObject(d->hDibDC, d->hBMP);
+		if (d->viewport_scale == 1)
+			BitBlt(hDC, d->viewport_rect.left, d->viewport_rect.top, d->screen.width, d->screen.height, d->hDibDC, 0, 0, SRCCOPY);
+		else
+			StretchBlt(hDC, d->viewport_rect.left, d->viewport_rect.top, d->viewport_rect.right - d->viewport_rect.left, d->viewport_rect.bottom - d->viewport_rect.top, d->hDibDC, 0, 0, d->screen.width, d->screen.height, SRCCOPY);
+		EndPaint(hwnd, &ps);
+		d->last_paint = TimeStampNow();
+		if (d->needs_audio == 1)
+		{
+			d->needs_audio = 2;
+			SetTimer(d->hWnd, InitAudioTimer, 100, NULL);
+			/* Deferring audio init with PostMessage still causes some mild weirdness -- the taskbar icon will sometimes be invisible before showing up. 50ms+ blocking from waveOutOpen is enough to cause that and possibly other issues, so let's defer it even longer with a timer. */
+		}
+		return 0;
+	}
+	case WM_GETMINMAXINFO:
+	{
+		MINMAXINFO *info = (MINMAXINFO *)lparam;
+		/* Prevent window from becoming so narrow that the menu bar wraps. */
+		/* Could make this dynamically smaller when we add menu bar hiding. */
+		info->ptMinTrackSize.x = info->ptMinTrackSize.y = 185;
+		return 0;
+	}
+	case WM_SIZE:
+		CalcUxnViewport(d);
+		d->needs_clear = 1;
+		return 0;
 
+	{
+	enum { DN = EmuIn_MouseDown, UP = EmuIn_MouseUp }; unsigned int mode, bits;
+	case WM_MOUSEMOVE:   mode = DN; bits = 0x0; goto act_mouse;
+	case WM_LBUTTONDOWN: mode = DN; bits = 0x1; goto act_mouse;
+	case WM_LBUTTONUP:   mode = UP; bits = 0x1; goto act_mouse;
+	case WM_MBUTTONDOWN: mode = DN; bits = 0x2; goto act_mouse;
+	case WM_MBUTTONUP:   mode = UP; bits = 0x2; goto act_mouse;
+	case WM_RBUTTONDOWN: mode = DN; bits = 0x4; goto act_mouse;
+	case WM_RBUTTONUP:   mode = UP; bits = 0x4; goto act_mouse;
+	act_mouse:
+	{
+		POINT mouse; BOOL mouse_in_uxn;
+		mouse.x = LOWORD(lparam); mouse.y = HIWORD(lparam);
+		mouse_in_uxn = PtInRect(&d->viewport_rect, mouse) && d->running; /* TODO fix unpause without moving mouse */
+		SetHostCursorVisible(d, !mouse_in_uxn);
+		if (!mouse_in_uxn) break;
+		BindPointToLocalUxnScreen(&d->viewport_rect, d->viewport_scale, &mouse); /* could save a GetClientRect call by passing it optionally... */
+		SendInputEvent(d, mode, bits, (USHORT)mouse.x, (USHORT)mouse.y);
+		return 0;
+	}
+	case WM_MOUSEWHEEL:
+	{
+		POINT mouse; short zDelta = (short)HIWORD(wparam);
+		mouse.x = LOWORD(lparam); mouse.y = HIWORD(lparam);
+		if (!PtInRect(&d->viewport_rect, mouse)) break;
+		/* could set mouse x,y pos here if we wanted to */
+		/* TODO no x axis scrolling yet */
+		/* TODO accumulate error from division */
+		SendInputEvent(d, EmuIn_Wheel, 0, 0, (Uint16)(-zDelta / 120));
+		return 0;
+	}
+	}
+	case WM_ACTIVATE: /* When losing focus, clear any held keys so that they aren't stuck down */
+		if (LOWORD(wparam) == WA_INACTIVE)
+	case WM_ENTERMENULOOP:
+			SendInputEvent(d, EmuIn_ResetKeys, 0, 0, 0);
+		/* This doesn't fix starting to hold a key down before activating this window, but that seems to be hard due to garbage GetKeyState() after a dialog closes or when clicking on the window title bar. */
+		break;
+	case WM_SYSCHAR: /* Suppress Alt+letter menu accelerators when VM is focused and running */
+		if (d->running && !d->host_cursor) return 0;
+		break;
+	case WM_KEYDOWN: case WM_SYSKEYDOWN: case WM_KEYUP: case WM_SYSKEYUP:
+	{
+		int up = (int)lparam & 1 << 31, was_down = lparam & 1 << 30, bits = 0; TCHAR keyChar;
+		switch ((int)wparam)
 		{
-		enum { DN = EmuIn_MouseDown, UP = EmuIn_MouseUp }; unsigned int mode, bits;
-		case WM_MOUSEMOVE:   mode = DN; bits = 0x0; goto act_mouse;
-		case WM_LBUTTONDOWN: mode = DN; bits = 0x1; goto act_mouse;
-		case WM_LBUTTONUP:   mode = UP; bits = 0x1; goto act_mouse;
-		case WM_MBUTTONDOWN: mode = DN; bits = 0x2; goto act_mouse;
-		case WM_MBUTTONUP:   mode = UP; bits = 0x2; goto act_mouse;
-		case WM_RBUTTONDOWN: mode = DN; bits = 0x4; goto act_mouse;
-		case WM_RBUTTONUP:   mode = UP; bits = 0x4; goto act_mouse;
-		act_mouse:
+		case VK_CONTROL: bits = 0x01; break;
+		case VK_MENU:    bits = 0x02; break;
+		case VK_SHIFT:   bits = 0x04; break;
+		case VK_HOME:    bits = 0x08; goto allow_key_repeat;
+		case VK_UP:      bits = 0x10; goto allow_key_repeat;
+		case VK_DOWN:    bits = 0x20; goto allow_key_repeat;
+		case VK_LEFT:    bits = 0x40; goto allow_key_repeat;
+		case VK_RIGHT:   bits = 0x80; goto allow_key_repeat;
+
+		/* Add quick debug keys here */
+		/* case VK_F12: if (!up) {  } return 0; */
+		default: goto other_vkey;
+		}
+		if (!up && was_down) return 0;
+	allow_key_repeat:
+		SendInputEvent(d, up ? EmuIn_CtrlUp : EmuIn_CtrlDown, bits, 0, 0);
+		return 0;
+	other_vkey:
+		if (up || !(keyChar = MapVirtualKey(wparam, MAPVK_VK_TO_CHAR))) break;
+		/* Holding Alt or Ctrl causes characters to appear upper case, so if shift isn't held, turn 'em lower. */
+		if (keyChar >= 'A' && keyChar <= 'Z' && !(!(GetKeyState(VK_SHIFT) & 0x8000) ^ !(GetKeyState(VK_CAPITAL)))) keyChar += 0x20;
+		/* Disallow control characters except tab, newline, etc. */
+		if (keyChar < 32 && keyChar != 8 && keyChar != 9 && keyChar != 10 && keyChar != 13 && keyChar != 27) break;
+		SendInputEvent(d, EmuIn_KeyChar, (BYTE)keyChar, 0, 0);
+		return 0;
+	}
+	case WM_NCMOUSEMOVE:
+	case WM_MOUSELEAVE:
+		SetHostCursorVisible(d, TRUE);
+		break;
+	case WM_TIMER:
+		switch (wparam)
 		{
-			POINT mouse; BOOL mouse_in_uxn;
-			mouse.x = LOWORD(lparam); mouse.y = HIWORD(lparam);
-			mouse_in_uxn = PtInRect(&d->viewport_rect, mouse) && d->running; /* TODO fix unpause without moving mouse */
-			SetHostCursorVisible(d, !mouse_in_uxn);
-			if (!mouse_in_uxn) break;
-			BindPointToLocalUxnScreen(&d->viewport_rect, d->viewport_scale, &mouse); /* could save a GetClientRect call by passing it optionally... */
-			SendInputEvent(d, mode, bits, (USHORT)mouse.x, (USHORT)mouse.y);
+		case Screen60hzTimer:
+			SendInputEvent(d, EmuIn_Screen, 0, 0, 0);
+			return 0;
+		case InitAudioTimer:
+			KillTimer(hwnd, InitAudioTimer);
+			if (!d->wave_out) InitWaveOutAudio(d);
 			return 0;
 		}
-		case WM_MOUSEWHEEL:
+		break;
+	case WM_DROPFILES:
+		if (!DragQueryFile((HDROP)wparam, 0, d->rom_path, MAX_PATH)) return 0;
+		ReloadFromROMFile(d);
+		return 0;
+	case WM_COMMAND:
+		switch (LOWORD(wparam))
 		{
-			POINT mouse; short zDelta = (short)HIWORD(wparam);
-			mouse.x = LOWORD(lparam); mouse.y = HIWORD(lparam);
-			if (!PtInRect(&d->viewport_rect, mouse)) break;
-			/* could set mouse x,y pos here if we wanted to */
-			/* TODO no x axis scrolling yet */
-			/* TODO accumulate error from division */
-			SendInputEvent(d, EmuIn_Wheel, 0, 0, (Uint16)(-zDelta / 120));
+		case IDM_ABOUT:
+			DialogBox((HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), MAKEINTRESOURCE(IDD_ABOUTBOX), hwnd, AboutBoxProc);
 			return 0;
-		}
-		}
-		case WM_ACTIVATE: /* When losing focus, clear any held keys so that they aren't stuck down */
-			if (LOWORD(wparam) == WA_INACTIVE)
-		case WM_ENTERMENULOOP:
-				SendInputEvent(d, EmuIn_ResetKeys, 0, 0, 0);
-			/* This doesn't fix starting to hold a key down before activating this window, but that seems to be hard due to garbage GetKeyState() after a dialog closes or when clicking on the window title bar. */
+		case IDM_EXIT: PostQuitMessage(0); return 0;
+		case IDM_OPENROM: OpenROMDialog(d); return 0;
+		case IDM_CLONEWINDOW: CloneWindow(d); return 0;
+		case IDM_TOGGLEZOOM: d->viewport_scale = d->viewport_scale == 1 ? 2 : 1; RefitEmuWindow(d); return 0;
+		case IDM_RELOAD: ReloadFromROMFile(d); return 0;
+		case IDM_CLOSEWINDOW: PostMessage(hwnd, WM_CLOSE, 0, 0); return 0;
+		case IDM_PAUSE: if (d->running) PauseVM(d); else UnpauseVM(d); return 0;
 			break;
-		case WM_SYSCHAR: /* Suppress Alt+letter menu accelerators when VM is focused and running */
-			if (d->running && !d->host_cursor) return 0;
-			break;
-		case WM_KEYDOWN: case WM_SYSKEYDOWN: case WM_KEYUP: case WM_SYSKEYUP:
+		}
+		break;
+
+	case UXNMSG_ContinueExec:
+		if (!d->running) return 0;
+		if (d->exec_state) RunUxn(d); /* Unfinished vector execution */
+		else if (d->queue_count) /* Buffered events */
 		{
-			int up = (int)lparam & 1 << 31, was_down = lparam & 1 << 30, bits = 0; TCHAR keyChar;
-			switch ((int)wparam)
-			{
-			case VK_CONTROL: bits = 0x01; break;
-			case VK_MENU:    bits = 0x02; break;
-			case VK_SHIFT:   bits = 0x04; break;
-			case VK_HOME:    bits = 0x08; goto allow_key_repeat;
-			case VK_UP:      bits = 0x10; goto allow_key_repeat;
-			case VK_DOWN:    bits = 0x20; goto allow_key_repeat;
-			case VK_LEFT:    bits = 0x40; goto allow_key_repeat;
-			case VK_RIGHT:   bits = 0x80; goto allow_key_repeat;
-
-			/* Add quick debug keys here */
-			/* case VK_F12: if (!up) {  } return 0; */
-			default: goto other_vkey;
-			}
-			if (!up && was_down) return 0;
-		allow_key_repeat:
-			SendInputEvent(d, up ? EmuIn_CtrlUp : EmuIn_CtrlDown, bits, 0, 0);
-			return 0;
-		other_vkey:
-			if (up || !(keyChar = MapVirtualKey(wparam, MAPVK_VK_TO_CHAR))) break;
-			/* Holding Alt or Ctrl causes characters to appear upper case, so if shift isn't held, turn 'em lower. */
-			if (keyChar >= 'A' && keyChar <= 'Z' && !(!(GetKeyState(VK_SHIFT) & 0x8000) ^ !(GetKeyState(VK_CAPITAL)))) keyChar += 0x20;
-			/* Disallow control characters except tab, newline, etc. */
-			if (keyChar < 32 && keyChar != 8 && keyChar != 9 && keyChar != 10 && keyChar != 13 && keyChar != 27) break;
-			SendInputEvent(d, EmuIn_KeyChar, (BYTE)keyChar, 0, 0);
-			return 0;
+			EmuInEvent *evt = &d->queue_buffer[d->queue_first];
+			d->queue_first = (d->queue_first + 1) % QUEUE_CAP;
+			d->queue_count--;
+			ApplyInputEvent(d, evt->type, evt->bits, evt->x, evt->y);
 		}
-
-		case WM_NCMOUSEMOVE:
-		case WM_MOUSELEAVE:
-			SetHostCursorVisible(d, TRUE);
-			break;
-		case WM_TIMER:
-			switch (wparam)
-			{
-			case Screen60hzTimer: SendInputEvent(d, EmuIn_Screen, 0, 0, 0); return 0;
-			case InitAudioTimer:
-				KillTimer(hwnd, InitAudioTimer);
-				if (!d->wave_out) InitWaveOutAudio(d);
-				return 0;
-			}
-			break;
-		case WM_DROPFILES:
-			if (!DragQueryFile((HDROP)wparam, 0, d->rom_path, MAX_PATH)) return 0;
-			ReloadFromROMFile(d);
-			return 0;
-
-		case WM_COMMAND:
-			switch (LOWORD(wparam))
-			{
-			case IDM_ABOUT:
-				DialogBox((HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), MAKEINTRESOURCE(IDD_ABOUTBOX), hwnd, AboutBoxProc);
-				return 0;
-			case IDM_EXIT: PostQuitMessage(0); return 0;
-			case IDM_OPENROM: OpenROMDialog(d); return 0;
-			case IDM_CLONEWINDOW: CloneWindow(d); return 0;
-			case IDM_TOGGLEZOOM: d->viewport_scale = d->viewport_scale == 1 ? 2 : 1; RefitEmuWindow(d); return 0;
-			case IDM_RELOAD: ReloadFromROMFile(d); return 0;
-			case IDM_CLOSEWINDOW: PostMessage(hwnd, WM_CLOSE, 0, 0); return 0;
-			case IDM_PAUSE: if (d->running) PauseVM(d); else UnpauseVM(d); return 0;
-				break;
-			}
-			break;
-
-		case UXNMSG_ContinueExec:
-			if (!d->running) return 0;
-			if (d->exec_state) RunUxn(d); /* Unfinished vector execution */
-			else if (d->queue_count) /* Buffered events */
-			{
-				EmuInEvent *evt = &d->queue_buffer[d->queue_first];
-				d->queue_first = (d->queue_first + 1) % QUEUE_CAP;
-				d->queue_count--;
-				ApplyInputEvent(d, evt->type, evt->bits, evt->x, evt->y);
-			}
-			return 0;
-		case UXNMSG_BecomeClone:
-		{
-			EmuWindow *b = (EmuWindow *)wparam;
-			d->box->core.fault_code = b->box->core.fault_code;
-			d->exec_state = b->exec_state;
-			CopyMemory(&d->box->work_stack, &b->box->work_stack, sizeof(Stack) * 2);
-			CopyMemory(d->box->device_memory, b->box->device_memory, sizeof d->box->device_memory);
-			CopyMemory((char *)(d->box + 1), (char *)(b->box + 1), UXN_RAM_SIZE);
-			CopyMemory(d->screen.palette, b->screen.palette, sizeof d->screen.palette);
-			SetUxnScreenSize(&d->screen, b->screen.width, b->screen.height);
-			d->viewport_scale = b->viewport_scale;
-			RefitEmuWindow(d);
-			CopyMemory(d->screen.bg, b->screen.bg, d->screen.width * d->screen.height * 2);
-			CopyMemory(d->rom_path, b->rom_path, MAX_PATH);
-			/* can't copy filer state */
-			UnpauseVM(d);
-			UpdateWindow(d->hWnd);
-			return 0;
-		}
+		return 0;
+	case UXNMSG_BecomeClone:
+	{
+		EmuWindow *b = (EmuWindow *)wparam;
+		d->box->core.fault_code = b->box->core.fault_code;
+		d->exec_state = b->exec_state;
+		CopyMemory(&d->box->work_stack, &b->box->work_stack, sizeof(Stack) * 2);
+		CopyMemory(d->box->device_memory, b->box->device_memory, sizeof d->box->device_memory);
+		CopyMemory((char *)(d->box + 1), (char *)(b->box + 1), UXN_RAM_SIZE);
+		CopyMemory(d->screen.palette, b->screen.palette, sizeof d->screen.palette);
+		SetUxnScreenSize(&d->screen, b->screen.width, b->screen.height);
+		d->viewport_scale = b->viewport_scale;
+		RefitEmuWindow(d);
+		CopyMemory(d->screen.bg, b->screen.bg, d->screen.width * d->screen.height * 2);
+		CopyMemory(d->rom_path, b->rom_path, MAX_PATH);
+		/* can't copy filer state */
+		UnpauseVM(d);
+		UpdateWindow(d->hWnd);
+		return 0;
+	}
 	}
 	return DefWindowProc(hwnd, msg, wparam, lparam);
 }
