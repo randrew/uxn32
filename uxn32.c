@@ -190,6 +190,7 @@ typedef struct EmuInEvent
 	USHORT x, y;
 } EmuInEvent;
 
+/* Maximum number of queued input events for emulated machines */
 #define QUEUE_CAP 256
 
 typedef struct EmuWindow
