@@ -480,7 +480,7 @@ static void DevOut_System(Device *d, Uint8 port)
 	}
 }
 
-static Uint8 DevIn_DateTime(Device *d, Uint8 port)
+static Uint8 DevIn_Date(Device *d, Uint8 port)
 {
 	SYSTEMTIME t; TIME_ZONE_INFORMATION zone;
 	GetLocalTime(&t);
@@ -811,16 +811,6 @@ void DevOut_Audio(Device *dev, Uint8 port)
 	if (!win->needs_audio) win->needs_audio = 1;
 }
 
-Device *uxn_port(Uxn *u, Uint8 *devpage, Uint8 id, Uint8 (*deifn)(Device *d, Uint8 port), void (*deofn)(Device *d, Uint8 port))
-{
-	Device *d = &u->dev[id];
-	d->u = u;
-	d->dei = deifn;
-	d->deo = deofn;
-	d->dat = devpage + id * 0x10;
-	return d;
-}
-
 void DevOut_File(Device *d, Uint8 port)
 {
 	DWORD result = 0, /* next inits suppress msvc warning */ out_len = 0; char *out = 0;
@@ -868,9 +858,9 @@ BOOL LoadROMIntoBox(UxnBox *box, LPCSTR filename)
 static Uint8 DevIn_Dummy(Device *d, Uint8 port) { return d->dat[port]; }
 static void  DevOut_Dummy(Device *d, Uint8 port) { (void)d;(void)port; }
 
-void InitEmuWindow(EmuWindow *d, HWND hWnd)
+static void InitEmuWindow(EmuWindow *d, HWND hWnd)
 {
-	char *main_ram;
+	char *main_ram; Device *dev;
 	UxnBox *box = (UxnBox *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(UxnBox) + UXN_RAM_SIZE);
 	if (!box) OutOfMemory();
 	main_ram = (char *)(box + 1);
@@ -878,23 +868,25 @@ void InitEmuWindow(EmuWindow *d, HWND hWnd)
 	box->core.ram = (Uint8 *)main_ram;
 	box->core.wst = &box->work_stack;
 	box->core.rst = &box->ret_stack;
-	/* system   */ uxn_port(&box->core, box->device_memory, 0x0, DevIn_System, DevOut_System);
-	/* console  */ uxn_port(&box->core, box->device_memory, 0x1, DevIn_Dummy, DevOut_Console); /* ask if this should be shown in a console window on win32 and whether or not uxn roms tend to just passively poop out stuff in the background */
-	/* screen   */ d->dev_screen = uxn_port(&box->core, box->device_memory,  0x2, DevIn_Screen, DevOut_Screen);
-	/* audio0   */ d->dev_audio0 = uxn_port(&box->core, box->device_memory,  0x3, DevIn_Audio, DevOut_Audio);
-	/* audio1   */ uxn_port(&box->core, box->device_memory,  0x4, DevIn_Audio, DevOut_Audio);
-	/* audio2   */ uxn_port(&box->core, box->device_memory,  0x5, DevIn_Audio, DevOut_Audio);
-	/* audio3   */ uxn_port(&box->core, box->device_memory,  0x6, DevIn_Audio, DevOut_Audio);
-	/* unused   */ uxn_port(&box->core, box->device_memory,  0x7, DevIn_Dummy, DevOut_Dummy);
-	/* control  */ d->dev_ctrl = uxn_port(&box->core, box->device_memory,  0x8, DevIn_Dummy, DevOut_Dummy);
-	/* mouse    */ d->dev_mouse = uxn_port(&box->core, box->device_memory,  0x9, DevIn_Dummy, DevOut_Dummy);
-	/* file     */ uxn_port(&box->core, box->device_memory,  0xa, DevIn_Dummy, DevOut_File);
-	/* datetime */ uxn_port(&box->core, box->device_memory,  0xb, DevIn_DateTime, DevOut_Dummy);
-	/* unused   */ uxn_port(&box->core, box->device_memory,  0xc, DevIn_Dummy, DevOut_Dummy);
-	/* unused   */ uxn_port(&box->core, box->device_memory,  0xd, DevIn_Dummy, DevOut_Dummy);
-	/* unused   */ uxn_port(&box->core, box->device_memory,  0xe, DevIn_Dummy, DevOut_Dummy);
-	/* unused   */ uxn_port(&box->core, box->device_memory,  0xf, DevIn_Dummy, DevOut_Dummy);
-
+#define DEVICE_AT(portnum, in_fn, out_fn) \
+    (dev = box->core.dev + portnum, dev->u = &box->core, dev->dei = in_fn, dev->deo = out_fn, dev->dat = box->device_memory + portnum * 0x10)
+	/* System   */ DEVICE_AT(0x0, DevIn_System, DevOut_System);
+	/* Console  */ DEVICE_AT(0x1, DevIn_Dummy,  DevOut_Console);
+	/* Screen   */ DEVICE_AT(0x2, DevIn_Screen, DevOut_Screen);  d->dev_screen = dev;
+	/* Audio0   */ DEVICE_AT(0x3, DevIn_Audio,  DevOut_Audio);   d->dev_audio0 = dev;
+	/* Audio1   */ DEVICE_AT(0x4, DevIn_Audio,  DevOut_Audio);
+	/* Audio2   */ DEVICE_AT(0x5, DevIn_Audio,  DevOut_Audio);
+	/* Audio3   */ DEVICE_AT(0x6, DevIn_Audio,  DevOut_Audio);
+	/* Unused   */ DEVICE_AT(0x7, DevIn_Dummy,  DevOut_Dummy);
+	/* Control  */ DEVICE_AT(0x8, DevIn_Dummy,  DevOut_Dummy);   d->dev_ctrl = dev;
+	/* Mouse    */ DEVICE_AT(0x9, DevIn_Dummy,  DevOut_Dummy);   d->dev_mouse = dev;
+	/* File     */ DEVICE_AT(0xA, DevIn_Dummy,  DevOut_File);
+	/* Datetime */ DEVICE_AT(0xB, DevIn_Date,   DevOut_Dummy);
+	/* Unused   */ DEVICE_AT(0xC, DevIn_Dummy,  DevOut_Dummy);
+	/* Unused   */ DEVICE_AT(0xD, DevIn_Dummy,  DevOut_Dummy);
+	/* Unused   */ DEVICE_AT(0xE, DevIn_Dummy,  DevOut_Dummy);
+	/* Unused   */ DEVICE_AT(0xF, DevIn_Dummy,  DevOut_Dummy);
+#undef DEVICE_AT
 	d->box = box;
 	d->host_cursor = TRUE;
 	d->hWnd = hWnd; /* TODO cleanup reorder these assignments */
@@ -909,7 +901,7 @@ void InitEmuWindow(EmuWindow *d, HWND hWnd)
 	d->filer.hFile = d->filer.hFind = INVALID_HANDLE_VALUE;
 }
 
-void FreeUxnBox(UxnBox *box)
+static void FreeUxnBox(UxnBox *box)
 {
 	HeapFree(GetProcessHeap(), 0, box);
 }
