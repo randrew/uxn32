@@ -651,11 +651,11 @@ static const Uint32 advances[12] = {
 
 static INT VoiceEnvelope(UxnVoice *c, Uint32 age)
 {
-	if(!c->r) return 0x0888;
-	if(age < c->a) return 0x0888 * age / c->a;
-	if(age < c->d) return 0x0444 * (2 * c->d - c->a - age) / (c->d - c->a);
-	if(age < c->s) return 0x0444;
-	if(age < c->r) return 0x0444 * (c->r - age) / (c->r - c->s);
+	if (!c->r)      return 0x0888;
+	if (age < c->a) return 0x0888 * age / c->a;
+	if (age < c->d) return 0x0444 * (2 * c->d - c->a - age) / (c->d - c->a);
+	if (age < c->s) return 0x0444;
+	if (age < c->r) return 0x0444 * (c->r - age) / (c->r - c->s);
 	c->advance = 0;
 	return 0x0000;
 }
@@ -678,26 +678,25 @@ static int VoiceRender(UxnVoice *c, SHORT *out, SHORT *end)
 		*out++ += s * c->volume[0] / (0x180 * 2); /* Original: / (0x180 * 1) */
 		*out++ += s * c->volume[1] / (0x180 * 2); /* Temporarily make this quieter until we add volume slider */
 	}
-	/* if(!c->advance) audio_is_finished(c); */
+	/* if (!c->advance) audio_is_finished(c); */
 	return 1;
 }
 
 static void VoiceStart(UxnVoice *c, Uint16 adsr, Uint8 pitch)
 {
-	if (pitch < 108 && c->len)
-		c->advance = advances[pitch % 12] >> (8 - pitch / 12);
-	else
+	if (!(pitch < 108 && c->len))
 	{
 		c->advance = 0;
 		return;
 	}
+	c->advance = advances[pitch % 12] >> (8 - pitch / 12);
 	c->a = ADSR_STEP * (adsr >> 12);
 	c->d = ADSR_STEP * (adsr >> 8 & 0xf) + c->a;
 	c->s = ADSR_STEP * (adsr >> 4 & 0xf) + c->d;
 	c->r = ADSR_STEP * (adsr >> 0 & 0xf) + c->s;
 	c->age = 0;
 	c->i = 0;
-	if(c->len <= 0x100) /* single cycle mode */
+	if (c->len <= 0x100) /* single cycle mode */
 		c->period = NOTE_PERIOD * 337 / 2 / c->len;
 	else /* sample repeat mode */
 		c->period = NOTE_PERIOD;
