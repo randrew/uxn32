@@ -663,7 +663,7 @@ static INT VoiceEnvelope(UxnVoice *c, Uint32 age)
 	return 0x0000;
 }
 
-int VoiceRender(UxnVoice *c, SHORT *out, SHORT *end)
+static int VoiceRender(UxnVoice *c, SHORT *out, SHORT *end)
 {
 	INT s;
 	if (!c->advance || !c->period) return 0;
@@ -685,7 +685,7 @@ int VoiceRender(UxnVoice *c, SHORT *out, SHORT *end)
 	return 1;
 }
 
-void VoiceStart(UxnVoice *c, Uint16 adsr, Uint8 pitch)
+static void VoiceStart(UxnVoice *c, Uint16 adsr, Uint8 pitch)
 {
 	if (pitch < 108 && c->len)
 		c->advance = advances[pitch % 12] >> (8 - pitch / 12);
@@ -706,10 +706,9 @@ void VoiceStart(UxnVoice *c, Uint16 adsr, Uint8 pitch)
 		c->period = NOTE_PERIOD;
 }
 
-Uint8 VoiceCalcVU(UxnVoice *c)
+static Uint8 VoiceCalcVU(UxnVoice *c)
 {
-	int i;
-	INT sum[2] = {0, 0};
+	INT sum[2] = {0, 0}, i;
 	if (!c->advance || !c->period) return 0;
 	for (i = 0; i < 2; i++)
 	{
