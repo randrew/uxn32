@@ -504,7 +504,7 @@ static void ResetFiler(UxnFiler *f)
 	f->state = FileDevState_Init;
 }
 
-static UxnFiler *FilerOfDevice(Device *d)
+static UxnFiler * FilerOfDevice(Device *d)
 {
 	UxnBox *box = OUTER_OF(d->u, UxnBox, core);
 	return &((EmuWindow *)box->user)->filer;
@@ -554,7 +554,8 @@ static DWORD FileDevRead(UxnFiler *f, char *dst, DWORD dst_len)
 {
 	DWORD result = 0; DWORD const pathlen = f->pathlen; char *filepath = f->path;
 	WIN32_FIND_DATA *find_data = &f->find_data;
-	if (f->state != FileDevState_Reading) {
+	if (f->state != FileDevState_Reading)
+	{
 		DWORD attribs;
 		ResetFiler(f);
 		if ((attribs = GetFileAttributes(filepath)) == INVALID_FILE_ATTRIBUTES) return 0;
@@ -567,15 +568,18 @@ static DWORD FileDevRead(UxnFiler *f, char *dst, DWORD dst_len)
 			f->hFind = FindFirstFile(filepath, find_data);
 			filepath[pathlen] = 0;
 			if (f->hFind == INVALID_HANDLE_VALUE) return 0;
-		} else
+		}
+		else
 		{
 			f->hFile = CreateFile(filepath, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 			if (f->hFile == INVALID_HANDLE_VALUE) return 0;
 		}
 		f->state = FileDevState_Reading;
 	}
-	if (f->hFind != INVALID_HANDLE_VALUE) {
-		for (;;) {
+	if (f->hFind != INVALID_HANDLE_VALUE)
+	{
+		for (;;)
+		{
 			/* DWORD copy = WideCharToMultiByte(1252, 0, ) */
 			DWORD written;
 			if (find_data->cFileName[0] == '.' && find_data->cFileName[1] == 0) goto next;
@@ -587,7 +591,8 @@ static DWORD FileDevRead(UxnFiler *f, char *dst, DWORD dst_len)
 		}
 		if (result == 0) done_dir: ResetFiler(f); /* If 0 bytes were written, always end iteration */
 	}
-	else if (f->hFile != INVALID_HANDLE_VALUE) {
+	else if (f->hFile != INVALID_HANDLE_VALUE)
+	{
 		DWORD bytes_read = dst_len;
 		if (!ReadFile(f->hFile, dst, bytes_read, &bytes_read, NULL)) bytes_read = 0;
 		if (bytes_read < dst_len) ResetFiler(f);
@@ -599,13 +604,15 @@ static DWORD FileDevRead(UxnFiler *f, char *dst, DWORD dst_len)
 static DWORD FileDevWrite(UxnFiler *f, char *src, DWORD src_len, int flags)
 {
 	DWORD written;
-	if (f->state != FileDevState_Writing) {
+	if (f->state != FileDevState_Writing)
+	{
 		int append = flags & 0x01;
 		ResetFiler(f);
 		f->hFile = CreateFile(f->path, GENERIC_WRITE, FILE_SHARE_READ, NULL, append ? OPEN_ALWAYS : CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 	}
 	if (f->hFile == INVALID_HANDLE_VALUE) return 0;
-	if (!WriteFile(f->hFile, src, src_len, &written, NULL)) {
+	if (!WriteFile(f->hFile, src, src_len, &written, NULL))
+	{
 		ResetFiler(f); /* TODO signal error to user */
 		return 0;
 	}
@@ -631,10 +638,7 @@ static DWORD FileDevDelete(UxnFiler *f)
 	DWORD result;
 	ResetFiler(f);
 	if (!f->pathlen) return 0;
-	if (PathIsDirectoryA(f->path))
-		result = RemoveDirectoryA(f->path);
-	else
-		result = DeleteFileA(f->path);
+	result = PathIsDirectoryA(f->path) ? RemoveDirectoryA(f->path) : DeleteFileA(f->path);
 	return result ? 0 : 1;
 }
 
