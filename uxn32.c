@@ -52,9 +52,9 @@ typedef ULONG_PTR DWORD_PTR, *PDWORD_PTR;
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #ifdef NDEBUG
-#define DEBUG_CHECK(a)
+#define DEBUG_CHECK(a) ((void)0)
 #else
-#define DEBUG_CHECK(a) { if (!(a)) DebugBreak(); }
+#define DEBUG_CHECK(a) (!(a) ? DebugBreak() : (void)0)
 #endif
 
 #define UXN_DEFAULT_WIDTH (64 * 8)
