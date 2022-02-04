@@ -1214,8 +1214,7 @@ HWND CreateUxnWindow(HINSTANCE hInst, LPCSTR file)
 {
 	RECT rect;
 	rect.left = 0; rect.top = 0;
-	rect.right = rect.left + UXN_DEFAULT_WIDTH;
-	rect.bottom = rect.top + UXN_DEFAULT_HEIGHT;
+	rect.right = UXN_DEFAULT_WIDTH; rect.bottom = UXN_DEFAULT_HEIGHT;
 	AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, TRUE);
 	return CreateWindowEx(WS_EX_APPWINDOW, EmuWinClass, TEXT("Uxn"), WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, NULL, NULL, hInst, (void *)file);
 }
