@@ -194,7 +194,7 @@ typedef struct EmuWindow
 	HDC hDibDC;
 	SIZE dib_dims;
 
-	BYTE running, exec_state, needs_clear, host_cursor;
+	BYTE running, exec_state, host_cursor;
 
 	EmuInEvent *queue_buffer;
 	USHORT queue_count, queue_first;
@@ -1273,7 +1273,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		return 0;
 	case WM_PAINT:
 	{
-		PAINTSTRUCT ps; HDC hDC; BITMAPINFO bmi; RECT crect;
+		PAINTSTRUCT ps; HDC hDC; BITMAPINFO bmi; RECT crect, tmp;
 		GetClientRect(hwnd, &crect);
 		SetUpBitmapInfo(&bmi, d->screen.width, d->screen.height);
 		if (d->dib_dims.cx != d->screen.width || d->dib_dims.cy != d->screen.height)
@@ -1294,9 +1294,14 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			}
 			d->dib_dims.cx = d->screen.width;
 			d->dib_dims.cy = d->screen.height;
-			d->needs_clear = 1;
 		}
-		if (!d->hBMP || !d->hDibDC) return 0; /* TODO should at least clear window */
+		hDC = BeginPaint(hwnd, &ps);
+		if (!EqualRect(&ps.rcPaint, &d->viewport_rect))
+		{
+			FillRect(hDC, &ps.rcPaint, (HBRUSH)GetStockObject(BLACK_BRUSH));
+			if (!IntersectRect(&tmp, &d->viewport_rect, &ps.rcPaint)) goto done_painting;
+		}
+		if (!d->hBMP || !d->hDibDC) goto done_painting;
 		{
 			DIBSECTION sec; UxnScreen *p = &d->screen;
 			/* SIZE_T width = MIN(p->width, sec.dsBm.bmWidth), height = MIN(p->height, sec.dsBm.bmHeight); */
@@ -1308,13 +1313,6 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			for (i = 0; i < size; i++)
 				((ULONG *)sec.dsBm.bmBits)[i] = palette[p->fg[i] << 2 | p->bg[i]];
 		}
-		hDC = BeginPaint(hwnd, &ps);
-		if (d->needs_clear)
-		{
-			SelectObject(hDC, GetStockObject(BLACK_BRUSH));
-			Rectangle(hDC, 0, 0, crect.right, crect.bottom);
-			d->needs_clear = 0;
-		}
 		/* One-line version, doesn't need the retained stuff, but probably slower: */
 		/* SetDIBitsToDevice(hDC, 0, 0, UXN_DEFAULT_WIDTH, UXN_DEFAULT_HEIGHT, 0, 0, 0, UXN_DEFAULT_HEIGHT, uxn_screen.pixels, &bmi, DIB_RGB_COLORS); */
 		/* SetDIBits(d->hDibDC, d->hBMP, 0, UXN_DEFAULT_HEIGHT, d->screen.pixels, &bmi, DIB_RGB_COLORS); */
@@ -1323,6 +1321,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			BitBlt(hDC, d->viewport_rect.left, d->viewport_rect.top, d->screen.width, d->screen.height, d->hDibDC, 0, 0, SRCCOPY);
 		else
 			StretchBlt(hDC, d->viewport_rect.left, d->viewport_rect.top, d->viewport_rect.right - d->viewport_rect.left, d->viewport_rect.bottom - d->viewport_rect.top, d->hDibDC, 0, 0, d->screen.width, d->screen.height, SRCCOPY);
+	done_painting:
 		EndPaint(hwnd, &ps);
 		d->last_paint = TimeStampNow();
 		if (d->needs_audio == 1)
@@ -1343,7 +1342,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	}
 	case WM_SIZE:
 		CalcUxnViewport(d);
-		d->needs_clear = 1;
+		InvalidateRect(d->hWnd, NULL, FALSE);
 		return 0;
 
 	{
