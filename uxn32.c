@@ -854,17 +854,16 @@ static void CreateConsoleWindow(EmuWindow *emu)
 	RECT rect; rect.left = 0; rect.top = 0; rect.right = 200; rect.bottom = 150;
 	AdjustWindowRectEx(&rect, wStyle, FALSE, exStyle);
 	emu->consoleHWnd = CreateWindowEx(exStyle, ConsoleWinClass, TEXT("Console"), wStyle, CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, emu->hWnd, NULL, (HINSTANCE)GetWindowLongPtr(emu->hWnd, GWLP_HINSTANCE), (void *)NULL);
-	ShowWindow(emu->consoleHWnd, SW_SHOW);
 }
 
 static void DevOut_Console(Device *dev, Uint8 port)
 {
 	char c[3]; EmuWindow *emu = EmuOfDevice(dev); ConWindow *con; int len;
-	if (port <= 0x7) return;
+	if (port < 0x8) return;
 	if ((c[0] = dev->dat[port]) == '\n') c[0] = '\r', c[1] = '\n', c[2] = 0;
 	else c[1] = 0;
 	if (!emu->consoleHWnd) CreateConsoleWindow(emu);
-	else if (!IsWindowVisible(emu->consoleHWnd)) ShowWindow(emu->consoleHWnd, SW_SHOW);
+	if (port == 0x9 && !IsWindowVisible(emu->consoleHWnd)) ShowWindow(emu->consoleHWnd, SW_SHOW);
 	con = (ConWindow *)GetWindowLongPtr(emu->consoleHWnd, GWLP_USERDATA);
 	len = GetWindowTextLength(con->editHWnd);
 	SendMessage(con->editHWnd, EM_SETSEL, len, len);
@@ -1282,6 +1281,10 @@ static LRESULT CALLBACK ConsoleWinProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	case WM_KEYDOWN:
 		if (wParam == VK_ESCAPE) { ShowWindow(hWnd, SW_HIDE); return 0; }
 		break;
+	case WM_COMMAND:
+		/* Not sure if this is the right way to do this */
+		SendMessage((HWND)GetWindowLongPtr(hWnd, GWLP_HWNDPARENT), msg, wParam, lParam);
+		return 0;
 	}
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
@@ -1516,6 +1519,10 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		case IDM_CLOSEWINDOW: PostMessage(hwnd, WM_CLOSE, 0, 0); return 0;
 		case IDM_PAUSE: if (d->running) PauseVM(d); else UnpauseVM(d); return 0;
 			break;
+		case IDM_TOGGLECONSOLE:
+			if (!d->consoleHWnd) CreateConsoleWindow(d);
+			ShowWindow(d->consoleHWnd, IsWindowVisible(d->consoleHWnd) ? SW_HIDE : SW_SHOW);
+			return 0;
 		}
 		break;
 
