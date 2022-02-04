@@ -71,6 +71,7 @@ typedef ULONG_PTR DWORD_PTR, *PDWORD_PTR;
 static LARGE_INTEGER _perfcount_freq;
 static LONGLONG ExecutionTimeLimit;
 #define RepaintTimeLimit ExecutionTimeLimit
+static LPCSTR EmuWinClass = TEXT("uxn_emu_win"), ConsoleWinClass = TEXT("uxn_console_win");
 
 static LONGLONG LongLongMulDiv(LONGLONG value, LONGLONG numer, LONGLONG denom)
 {
@@ -189,7 +190,7 @@ typedef struct EmuWindow
 {
 	UxnBox *box;
 	Device *dev_screen, *dev_mouse, *dev_ctrl, *dev_audio0;
-	HWND hWnd;
+	HWND hWnd, consoleHWnd;
 	HBITMAP hBMP;
 	HDC hDibDC;
 	SIZE dib_dims;
@@ -211,6 +212,14 @@ typedef struct EmuWindow
 	BYTE needs_audio; /* 3 states, 0: not needed, 1: plz init, 2: init started */
 	TCHAR rom_path[MAX_PATH];
 } EmuWindow;
+
+typedef struct ConWindow
+{
+	HWND editHWnd;
+	HFONT hFont;
+} ConWindow;
+
+#define ID_CONEDIT 100
 
 static int VFmtBox(HWND hWnd, LPCSTR title, UINT flags, char const *fmt, va_list ap)
 {
@@ -839,9 +848,30 @@ result:
 	DEVPOKE(d, 0x2, result);
 }
 
-#define DevOut_Console DevOut_Dummy
+static void CreateConsoleWindow(EmuWindow *emu)
+{
+	DWORD exStyle = WS_EX_TOOLWINDOW, wStyle = WS_SIZEBOX | WS_SYSMENU;
+	RECT rect; rect.left = 0; rect.top = 0; rect.right = 200; rect.bottom = 150;
+	AdjustWindowRectEx(&rect, wStyle, FALSE, exStyle);
+	emu->consoleHWnd = CreateWindowEx(exStyle, ConsoleWinClass, TEXT("Console"), wStyle, CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, emu->hWnd, NULL, (HINSTANCE)GetWindowLongPtr(emu->hWnd, GWLP_HINSTANCE), (void *)NULL);
+	ShowWindow(emu->consoleHWnd, SW_SHOW);
+}
 
-BOOL LoadROMIntoBox(UxnBox *box, LPCSTR filename)
+static void DevOut_Console(Device *dev, Uint8 port)
+{
+	char c[3]; EmuWindow *emu = EmuOfDevice(dev); ConWindow *con; int len;
+	if (port <= 0x7) return;
+	if ((c[0] = dev->dat[port]) == '\n') c[0] = '\r', c[1] = '\n', c[2] = 0;
+	else c[1] = 0;
+	if (!emu->consoleHWnd) CreateConsoleWindow(emu);
+	else if (!IsWindowVisible(emu->consoleHWnd)) ShowWindow(emu->consoleHWnd, SW_SHOW);
+	con = (ConWindow *)GetWindowLongPtr(emu->consoleHWnd, GWLP_USERDATA);
+	len = GetWindowTextLength(con->editHWnd);
+	SendMessage(con->editHWnd, EM_SETSEL, len, len);
+	SendMessage(con->editHWnd, EM_REPLACESEL, 0, (LPARAM)c);
+}
+
+static BOOL LoadROMIntoBox(UxnBox *box, LPCSTR filename)
 {
 	DWORD bytes_read;
 	BOOL result = LoadFileInto(filename, (char *)(box + 1) + UXN_ROM_OFFSET, UXN_RAM_SIZE - UXN_ROM_OFFSET, &bytes_read);
@@ -1208,9 +1238,7 @@ static LRESULT CALLBACK AboutBoxProc(HWND hDlg, UINT message, WPARAM wParam, LPA
 	return FALSE;
 }
 
-static LPCSTR EmuWinClass = TEXT("uxn_emu_win");
-
-HWND CreateUxnWindow(HINSTANCE hInst, LPCSTR file)
+static HWND CreateUxnWindow(HINSTANCE hInst, LPCSTR file)
 {
 	RECT rect;
 	rect.left = 0; rect.top = 0;
@@ -1224,6 +1252,38 @@ static void CloneWindow(EmuWindow *a)
 	HWND hWnd = CreateUxnWindow((HINSTANCE)GetWindowLongPtr(a->hWnd, GWLP_HINSTANCE), NULL);
 	ShowWindow(hWnd, SW_SHOW);
 	PostMessage(hWnd, UXNMSG_BecomeClone, (WPARAM)a, 0);
+}
+
+static LRESULT CALLBACK ConsoleWinProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+	ConWindow *d = (ConWindow *)GetWindowLongPtr(hWnd, GWLP_USERDATA);
+	switch (msg)
+	{
+	case WM_CREATE:
+		d = AllocZeroedOrFail(sizeof *d);
+		SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)d);
+		d->editHWnd = CreateWindowEx(
+			0, TEXT("EDIT"), NULL,
+			WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_LEFT | ES_MULTILINE | ES_AUTOVSCROLL,
+			0, 0, 0, 0, hWnd, (HMENU)ID_CONEDIT,
+			(HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
+		d->hFont = CreateFont(8, 6, 0, 0, 0, 0, 0, 0, OEM_CHARSET, OUT_RASTER_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, FIXED_PITCH, TEXT("Terminal"));
+		SendMessage(d->editHWnd, WM_SETFONT, (WPARAM)d->hFont, 0);
+		break;
+	case WM_CLOSE:
+		ShowWindow(hWnd, SW_HIDE);
+		return 0;
+	case WM_DESTROY:
+		HeapFree(GetProcessHeap(), 0, d);
+		return 0;
+	case WM_SIZE:
+        MoveWindow(d->editHWnd, 0, 0, LOWORD(lParam), HIWORD(lParam), TRUE);
+		return 0;
+	case WM_KEYDOWN:
+		if (wParam == VK_ESCAPE) { ShowWindow(hWnd, SW_HIDE); return 0; }
+		break;
+	}
+	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
 static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
@@ -1511,6 +1571,10 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	/* wc.hIconSm = LoadIcon(instance, (LPCTSTR)IDI_UXN32); */
 	wc.style = CS_HREDRAW | CS_VREDRAW;
 	/* wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH); */
+	RegisterClassEx(&wc);
+	wc.lpszClassName = ConsoleWinClass;
+	wc.lpszMenuName = NULL;
+	wc.lpfnWndProc = ConsoleWinProc;
 	RegisterClassEx(&wc);
 	hAccel = LoadAccelerators(instance, (LPCSTR)IDC_UXN32);
 
