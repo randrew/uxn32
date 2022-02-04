@@ -34,7 +34,8 @@ Uxn32 TODO
 - [x] ~~Add pixel doubling/scaling.~~
 - [x] ~~Audio output.~~
 - [ ] Volume control.
-- [ ] Add console input and output.
+- [x] ~~Add console output.~~
+- [ ] Add console input.
 - [x] ~~Add File, View, etc. menus.~~
 - [ ] Add toggle to show/hide menu bar.
 - [ ] Add preferences.
