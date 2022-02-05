@@ -217,6 +217,7 @@ typedef struct ConWindow
 {
 	HWND editHWnd;
 	HFONT hFont;
+	BYTE has_newline;
 } ConWindow;
 
 #define ID_CONEDIT 100
@@ -858,13 +859,15 @@ static void CreateConsoleWindow(EmuWindow *emu)
 
 static void DevOut_Console(Device *dev, Uint8 port)
 {
-	char c[3]; EmuWindow *emu = EmuOfDevice(dev); ConWindow *con; int len;
+	char c[4]; EmuWindow *emu = EmuOfDevice(dev); ConWindow *con; int i = 0, len;
 	if (port < 0x8) return;
-	if ((c[0] = dev->dat[port]) == '\n') c[0] = '\r', c[1] = '\n', c[2] = 0;
-	else c[1] = 0;
 	if (!emu->consoleHWnd) CreateConsoleWindow(emu);
-	if (port == 0x9 && !IsWindowVisible(emu->consoleHWnd)) ShowWindow(emu->consoleHWnd, SW_SHOW);
+	if (!IsWindowVisible(emu->consoleHWnd)) ShowWindow(emu->consoleHWnd, SW_SHOWNOACTIVATE);
 	con = (ConWindow *)GetWindowLongPtr(emu->consoleHWnd, GWLP_USERDATA);
+	if (con->has_newline) c[i++] = '\r', c[i++] = '\n', con->has_newline = 0;
+	if ((c[i] = dev->dat[port]) == '\n') con->has_newline = 1;
+	else i++;
+	c[i] = 0;
 	len = GetWindowTextLength(con->editHWnd);
 	SendMessage(con->editHWnd, EM_SETSEL, len, len);
 	SendMessage(con->editHWnd, EM_REPLACESEL, 0, (LPARAM)c);
