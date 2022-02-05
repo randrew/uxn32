@@ -92,7 +92,7 @@ CAPTION "About"
 FONT 9, "MS Shell Dlg"
 BEGIN
     ICON            IDI_UXN32,IDC_MYICON,5,5,20,20,SS_SUNKEN
-    LTEXT           "Uxn32 Version 1.2\nAndrew Richards",IDC_STATIC,32,7,65,
+    LTEXT           "Uxn32 Version 1.3b\nAndrew Richards",IDC_STATIC,32,7,65,
                     20,SS_NOPREFIX
     LTEXT           "Original Uxn:\nDevine Lu Linvega\nAndrew Alderwick\nSigrid Solveig Haflinudottir",
                     IDC_STATIC,5,33,90,35
