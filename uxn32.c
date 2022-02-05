@@ -1564,7 +1564,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		CopyMemory(d->screen.bg, b->screen.bg, d->screen.width * d->screen.height * 2);
 		CopyMemory(d->rom_path, b->rom_path, MAX_PATH);
 		/* can't copy filer state */
-		UnpauseVM(d);
+		if (b->running) UnpauseVM(d);
 		UpdateWindow(d->hWnd);
 		return 0;
 	}
