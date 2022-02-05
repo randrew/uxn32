@@ -1436,7 +1436,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	{
 		POINT mouse; BOOL mouse_in_uxn;
 		mouse.x = LOWORD(lparam); mouse.y = HIWORD(lparam);
-		mouse_in_uxn = PtInRect(&d->viewport_rect, mouse) && d->running; /* TODO fix unpause without moving mouse */
+		mouse_in_uxn = PtInRect(&d->viewport_rect, mouse) && d->running;
 		SetHostCursorVisible(d, !mouse_in_uxn);
 		if (!mouse_in_uxn) break;
 		BindPointToLocalUxnScreen(&d->viewport_rect, d->viewport_scale, &mouse);
