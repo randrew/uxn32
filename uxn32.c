@@ -219,8 +219,6 @@ typedef struct ConWindow
 	BYTE has_newline;
 } ConWindow;
 
-#define ID_CONEDIT 100
-
 static int VFmtBox(HWND hWnd, LPCSTR title, UINT flags, char const *fmt, va_list ap)
 {
 	char buffer[1024];
@@ -1274,7 +1272,7 @@ static LRESULT CALLBACK ConsoleWinProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		d->editHWnd = CreateWindowEx(
 			WS_EX_STATICEDGE, TEXT("EDIT"), NULL,
 			WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_LEFT | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY,
-			0, 0, 0, 0, hWnd, (HMENU)ID_CONEDIT,
+			0, 0, 0, 0, hWnd, (HMENU)1,
 			(HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
 		SetWindowLongPtr(d->editHWnd, GWLP_USERDATA, (LONG_PTR)GetWindowLongPtr(d->editHWnd, GWLP_WNDPROC));
 		SetWindowLongPtr(d->editHWnd, GWLP_WNDPROC, (LONG_PTR)ConOutEditProc);
@@ -1590,9 +1588,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	wc.lpszMenuName = MAKEINTRESOURCE(IDC_UXN32);
 	wc.hCursor = LoadCursor(NULL, IDC_ARROW);
 	wc.hIcon = LoadIcon(instance, (LPCTSTR)IDI_UXN32); /* use this one */
-	/* wc.hIconSm = LoadIcon(instance, (LPCTSTR)IDI_UXN32); */
 	wc.style = CS_HREDRAW | CS_VREDRAW;
-	/* wc.hbrBackground = (HBRUSH)GetStockObject(BLACK_BRUSH); */
 	RegisterClassEx(&wc);
 	wc.lpszClassName = ConsoleWinClass;
 	wc.lpszMenuName = NULL;
