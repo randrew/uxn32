@@ -377,7 +377,6 @@ static Uint8 DevIn_Screen(Device *d, Uint8 port)
 	case 0x3: return screen->width;
 	case 0x4: return screen->height >> 8;
 	case 0x5: return screen->height;
-	case 0x6:
 	default: return d->dat[port];
 	}
 }
