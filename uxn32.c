@@ -1457,12 +1457,12 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			SendInputEvent(d, EmuIn_ResetKeys, 0, 0, 0);
 		/* This doesn't fix starting to hold a key down before activating this window, but that seems to be hard due to garbage GetKeyState() after a dialog closes or when clicking on the window title bar. */
 		break;
-	case WM_SYSCHAR: /* Suppress Alt+letter menu accelerators when VM is focused and running */
-		if (d->running && !d->host_cursor) return 0;
+	case WM_SYSCHAR: /* Holding alt and pressing a key */
+		if (d->running && !d->host_cursor) goto char_down; /* Use alt+letter as key input when VM is focused and running */
 		break;
 	case WM_KEYDOWN: case WM_SYSKEYDOWN: case WM_KEYUP: case WM_SYSKEYUP:
 	{
-		int up = (int)lparam & 1 << 31, was_down = lparam & 1 << 30, bits = 0; TCHAR keyChar;
+		int up = (int)lparam & 1 << 31, was_down = lparam & 1 << 30, bits = 0;
 		switch ((int)wparam)
 		{
 		case VK_CONTROL: bits = 0x01; break;
@@ -1482,13 +1482,15 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	allow_key_repeat:
 		SendInputEvent(d, up ? EmuIn_CtrlUp : EmuIn_CtrlDown, bits, 0, 0);
 		return 0;
-	other_vkey:
-		if (up || !(keyChar = MapVirtualKey(wparam, MAPVK_VK_TO_CHAR))) break;
+	other_vkey: /* Holding control and pressing a keyboard key */
+		if (!(GetKeyState(VK_CONTROL) & 0x8000)) break; /* If ctrl isn't held, let it be handled as WM_CHAR instead. */
+		if (up || !(wparam = MapVirtualKey(wparam, MAPVK_VK_TO_CHAR))) break;
 		/* Holding Alt or Ctrl causes characters to appear upper case, so if shift isn't held, turn 'em lower. */
-		if (keyChar >= 'A' && keyChar <= 'Z' && !(!(GetKeyState(VK_SHIFT) & 0x8000) ^ !(GetKeyState(VK_CAPITAL)))) keyChar += 0x20;
+		if (wparam >= 'A' && wparam <= 'Z' && !(!(GetKeyState(VK_SHIFT) & 0x8000) ^ !(GetKeyState(VK_CAPITAL)))) wparam += 0x20;
+	case WM_CHAR: char_down: /* WM_CHAR is pressing a key without holding alt or ctrl */
 		/* Disallow control characters except tab, newline, etc. */
-		if (keyChar < 32 && keyChar != 8 && keyChar != 9 && keyChar != 10 && keyChar != 13 && keyChar != 27) break;
-		SendInputEvent(d, EmuIn_KeyChar, (BYTE)keyChar, 0, 0);
+		if (wparam < 32 && wparam != 8 && wparam != 9 && wparam != 10 && wparam != 13 && wparam != 27) break;
+		SendInputEvent(d, EmuIn_KeyChar, (BYTE)wparam, 0, 0);
 		return 0;
 	}
 	case WM_NCMOUSEMOVE:
