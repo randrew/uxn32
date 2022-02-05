@@ -414,29 +414,29 @@ static void DevOut_Screen(Device *d, Uint8 port)
 		}
 		break;
 	}
-	case 0xe:
+	case 0xE:
 	{
-		LONG x, y, width = screen->width, layer = d->dat[0xe] & 0x40;
+		LONG x, y, width = screen->width, layer = d->dat[0xE] & 0x40;
 		Uint8 *pixels = layer ? screen->fg : screen->bg;
 		DEVPEEK2(d, x, y, 0x8);
 		if (x < width && y < screen->height) /* poke pixel */
-			pixels[x + y * width] = d->dat[0xe] & 0x3;
+			pixels[x + y * width] = d->dat[0xE] & 0x3;
 		if (d->dat[0x6] & 0x01) DEVPOKE(d, 0x8, x + 1); /* auto x+1 */
-		if (d->dat[0x6] & 0x02) DEVPOKE(d, 0xa, y + 1); /* auto y+1 */
+		if (d->dat[0x6] & 0x02) DEVPOKE(d, 0xA, y + 1); /* auto y+1 */
 		break;
 	}
-	case 0xf:
+	case 0xF:
 	{
-		UINT x, y, addr, tmp, advnc = d->dat[0x6], sprite = d->dat[0xf];
+		UINT x, y, addr, tmp, advnc = d->dat[0x6], sprite = d->dat[0xF];
 		UINT twobpp = !!(sprite & 0x80);
 		Uint8 *layer_pixels = (sprite & 0x40) ? screen->fg : screen->bg;
 		DEVPEEK2(d, x, y, 0x8);
-		DEVPEEK(d, addr, 0xc);
-		DrawUxnSprite(screen, layer_pixels, x, y, &u->ram[addr], sprite & 0xf, sprite & 0x10, sprite & 0x20, twobpp);
+		DEVPEEK(d, addr, 0xC);
+		DrawUxnSprite(screen, layer_pixels, x, y, &u->ram[addr], sprite & 0xF, sprite & 0x10, sprite & 0x20, twobpp);
 		/* auto addr+length */
-		if (advnc & 0x04) { tmp = addr + 8 + twobpp * 8; DEVPOKE(d, 0xc, tmp); }
+		if (advnc & 0x04) { tmp = addr + 8 + twobpp * 8; DEVPOKE(d, 0xC, tmp); }
 		if (advnc & 0x01) { tmp = x + 8; DEVPOKE(d, 0x8, tmp); } /* auto x+8 */
-		if (advnc & 0x02) { tmp = y + 8; DEVPOKE(d, 0xa, tmp); } /* auto y+8 */
+		if (advnc & 0x02) { tmp = y + 8; DEVPOKE(d, 0xA, tmp); } /* auto y+8 */
 		break;
 	}
 	}
@@ -460,7 +460,7 @@ static void DevOut_System(Device *d, Uint8 port)
 	case 0x3: d->u->rst->ptr = d->dat[port]; return;
 	}
 
-	if (port > 0x7 && port < 0xe) /* modify palette */
+	if (port > 0x7 && port < 0xE) /* modify palette */
 	{
 		UxnScreen *p = ScreenOfDevice(d);
 		Uint8* addr = &d->dat[0x8];
@@ -468,10 +468,10 @@ static void DevOut_System(Device *d, Uint8 port)
 		for (i = 0, shift = 4; i < 4; ++i, shift ^= 4)
 		{
 			Uint8
-				r = (addr[0 + i / 2] >> shift) & 0x0f,
-				g = (addr[2 + i / 2] >> shift) & 0x0f,
-				b = (addr[4 + i / 2] >> shift) & 0x0f;
-			p->palette[i] = 0x0f000000 | r << 16 | g << 8 | b;
+				r = (addr[0 + i / 2] >> shift) & 0x0F,
+				g = (addr[2 + i / 2] >> shift) & 0x0F,
+				b = (addr[4 + i / 2] >> shift) & 0x0F;
+			p->palette[i] = 0x0F000000 | r << 16 | g << 8 | b;
 			p->palette[i] |= p->palette[i] << 4;
 		}
 	}
@@ -493,7 +493,7 @@ static Uint8 DevIn_Date(Device *d, Uint8 port)
 	case 0x7: return t.wDayOfWeek;
 	case 0x8: /* Nth day of year doesn't seem readily available in Win32 */
 	case 0x9: return 0;
-	case 0xa: return GetTimeZoneInformation(&zone) == 2;
+	case 0xA: return GetTimeZoneInformation(&zone) == 2;
 	}
 	return d->dat[port];
 }
@@ -645,11 +645,11 @@ static DWORD FileDevDelete(UxnFiler *f)
 }
 
 #define NOTE_PERIOD (UXN_SAMPLE_RATE * 0x4000 / 11025)
-#define ADSR_STEP (UXN_SAMPLE_RATE / 0xf)
+#define ADSR_STEP (UXN_SAMPLE_RATE / 0xF)
 
 static const Uint32 advances[12] = {
-	0x80000, 0x879c8, 0x8facd, 0x9837f, 0xa1451, 0xaadc1,
-	0xb504f, 0xbfc88, 0xcb2ff, 0xd7450, 0xe411f, 0xf1a1c
+	0x80000, 0x879C8, 0x8FACD, 0x9837F, 0xA1451, 0xAADC1,
+	0xB504F, 0xBFC88, 0xCB2FF, 0xD7450, 0xE411F, 0xF1A1C
 };
 
 static INT VoiceEnvelope(UxnVoice *c, Uint32 age)
@@ -694,9 +694,9 @@ static void VoiceStart(UxnVoice *c, Uint16 adsr, Uint8 pitch)
 	}
 	c->advance = advances[pitch % 12] >> (8 - pitch / 12);
 	c->a = ADSR_STEP * (adsr >> 12);
-	c->d = ADSR_STEP * (adsr >> 8 & 0xf) + c->a;
-	c->s = ADSR_STEP * (adsr >> 4 & 0xf) + c->d;
-	c->r = ADSR_STEP * (adsr >> 0 & 0xf) + c->s;
+	c->d = ADSR_STEP * (adsr >> 8 & 0xF) + c->a;
+	c->s = ADSR_STEP * (adsr >> 4 & 0xF) + c->d;
+	c->r = ADSR_STEP * (adsr >> 0 & 0xF) + c->s;
 	c->age = 0;
 	c->i = 0;
 	if (c->len <= 0x100) /* single cycle mode */
@@ -713,7 +713,7 @@ static Uint8 VoiceCalcVU(UxnVoice *c)
 	{
 		if (!c->volume[i]) continue;
 		sum[i] = 1 + VoiceEnvelope(c, c->age) * c->volume[i] / 0x800;
-		if (sum[i] > 0xf) sum[i] = 0xf;
+		if (sum[i] > 0xF) sum[i] = 0xF;
 	}
 	return (sum[0] << 4) | sum[1];
 }
@@ -802,13 +802,13 @@ void DevOut_Audio(Device *dev, Uint8 port)
 	Uint16 addr, adsr;
 	if (port != 0xF) return;
 	DEVPEEK(dev, adsr, 0x8);
-	DEVPEEK(dev, voice->len, 0xa);
-	DEVPEEK(dev, addr, 0xc);
+	DEVPEEK(dev, voice->len, 0xA);
+	DEVPEEK(dev, addr, 0xC);
 	voice->addr = &box->core.ram[addr]; /* TODO out of bounds possible? */
-	voice->volume[0] = dev->dat[0xe] >> 4;
-	voice->volume[1] = dev->dat[0xe] & 0xf;
-	voice->repeat = !(dev->dat[0xf] & 0x80);
-	VoiceStart(voice, adsr, dev->dat[0xf] & 0x7f);
+	voice->volume[0] = dev->dat[0xE] >> 4;
+	voice->volume[1] = dev->dat[0xE] & 0xF;
+	voice->repeat = !(dev->dat[0xF] & 0x80);
+	VoiceStart(voice, adsr, dev->dat[0xF] & 0x7F);
 	/* Defer initializing audio until after at least one paint event, because the window might not be visible yet, and this can cause a 50ms+ freeze, increasing the delay before the window is shown. */
 	if (!win->needs_audio) win->needs_audio = 1;
 }
@@ -822,11 +822,11 @@ void DevOut_File(Device *d, Uint8 port)
 	{
 	int peek_at; DWORD dst, avail;
 	case 0x5: peek_at = 0x4; goto calc;
-	case 0xd: peek_at = 0xc; goto calc;
-	case 0xf: peek_at = 0xe; goto calc;
+	case 0xD: peek_at = 0xC; goto calc;
+	case 0xF: peek_at = 0xE; goto calc;
 	calc:
 		DEVPEEK(d, dst, peek_at);
-		DEVPEEK(d, out_len, 0xa);
+		DEVPEEK(d, out_len, 0xA);
 		avail = UXN_RAM_SIZE - dst;
 		if (out_len > avail) out_len = avail;
 		out = (char *)u->ram + dst;
@@ -836,8 +836,8 @@ void DevOut_File(Device *d, Uint8 port)
 	case 0x5: result = FileDevStat(f, out, out_len); goto result;
 	case 0x6: result = FileDevDelete(f); goto result;
 	case 0x9: result = 0; FileDevPathChange(d); goto result;
-	case 0xd: result = FileDevRead(f, out, out_len); goto result;
-	case 0xf: result = FileDevWrite(f, out, out_len, d->dat[0x7]); goto result;
+	case 0xD: result = FileDevRead(f, out, out_len); goto result;
+	case 0xF: result = FileDevWrite(f, out, out_len, d->dat[0x7]); goto result;
 	}
 	return;
 result:
@@ -1102,7 +1102,7 @@ completed:
 		d->dev_ctrl->dat[3] = 0;
 		break;
 	case EmuIn_Wheel:
-		DEVPOKE2(d->dev_mouse, 0xa, 0, 0);
+		DEVPOKE2(d->dev_mouse, 0xA, 0, 0);
 		break;
 	}
 	d->exec_state = 0;
@@ -1146,7 +1146,7 @@ static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT
 		*pc = GETVECTOR(d->dev_mouse);
 		break;
 	case EmuIn_Wheel:
-		DEVPOKE2(d->dev_mouse, 0xa, x, y);
+		DEVPOKE2(d->dev_mouse, 0xA, x, y);
 		*pc = GETVECTOR(d->dev_mouse);
 		break;
 	case EmuIn_Screen:
