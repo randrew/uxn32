@@ -216,7 +216,6 @@ typedef struct EmuWindow
 typedef struct ConWindow
 {
 	HWND editHWnd;
-	HFONT hFont;
 	BYTE has_newline;
 } ConWindow;
 
@@ -1256,8 +1255,16 @@ static void CloneWindow(EmuWindow *a)
 	PostMessage(hWnd, UXNMSG_BecomeClone, (WPARAM)a, 0);
 }
 
+static LRESULT CALLBACK ConOutEditProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+	if (msg == WM_KEYDOWN && wParam == VK_ESCAPE || msg == WM_COMMAND)
+		return SendMessage(GetParent(hWnd), msg, wParam, lParam);
+	return CallWindowProc((WNDPROC)GetWindowLongPtr(hWnd, GWLP_USERDATA), hWnd, msg, wParam, lParam);
+}
+
 static LRESULT CALLBACK ConsoleWinProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+	static HFONT hFont;
 	ConWindow *d = (ConWindow *)GetWindowLongPtr(hWnd, GWLP_USERDATA);
 	switch (msg)
 	{
@@ -1265,12 +1272,14 @@ static LRESULT CALLBACK ConsoleWinProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		d = AllocZeroedOrFail(sizeof *d);
 		SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)d);
 		d->editHWnd = CreateWindowEx(
-			0, TEXT("EDIT"), NULL,
-			WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_LEFT | ES_MULTILINE | ES_AUTOVSCROLL,
+			WS_EX_STATICEDGE, TEXT("EDIT"), NULL,
+			WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_LEFT | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY,
 			0, 0, 0, 0, hWnd, (HMENU)ID_CONEDIT,
 			(HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
-		d->hFont = CreateFont(8, 6, 0, 0, 0, 0, 0, 0, OEM_CHARSET, OUT_RASTER_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, FIXED_PITCH, TEXT("Terminal"));
-		SendMessage(d->editHWnd, WM_SETFONT, (WPARAM)d->hFont, 0);
+		SetWindowLongPtr(d->editHWnd, GWLP_USERDATA, (LONG_PTR)GetWindowLongPtr(d->editHWnd, GWLP_WNDPROC));
+		SetWindowLongPtr(d->editHWnd, GWLP_WNDPROC, (LONG_PTR)ConOutEditProc);
+		if (!hFont) hFont = CreateFont(8, 6, 0, 0, 0, 0, 0, 0, OEM_CHARSET, OUT_RASTER_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, FIXED_PITCH, TEXT("Terminal"));
+		if (hFont) SendMessage(d->editHWnd, WM_SETFONT, (WPARAM)hFont, 0);
 		break;
 	case WM_CLOSE:
 		ShowWindow(hWnd, SW_HIDE);
@@ -1288,6 +1297,9 @@ static LRESULT CALLBACK ConsoleWinProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		/* Not sure if this is the right way to do this */
 		SendMessage((HWND)GetWindowLongPtr(hWnd, GWLP_HWNDPARENT), msg, wParam, lParam);
 		return 0;
+	case WM_CTLCOLORSTATIC:
+		if ((HWND)lParam != d->editHWnd) break;
+		return (LRESULT)GetSysColorBrush(COLOR_WINDOW);
 	}
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
