@@ -61,6 +61,8 @@ typedef ULONG_PTR DWORD_PTR, *PDWORD_PTR;
 #define UXN_DEFAULT_HEIGHT (40 * 8)
 #define UXN_RAM_SIZE (0x10000u)
 #define UXN_ROM_OFFSET (0x0100u)
+#define UXN_SAMPLE_RATE 44100
+#define UXN_VOICES 4
 
 #define DEVPEEK(d, o, x) ((o) = ((d)->dat[(x)] << 8) + (d)->dat[(x) + 1])
 #define DEVPOKE(d, a, v) ((d)->dat[(a)] = (v) >> 8, (d)->dat[(a) + 1] = (v))
@@ -117,9 +119,6 @@ static void _impl_ListRemove(LinkedList *list, ListLink *a)
 #define ListPopFront(list, type, link_field) OUTER_OF(_impl_ListPopFront(list), type, link_field)
 #define ListPushBack(list, a, link_field) _impl_ListPushBack((list), &(a)->link_field)
 #define ListRemove(list, a, link_field) _impl_ListRemove((list), &(a->link_field))
-
-#define UXN_SAMPLE_RATE 44100
-#define UXN_VOICES 4
 
 typedef struct UxnBox
 {
