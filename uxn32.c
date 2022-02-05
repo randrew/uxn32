@@ -1439,7 +1439,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		mouse_in_uxn = PtInRect(&d->viewport_rect, mouse) && d->running; /* TODO fix unpause without moving mouse */
 		SetHostCursorVisible(d, !mouse_in_uxn);
 		if (!mouse_in_uxn) break;
-		BindPointToLocalUxnScreen(&d->viewport_rect, d->viewport_scale, &mouse); /* could save a GetClientRect call by passing it optionally... */
+		BindPointToLocalUxnScreen(&d->viewport_rect, d->viewport_scale, &mouse);
 		SendInputEvent(d, mode, bits, (USHORT)mouse.x, (USHORT)mouse.y);
 		return 0;
 	}
