@@ -1368,6 +1368,7 @@ static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		return 0;
 	case WM_DESTROY:
 		KillTimer(hwnd, TimerID_Screen60hz);
+		SetHostCursorVisible(d, TRUE);
 		FreeUxnBox(d->box);
 		FreeUxnScreen(&d->screen);
 		ResetFiler(&d->filer);
