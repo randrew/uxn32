@@ -18,6 +18,7 @@
 #define IDM_CLOSEWINDOW                 32775
 #define IDM_PAUSE                       32776
 #define IDM_TOGGLECONSOLE               32777
+#define IDM_SELECTALL                   32778
 #define IDC_STATIC                      -1
 
 // Next default values for new objects
@@ -25,7 +26,7 @@
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        130
-#define _APS_NEXT_COMMAND_VALUE         32778
+#define _APS_NEXT_COMMAND_VALUE         32779
 #define _APS_NEXT_CONTROL_VALUE         1000
 #define _APS_NEXT_SYMED_VALUE           110
 #endif

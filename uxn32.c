@@ -73,7 +73,7 @@ typedef ULONG_PTR DWORD_PTR, *PDWORD_PTR;
 static LARGE_INTEGER _perfcount_freq;
 static LONGLONG ExecutionTimeLimit;
 #define RepaintTimeLimit ExecutionTimeLimit
-static LPCSTR EmuWinClass = TEXT("uxn_emu_win"), ConsoleWinClass = TEXT("uxn_console_win");
+static LPCSTR EmuWinClass = TEXT("uxn_emu_win"), ConsoleWinClass = TEXT("uxn_console_win"), EditWinClass = TEXT("EDIT");
 
 static LONGLONG LongLongMulDiv(LONGLONG value, LONGLONG numer, LONGLONG denom)
 {
@@ -174,6 +174,7 @@ enum EmuIn
 	EmuIn_MouseUp,
 	EmuIn_Wheel,
 	EmuIn_Screen,
+	EmuIn_Console,
 	EmuIn_Start
 };
 typedef struct EmuInEvent
@@ -214,7 +215,7 @@ typedef struct EmuWindow
 
 typedef struct ConWindow
 {
-	HWND editHWnd;
+	HWND outHWnd, inHWnd;
 	BYTE has_newline;
 } ConWindow;
 
@@ -863,9 +864,9 @@ static void DevOut_Console(Device *dev, Uint8 port)
 	if ((c[i] = dev->dat[port]) == '\n') con->has_newline = 1;
 	else i++;
 	c[i] = 0;
-	len = GetWindowTextLength(con->editHWnd);
-	SendMessage(con->editHWnd, EM_SETSEL, len, len);
-	SendMessage(con->editHWnd, EM_REPLACESEL, 0, (LPARAM)c);
+	len = GetWindowTextLength(con->outHWnd);
+	SendMessage(con->outHWnd, EM_SETSEL, len, len);
+	SendMessage(con->outHWnd, EM_REPLACESEL, 0, (LPARAM)c);
 }
 
 static BOOL LoadROMIntoBox(UxnBox *box, LPCSTR filename)
@@ -1094,6 +1095,7 @@ completed:
 	case EmuIn_MouseDown:
 	case EmuIn_MouseUp:
 	case EmuIn_Screen:
+	case EmuIn_Console:
 		break;
 	case EmuIn_Start:
 		SetTimer(d->hWnd, TimerID_Screen60hz, 16, NULL);
@@ -1151,6 +1153,10 @@ static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT
 		break;
 	case EmuIn_Screen:
 		*pc = GETVECTOR(d->dev_screen);
+		break;
+	case EmuIn_Console:
+		d->box->core.dev[0x1].dat[0x2] = bits;
+		*pc = GETVECTOR(&d->box->core.dev[0x1]);
 		break;
 	case EmuIn_Start:
 		*pc = UXN_ROM_OFFSET;
@@ -1253,30 +1259,49 @@ static void CloneWindow(EmuWindow *a)
 
 static LRESULT CALLBACK ConOutEditProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-	if (msg == WM_KEYDOWN && wParam == VK_ESCAPE || msg == WM_COMMAND)
+	LRESULT result;
+	if (msg == WM_COMMAND && LOWORD(wParam) == IDM_SELECTALL)
+		return SendMessage(hWnd, EM_SETSEL, 0, -1);
+	if (msg == WM_KEYDOWN && (wParam == VK_ESCAPE || wParam == VK_RETURN) || msg == WM_COMMAND)
 		return SendMessage(GetParent(hWnd), msg, wParam, lParam);
-	return CallWindowProc((WNDPROC)GetWindowLongPtr(hWnd, GWLP_USERDATA), hWnd, msg, wParam, lParam);
+	result = CallWindowProc((WNDPROC)GetWindowLongPtr(hWnd, GWLP_USERDATA), hWnd, msg, wParam, lParam);
+	if (result && msg == WM_CHAR && GetDlgCtrlID(hWnd) == 1)
+	{
+		HWND inputHWnd = GetDlgItem(GetParent(hWnd), 2);
+		SetFocus(inputHWnd);
+		result = SendMessage(inputHWnd, msg, wParam, lParam);
+	}
+	return result;
 }
 
 static LRESULT CALLBACK ConsoleWinProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-	static HFONT hFont;
 	ConWindow *d = (ConWindow *)GetWindowLongPtr(hWnd, GWLP_USERDATA);
 	switch (msg)
 	{
 	case WM_CREATE:
+	{
+		static HFONT hFont; HWND hwTmp; int i;
+		HINSTANCE hinstTmp = (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE);
+		if (!hFont) hFont = CreateFont(8, 6, 0, 0, 0, 0, 0, 0, OEM_CHARSET, OUT_RASTER_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, FIXED_PITCH, TEXT("Terminal"));
 		d = AllocZeroedOrFail(sizeof *d);
 		SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)d);
-		d->editHWnd = CreateWindowEx(
-			WS_EX_STATICEDGE, TEXT("EDIT"), NULL,
-			WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_LEFT | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY,
-			0, 0, 0, 0, hWnd, (HMENU)1,
-			(HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
-		SetWindowLongPtr(d->editHWnd, GWLP_USERDATA, (LONG_PTR)GetWindowLongPtr(d->editHWnd, GWLP_WNDPROC));
-		SetWindowLongPtr(d->editHWnd, GWLP_WNDPROC, (LONG_PTR)ConOutEditProc);
-		if (!hFont) hFont = CreateFont(8, 6, 0, 0, 0, 0, 0, 0, OEM_CHARSET, OUT_RASTER_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, FIXED_PITCH, TEXT("Terminal"));
-		if (hFont) SendMessage(d->editHWnd, WM_SETFONT, (WPARAM)hFont, 0);
+		d->outHWnd = CreateWindowEx(
+			WS_EX_STATICEDGE, EditWinClass, NULL,
+			WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY,
+			0, 0, 0, 0, hWnd, (HMENU)1, hinstTmp, NULL);
+		d->inHWnd = CreateWindowEx(
+			WS_EX_CLIENTEDGE, EditWinClass, NULL,
+			WS_CHILD | WS_VISIBLE,
+			0, 0, 0, 0, hWnd, (HMENU)2, hinstTmp, NULL);
+		for (i = 0, hwTmp = d->outHWnd; i < 2; hwTmp = (&d->outHWnd)[++i])
+		{
+			SetWindowLongPtr(hwTmp, GWLP_USERDATA, (LONG_PTR)GetWindowLongPtr(hwTmp, GWLP_WNDPROC));
+			SetWindowLongPtr(hwTmp, GWLP_WNDPROC,  (LONG_PTR)ConOutEditProc);
+			if (hFont) SendMessage(hwTmp, WM_SETFONT, (WPARAM)hFont, 0);
+		}
 		break;
+	}
 	case WM_CLOSE:
 		ShowWindow(hWnd, SW_HIDE);
 		return 0;
@@ -1284,17 +1309,33 @@ static LRESULT CALLBACK ConsoleWinProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		HeapFree(GetProcessHeap(), 0, d);
 		return 0;
 	case WM_SIZE:
-        MoveWindow(d->editHWnd, 0, 0, LOWORD(lParam), HIWORD(lParam), TRUE);
+        MoveWindow(d->outHWnd, 0, 0, LOWORD(lParam), HIWORD(lParam) - 15, TRUE);
+        MoveWindow(d->inHWnd, 0, HIWORD(lParam) - 15, LOWORD(lParam), 15, TRUE);
+		return 0;
+	case WM_ACTIVATE:
+		if (wParam != WA_INACTIVE) SetFocus(d->inHWnd);
 		return 0;
 	case WM_KEYDOWN:
 		if (wParam == VK_ESCAPE) { ShowWindow(hWnd, SW_HIDE); return 0; }
+		if (wParam == VK_RETURN)
+		{
+			TCHAR buff[2048]; HWND parent; EmuWindow *emu;
+			LRESULT chars_len = SendMessage(d->inHWnd, WM_GETTEXTLENGTH, 0, 0), i;
+			if (chars_len >= 2048 - 1 || !(parent = (HWND)GetWindowLongPtr(hWnd, GWLP_HWNDPARENT))) break;
+			emu = (EmuWindow *)GetWindowLongPtr(parent, GWLP_USERDATA);
+			chars_len = SendMessage(d->inHWnd, WM_GETTEXT, 2048, (LPARAM)buff);
+			SendMessage(d->inHWnd, WM_SETTEXT, 0, (LPARAM)(buff + chars_len));
+			buff[chars_len++] = '\n';
+			for (i = 0; i < chars_len; i++)
+				SendInputEvent(emu, EmuIn_Console, (BYTE)buff[i], 0, 0);
+		}
 		break;
 	case WM_COMMAND:
 		/* Not sure if this is the right way to do this */
 		SendMessage((HWND)GetWindowLongPtr(hWnd, GWLP_HWNDPARENT), msg, wParam, lParam);
 		return 0;
 	case WM_CTLCOLORSTATIC:
-		if ((HWND)lParam != d->editHWnd) break;
+		if ((HWND)lParam != d->outHWnd) break;
 		return (LRESULT)GetSysColorBrush(COLOR_WINDOW);
 	}
 	return DefWindowProc(hWnd, msg, wParam, lParam);
