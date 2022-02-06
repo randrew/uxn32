@@ -1257,7 +1257,7 @@ static void CloneWindow(EmuWindow *a)
 	PostMessage(hWnd, UXNMSG_BecomeClone, (WPARAM)a, 0);
 }
 
-static LRESULT CALLBACK ConOutEditProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+static LRESULT CALLBACK ConEditWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	LRESULT result;
 	if (msg == WM_COMMAND && LOWORD(wParam) == IDM_SELECTALL)
@@ -1274,7 +1274,7 @@ static LRESULT CALLBACK ConOutEditProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	return result;
 }
 
-static LRESULT CALLBACK ConsoleWinProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+static LRESULT CALLBACK ConsoleWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	ConWindow *d = (ConWindow *)GetWindowLongPtr(hWnd, GWLP_USERDATA);
 	switch (msg)
@@ -1297,7 +1297,7 @@ static LRESULT CALLBACK ConsoleWinProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		for (i = 0, hwTmp = d->outHWnd; i < 2; hwTmp = (&d->outHWnd)[++i])
 		{
 			SetWindowLongPtr(hwTmp, GWLP_USERDATA, (LONG_PTR)GetWindowLongPtr(hwTmp, GWLP_WNDPROC));
-			SetWindowLongPtr(hwTmp, GWLP_WNDPROC,  (LONG_PTR)ConOutEditProc);
+			SetWindowLongPtr(hwTmp, GWLP_WNDPROC,  (LONG_PTR)ConEditWndProc);
 			if (hFont) SendMessage(hwTmp, WM_SETFONT, (WPARAM)hFont, 0);
 		}
 		break;
@@ -1341,7 +1341,7 @@ static LRESULT CALLBACK ConsoleWinProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
 
-static LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
+static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
 	EmuWindow *d = (EmuWindow *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
 	switch (msg)
@@ -1625,7 +1625,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	ZeroMemory(&wc, sizeof wc);
 	wc.hInstance = instance;
 	wc.cbSize = sizeof wc;
-	wc.lpfnWndProc = WindowProc;
+	wc.lpfnWndProc = EmuWndProc;
 	wc.lpszClassName = EmuWinClass;
 	wc.lpszMenuName = MAKEINTRESOURCE(IDC_UXN32);
 	wc.hCursor = LoadCursor(NULL, IDC_ARROW);
@@ -1634,7 +1634,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	RegisterClassEx(&wc);
 	wc.lpszClassName = ConsoleWinClass;
 	wc.lpszMenuName = NULL;
-	wc.lpfnWndProc = ConsoleWinProc;
+	wc.lpfnWndProc = ConsoleWndProc;
 	RegisterClassEx(&wc);
 	hAccel = LoadAccelerators(instance, (LPCSTR)IDC_UXN32);
 
