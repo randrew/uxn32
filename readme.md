@@ -35,7 +35,7 @@ Uxn32 TODO
 - [x] ~~Audio output.~~
 - [ ] Volume control.
 - [x] ~~Add console output.~~
-- [ ] Add console input.
+- [x] ~~Add console input.~~
 - [x] ~~Add File, View, etc. menus.~~
 - [ ] Add toggle to show/hide menu bar.
 - [ ] Add preferences.
