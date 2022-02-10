@@ -129,9 +129,8 @@ typedef struct UxnBox
 } UxnBox;
 typedef struct UxnVoice
 {
-	Uint8 *addr;
 	Uint32 count, advance, period, age, a, d, s, r;
-	Uint16 i, len;
+	Uint16 wave_base, i, len;
 	Sint8 volume[2];
 	Uint8 repeat;
 } UxnVoice;
@@ -664,7 +663,7 @@ static INT VoiceEnvelope(UxnVoice *c, Uint32 age)
 	return 0x0000;
 }
 
-static int VoiceRender(UxnVoice *c, SHORT *out, SHORT *end)
+static int VoiceRender(UxnVoice *c, Uint8 *uxn_ram, SHORT *out, SHORT *end)
 {
 	INT s;
 	if (!c->advance || !c->period) return 0;
@@ -678,7 +677,7 @@ static int VoiceRender(UxnVoice *c, SHORT *out, SHORT *end)
 			if (!c->repeat) { c->advance = 0; break; }
 			c->i %= c->len;
 		}
-		s = (Sint8)(c->addr[c->i] + 0x80) * VoiceEnvelope(c, c->age++);
+		s = (Sint8)(uxn_ram[(c->wave_base + c->i) % UXN_RAM_SIZE] + 0x80) * VoiceEnvelope(c, c->age++);
 		*out++ += s * c->volume[0] / (0x180 * 2); /* Original: / (0x180 * 1) */
 		*out++ += s * c->volume[1] / (0x180 * 2); /* Temporarily make this quieter until we add volume slider */
 	}
@@ -735,7 +734,7 @@ static void WriteOutSynths(EmuWindow *d)
 	ZeroMemory(samples, AUDIO_BUF_SAMPLES * 2 * sizeof(SHORT));
 	for (i = still_running = 0; i < UXN_VOICES; i++)
 	{
-		still_running |= VoiceRender(&d->synth_voices[i], samples, samples + AUDIO_BUF_SAMPLES * 2);
+		still_running |= VoiceRender(&d->synth_voices[i], d->box->core.ram, samples, samples + AUDIO_BUF_SAMPLES * 2);
 	}
 	res = waveOutPrepareHeader(wave_out->hWaveOut, hdr, sizeof(WAVEHDR));
 	res = waveOutWrite(wave_out->hWaveOut, hdr, sizeof(WAVEHDR));
@@ -800,12 +799,11 @@ static void DevOut_Audio(Device *dev, Uint8 port)
 	UxnBox *box = OUTER_OF(dev->u, UxnBox, core); /* TODO you know this mess */
 	EmuWindow *win = (EmuWindow *)box->user;
 	UxnVoice *voice = &win->synth_voices[dev - win->dev_audio0];
-	Uint16 addr, adsr;
+	Uint16 adsr;
 	if (port != 0xF) return;
 	DEVPEEK(dev, adsr, 0x8);
 	DEVPEEK(dev, voice->len, 0xA);
-	DEVPEEK(dev, addr, 0xC);
-	voice->addr = &box->core.ram[addr]; /* TODO out of bounds possible? */
+	DEVPEEK(dev, voice->wave_base, 0xC);
 	voice->volume[0] = dev->dat[0xE] >> 4;
 	voice->volume[1] = dev->dat[0xE] & 0xF;
 	voice->repeat = !(dev->dat[0xF] & 0x80);
