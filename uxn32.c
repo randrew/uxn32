@@ -795,7 +795,7 @@ static Uint8 DevIn_Audio(Device *dev, Uint8 port)
 	return dev->dat[port];
 }
 
-void DevOut_Audio(Device *dev, Uint8 port)
+static void DevOut_Audio(Device *dev, Uint8 port)
 {
 	UxnBox *box = OUTER_OF(dev->u, UxnBox, core); /* TODO you know this mess */
 	EmuWindow *win = (EmuWindow *)box->user;
@@ -814,7 +814,7 @@ void DevOut_Audio(Device *dev, Uint8 port)
 	if (!win->needs_audio) win->needs_audio = 1;
 }
 
-void DevOut_File(Device *d, Uint8 port)
+static void DevOut_File(Device *d, Uint8 port)
 {
 	DWORD result = 0, /* next inits suppress msvc warning */ out_len = 0; char *out = 0;
 	UxnFiler *f = FilerOfDevice(d);
