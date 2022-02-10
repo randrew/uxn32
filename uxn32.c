@@ -2,9 +2,9 @@
 #define NOMINMAX
 #include "resource.h"
 #include "core32.h"
-#include <windows.h>
+#include <Windows.h>
 #include <shellapi.h>
-#include <shlwapi.h>
+#include <Shlwapi.h>
 #include <commdlg.h>
 #include <mmsystem.h>
 
