@@ -1267,10 +1267,10 @@ static void OpenBeetbugWindow(EmuWindow *emu)
 
 typedef struct BeetbugWin {
 	EmuWindow *emu;
-	HWND hWnd, hList;
+	HWND hWnd, hDisList, hHexList;
 } BeetbugWin;
 
-static int DecodeUxnInstr(TCHAR *out, BYTE instr)
+static int DecodeUxnOpcode(TCHAR *out, BYTE instr)
 {
 	static LPCSTR const op_names =
 	TEXT("LITINCPOPDUPNIPSWPOVRROTEQUNEQGTHLTHJMPJCNJSRSTHLDZSTZLDRSTRLDASTADEIDEOADDSUBMULDIVANDORAEORSFT");
@@ -1283,7 +1283,7 @@ static int DecodeUxnInstr(TCHAR *out, BYTE instr)
 	return n;
 }
 
-static LRESULT BeetbugListNotify(BeetbugWin *d, LPARAM lParam)
+static LRESULT BeetbugDisListNotify(BeetbugWin *d, LPARAM lParam)
 {
 	switch (((LPNMHDR)lParam)->code)
 	{
@@ -1296,7 +1296,36 @@ static LRESULT BeetbugListNotify(BeetbugWin *d, LPARAM lParam)
 			{
 			case 1: wsprintf(buff, "%04X", (UINT)di->item.iItem); break;
 			case 2: wsprintf(buff, "%02X", (UINT)d->emu->box->core.ram[di->item.iItem]); break;
-			case 3: DecodeUxnInstr(buff, (BYTE)d->emu->box->core.ram[di->item.iItem]); break;
+			case 3: DecodeUxnOpcode(buff, (BYTE)d->emu->box->core.ram[di->item.iItem]); break;
+			default: return 0;
+			}
+			lstrcpyn(di->item.pszText, buff, di->item.cchTextMax);
+		}
+		break;
+	}
+	}
+	return 0;
+}
+static LRESULT BeetbugHexListNotify(BeetbugWin *d, LPARAM lParam)
+{
+	switch (((LPNMHDR)lParam)->code)
+	{
+	case LVN_GETDISPINFO:
+	{
+		LV_DISPINFO *di = (LV_DISPINFO *)lParam; UINT addr = di->item.iItem * 8; TCHAR buff[1024];
+		if (di->item.mask & LVIF_TEXT)
+		{
+			switch (di->item.iSubItem)
+			{
+			case 0: wsprintf(buff, "%04X", addr); break;
+			case 1:
+			{
+				BYTE *mem = d->emu->box->core.ram + addr;
+				wsprintf(buff, "%02X%02X %02X%02X %02X%02X %02X%02X",
+					(UINT)mem[0], (UINT)mem[1], (UINT)mem[2], (UINT)mem[3],
+					(UINT)mem[4], (UINT)mem[5], (UINT)mem[6], (UINT)mem[7]);
+				break;
+			}
 			default: return 0;
 			}
 			lstrcpyn(di->item.pszText, buff, di->item.cchTextMax);
@@ -1314,40 +1343,43 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	{
 	case WM_CREATE:
 	{
-		static HFONT hFont; /* TODO REDUNDANT */
+		static HFONT hFont; /* TODO REDUNDANT */ LONG_PTR i; HWND list, *plist; LV_COLUMN col;
 		if (!hFont) hFont = CreateFont(8, 6, 0, 0, 0, 0, 0, 0, OEM_CHARSET, OUT_RASTER_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, FIXED_PITCH, TEXT("Terminal"));
 		d = AllocZeroedOrFail(sizeof *d);
 		SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)d);
 		d->emu = ((CREATESTRUCT *)lParam)->lpCreateParams;
 		d->hWnd = hWnd;
-		d->hList = CreateWindowEx(WS_EX_CLIENTEDGE, WC_LISTVIEW, NULL, WS_TABSTOP | WS_CHILD | WS_BORDER | WS_VISIBLE | LVS_AUTOARRANGE | LVS_REPORT | LVS_OWNERDATA, 0, 0, 0, 0, hWnd, (HMENU)1, (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
-		if (hFont) SendMessage(d->hList, WM_SETFONT, (WPARAM)hFont, 0);
-		ListView_DeleteAllItems(d->hList);
+		for (i = 0; i < 2; i++)
 		{
-			LV_COLUMN col;
-			ZeroMemory(&col, sizeof col);
-			col.mask = LVCF_FMT | LVCF_WIDTH | LVCF_SUBITEM;
-			col.iSubItem = 0;
-			col.cx = 10;
-			ListView_InsertColumn(d->hList, 0, &col);
-			col.mask |= LVCF_TEXT;
-			col.cx = 55;
-			col.iSubItem = 1;
-			col.fmt = LVCFMT_RIGHT;
-			col.pszText = TEXT("Address");
-			ListView_InsertColumn(d->hList, 1, &col);
-			col.cx = 25;
-			col.iSubItem = 2;
-			col.fmt = LVCFMT_LEFT;
-			col.pszText = 0;
-			ListView_InsertColumn(d->hList, 2, &col);
-			col.cx = 50;
-			col.iSubItem = 3;
-			col.fmt = LVCFMT_LEFT;
-			col.pszText = TEXT("Opcode");
-			ListView_InsertColumn(d->hList, 3, &col);
+			plist = &d->hDisList + i;
+			*plist = list = CreateWindowEx(
+				WS_EX_CLIENTEDGE, WC_LISTVIEW, NULL,
+				WS_TABSTOP | WS_CHILD | WS_BORDER | WS_VISIBLE |
+					LVS_AUTOARRANGE | LVS_REPORT | LVS_OWNERDATA | (i == 1 ? LVS_NOCOLUMNHEADER : 0),
+				0, 0, 0, 0, hWnd, (HMENU)(i + 1), (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
+			if (hFont) SendMessage(list, WM_SETFONT, (WPARAM)hFont, 0);
 		}
-		ListView_SetItemCount(d->hList, UXN_RAM_SIZE);
+		ListView_DeleteAllItems(d->hDisList);
+		ZeroMemory(&col, sizeof col);
+		col.mask = LVCF_FMT | LVCF_WIDTH | LVCF_SUBITEM;
+		col.cx = 10;
+		ListView_InsertColumn(d->hDisList, 0, &col);
+		col.mask |= LVCF_TEXT;
+		col.fmt = LVCFMT_RIGHT;
+		col.cx = 55; col.pszText = TEXT("Address");
+		ListView_InsertColumn(d->hDisList, 1, &col);
+		col.fmt = LVCFMT_LEFT;
+		col.cx = 25; col.pszText = NULL;
+		ListView_InsertColumn(d->hDisList, 2, &col);
+		col.cx = 50; col.pszText = TEXT("Opcode");
+		ListView_InsertColumn(d->hDisList, 3, &col);
+		ListView_SetItemCount(d->hDisList, UXN_RAM_SIZE);
+		ListView_DeleteAllItems(d->hHexList);
+		col.cx = 40; col.pszText = NULL;
+		ListView_InsertColumn(d->hHexList, 0, &col);
+		col.cx = 130;
+		ListView_InsertColumn(d->hHexList, 1, &col);
+		ListView_SetItemCount(d->hHexList, UXN_RAM_SIZE / 8);
 		SetTimer(hWnd, 1, 50, NULL);
 		break;
 	}
@@ -1358,17 +1390,20 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		HeapFree(GetProcessHeap(), 0, d);
 		break;
 	case WM_SIZE:
-		MoveWindow(d->hList, 0, 0, LOWORD(lParam), HIWORD(lParam), TRUE);
+		MoveWindow(d->hDisList, 0, 0, LOWORD(lParam), HIWORD(lParam) - 125, TRUE);
+		MoveWindow(d->hHexList, 0, HIWORD(lParam) - 125, LOWORD(lParam), 125, TRUE);
 		break;
 	case WM_NOTIFY:
-		if (wParam == 1) return BeetbugListNotify(d, lParam);
+		if (wParam == 1) return BeetbugDisListNotify(d, lParam);
+		if (wParam == 2) return BeetbugHexListNotify(d, lParam);
 		break;
 	case WM_TIMER:
 		if (wParam == 1)
 		{
 			// int top = ListView_GetTopIndex(d->hList), bot = top + ListView_GetCountPerPage(d->hList);
 			// for (; top < bot; top++) ListView_Update(d->hList, top);
-			InvalidateRect(d->hList, NULL, FALSE); /* TODO only changed areas */
+			InvalidateRect(d->hDisList, NULL, FALSE); /* TODO only changed areas */
+			InvalidateRect(d->hHexList, NULL, FALSE);
 			return 0;
 		}
 		break;
