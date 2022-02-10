@@ -1112,7 +1112,6 @@ residual:
 	if (TimeStampNow() - d->last_paint > RepaintTimeLimit) UpdateWindow(d->hWnd);
 }
 
-
 static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT y)
 {
 	Uint16 *pc = &d->box->core.pc;
