@@ -514,13 +514,12 @@ static UxnFiler * FilerOfDevice(Device *d)
 
 /* Returns 0 on error, including not enough space. Will not write to the dst buffer on error.
  * dst_len should be at least strlen(display_name) + 7 or it will definitely not work. */
-/* TODO error when file size beyond DWORD */
-static DWORD PrintDirListRow(char *dst, DWORD dst_len, char *display_name, DWORD file_size, DWORD is_dir)
+static DWORD PrintDirListRow(char *dst, DWORD dst_len, char *display_name, DWORD file_size_high, DWORD file_size_low, DWORD is_dir)
 {
-	int written; int ok = file_size < 0x10000; char tmp[1024 + 1];
+	int written; int ok = !file_size_high && file_size_low < 0x10000; char tmp[1024 + 1];
 	if (dst_len > sizeof tmp) dst_len = sizeof tmp;
 	if (is_dir || !ok) written = wsprintfA(tmp, ok ? "---- %s\n" : "???? %s\n", display_name);
-	else written = wsprintfA(tmp, "%04x %s\n", (unsigned int)file_size, display_name);
+	else written = wsprintfA(tmp, "%04x %s\n", (unsigned int)file_size_low, display_name);
 	if (written <= 0 || written >= (int)dst_len - 1) return 0;
 	CopyMemory(dst, tmp, (DWORD)written + 1);
 	return (DWORD)written;
@@ -586,7 +585,7 @@ static DWORD FileDevRead(UxnFiler *f, char *dst, DWORD dst_len)
 			/* DWORD copy = WideCharToMultiByte(1252, 0, ) */
 			DWORD written;
 			if (find_data->cFileName[0] == '.' && find_data->cFileName[1] == 0) goto next;
-			written = PrintDirListRow(dst, dst_len, find_data->cFileName, find_data->nFileSizeLow, find_data->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY);
+			written = PrintDirListRow(dst, dst_len, find_data->cFileName, find_data->nFileSizeHigh, find_data->nFileSizeLow, find_data->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY);
 			if (!written) break;
 			dst += written; result += written; dst_len -= written;
 		next:
@@ -629,9 +628,10 @@ static DWORD FileDevStat(UxnFiler *f, char *dst, DWORD dst_len)
 	if (f->hFile == INVALID_HANDLE_VALUE) return 0;
 	ok = GetFileInformationByHandle(f->hFile, &info);
 	dir = ok && info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY;
+	if (!ok) info.nFileSizeHigh = info.nFileSizeLow = (DWORD)-1;
 	CopyMemory(path_tmp, f->path, f->pathlen + 1);
 	PathStripPathA(path_tmp);
-	written = PrintDirListRow(dst, dst_len, path_tmp, ok ? info.nFileSizeLow : (DWORD)-1, dir);
+	written = PrintDirListRow(dst, dst_len, path_tmp, info.nFileSizeHigh, info.nFileSizeLow, dir);
 	ResetFiler(f);
 	return written;
 }
