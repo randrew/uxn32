@@ -918,12 +918,6 @@ static void InitEmuWindow(EmuWindow *d, HWND hWnd)
 	d->hWnd = hWnd; /* TODO cleanup reorder these assignments */
 	d->viewport_scale = 1;
 	SetUxnScreenSize(&d->screen, UXN_DEFAULT_WIDTH, UXN_DEFAULT_HEIGHT);
-#if 0 /* TODO test if there's any penalty for allocating this stuff in WM_PAINT */
-	HDC hDC = GetDC(hwnd);
-	d->hDibDC = CreateCompatibleDC(hDC);
-	d->hBMP = CreateDIBSection(d->hDibDC, &bmi, DIB_RGB_COLORS, NULL, NULL, 0);
-	ReleaseDC(hwnd, hDC);
-#endif
 	d->filer.hFile = d->filer.hFind = INVALID_HANDLE_VALUE;
 }
 
