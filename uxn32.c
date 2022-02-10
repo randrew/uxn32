@@ -1024,7 +1024,8 @@ static void ResetVM(EmuWindow *d)
 
 static void SynthesizeMouseMoveToCurrent(EmuWindow *d)
 {
-	/* Tnstead of factoring out the event code to a function and having the WindowProc call it,this is a temp hacky solution, because I still haven't made up my mind about how it should look. */
+	/* Tnstead of factoring out the event code to a function and having the WindowProc call it,
+	 * this is a temp hacky solution, because I still haven't made up my mind about how it should look. */
 	POINT mouse; RECT crect;
 	if (GetCursorPos(&mouse) && ScreenToClient(d->hWnd, &mouse) && GetClientRect(d->hWnd, &crect) && PtInRect(&crect, mouse))
 		PostMessage(d->hWnd, WM_MOUSEMOVE, 0, MAKELPARAM(mouse.x, mouse.y));
