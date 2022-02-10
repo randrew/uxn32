@@ -1104,10 +1104,11 @@ residual:
 	if (d->running && (d->exec_state || d->queue_count))
 		ListPushBack(&emus_needing_work, d, work_link);
 	InvalidateUxnScreenRect(d);
-	/* TODO ^- don't cause a bunch of invalidates if we're only going to draw at 20hz anyway?
-	 * Not always a clear win -- it makes it buffer and process more mouse moves and redraw less frequently.
-	 * In programs like Left that actually makes it feel less responsive. But it "completes" more mouse move
-	 * vector calls.*/
+	/* If the Uxn CPU is under heavy load, we may end up issuing more invalidations than will be
+	 * fulfilled with WM_PAINT events. We could avoid this by issuing less frequently, but that's
+	 * not always a clear win -- it makes it buffer and process more mouse moves and redraw less
+	 * frequently. In programs like Left that actually makes it less responsive to use input,
+	 * though it "completes" more mouse move vector calls.*/
 	if (TimeStampNow() - d->last_paint > RepaintTimeLimit) UpdateWindow(d->hWnd);
 }
 
