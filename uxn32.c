@@ -6,6 +6,7 @@
 #include <shellapi.h>
 #include <Shlwapi.h>
 #include <commdlg.h>
+#include <CommCtrl.h>
 #include <mmsystem.h>
 
 #pragma comment(lib, "user32.lib")
@@ -13,6 +14,7 @@
 #pragma comment(lib, "shell32.lib")
 #pragma comment(lib, "shlwapi.lib")
 #pragma comment(lib, "comdlg32.lib")
+#pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "winmm.lib")
 
 #if !defined(_WIN64) && _WINVER < 0x0500
@@ -74,6 +76,7 @@ static LARGE_INTEGER _perfcount_freq;
 static LONGLONG ExecutionTimeLimit;
 #define RepaintTimeLimit ExecutionTimeLimit
 static LPCSTR EmuWinClass = TEXT("uxn_emu_win"), ConsoleWinClass = TEXT("uxn_console_win"), EditWinClass = TEXT("EDIT");
+static LPCSTR BeetbugWinClass = TEXT("uxn_beetbug_win");
 
 static LONGLONG LongLongMulDiv(LONGLONG value, LONGLONG numer, LONGLONG denom)
 {
@@ -189,7 +192,7 @@ typedef struct EmuWindow
 {
 	UxnBox *box;
 	Device *dev_screen, *dev_mouse, *dev_ctrl, *dev_audio0;
-	HWND hWnd, consoleHWnd;
+	HWND hWnd, consoleHWnd, beetbugHWnd;
 	HBITMAP hBMP;
 	HDC hDibDC;
 	SIZE dib_dims;
@@ -1250,6 +1253,129 @@ static void CloneWindow(EmuWindow *a)
 	PostMessage(hWnd, UXNMSG_BecomeClone, (WPARAM)a, 0);
 }
 
+static void OpenBeetbugWindow(EmuWindow *emu)
+{
+	if (!emu->beetbugHWnd)
+	{
+		emu->beetbugHWnd = CreateWindowEx(
+			0, BeetbugWinClass, TEXT("Beetbug"), WS_OVERLAPPEDWINDOW,
+			CW_USEDEFAULT, CW_USEDEFAULT, 200, 300,
+			emu->hWnd, NULL, (HINSTANCE)GetWindowLongPtr(emu->hWnd, GWLP_HINSTANCE), emu);
+	}
+	if (!IsWindowVisible(emu->beetbugHWnd)) ShowWindow(emu->beetbugHWnd, SW_SHOW);
+}
+
+typedef struct BeetbugWin {
+	EmuWindow *emu;
+	HWND hWnd, hList;
+} BeetbugWin;
+
+static int DecodeUxnInstr(TCHAR *out, BYTE instr)
+{
+	static LPCSTR const op_names =
+	TEXT("LITINCPOPDUPNIPSWPOVRROTEQUNEQGTHLTHJMPJCNJSRSTHLDZSTZLDRSTRLDASTADEIDEOADDSUBMULDIVANDORAEORSFT");
+	int n = 3;
+	CopyMemory(out, op_names + (instr & 0x1F) * 3, 3 * sizeof(TCHAR));
+	if (instr & 0x20) out[n++] = '2';
+	if (instr & 0x80) out[n++] = 'k';
+	if (instr & 0x40) out[n++] = 'r';
+	out[n] = 0;
+	return n;
+}
+
+static LRESULT BeetbugListNotify(BeetbugWin *d, LPARAM lParam)
+{
+	switch (((LPNMHDR)lParam)->code)
+	{
+	case LVN_GETDISPINFO:
+	{
+		LV_DISPINFO *di = (LV_DISPINFO *)lParam; TCHAR buff[1024];
+		if (di->item.mask & LVIF_TEXT)
+		{
+			switch (di->item.iSubItem)
+			{
+			case 1: wsprintf(buff, "%04X", (UINT)di->item.iItem); break;
+			case 2: wsprintf(buff, "%02X", (UINT)d->emu->box->core.ram[di->item.iItem]); break;
+			case 3: DecodeUxnInstr(buff, (BYTE)d->emu->box->core.ram[di->item.iItem]); break;
+			default: return 0;
+			}
+			lstrcpyn(di->item.pszText, buff, di->item.cchTextMax);
+		}
+		break;
+	}
+	}
+	return 0;
+}
+
+static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+	BeetbugWin *d = (BeetbugWin *)GetWindowLongPtr(hWnd, GWLP_USERDATA);
+	switch (msg)
+	{
+	case WM_CREATE:
+	{
+		static HFONT hFont; /* TODO REDUNDANT */
+		if (!hFont) hFont = CreateFont(8, 6, 0, 0, 0, 0, 0, 0, OEM_CHARSET, OUT_RASTER_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, FIXED_PITCH, TEXT("Terminal"));
+		d = AllocZeroedOrFail(sizeof *d);
+		SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)d);
+		d->emu = ((CREATESTRUCT *)lParam)->lpCreateParams;
+		d->hWnd = hWnd;
+		d->hList = CreateWindowEx(WS_EX_CLIENTEDGE, WC_LISTVIEW, NULL, WS_TABSTOP | WS_CHILD | WS_BORDER | WS_VISIBLE | LVS_AUTOARRANGE | LVS_REPORT | LVS_OWNERDATA, 0, 0, 0, 0, hWnd, (HMENU)1, (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
+		if (hFont) SendMessage(d->hList, WM_SETFONT, (WPARAM)hFont, 0);
+		ListView_DeleteAllItems(d->hList);
+		{
+			LV_COLUMN col;
+			ZeroMemory(&col, sizeof col);
+			col.mask = LVCF_FMT | LVCF_WIDTH | LVCF_SUBITEM;
+			col.iSubItem = 0;
+			col.cx = 10;
+			ListView_InsertColumn(d->hList, 0, &col);
+			col.mask |= LVCF_TEXT;
+			col.cx = 55;
+			col.iSubItem = 1;
+			col.fmt = LVCFMT_RIGHT;
+			col.pszText = TEXT("Address");
+			ListView_InsertColumn(d->hList, 1, &col);
+			col.cx = 25;
+			col.iSubItem = 2;
+			col.fmt = LVCFMT_LEFT;
+			col.pszText = 0;
+			ListView_InsertColumn(d->hList, 2, &col);
+			col.cx = 50;
+			col.iSubItem = 3;
+			col.fmt = LVCFMT_LEFT;
+			col.pszText = TEXT("Opcode");
+			ListView_InsertColumn(d->hList, 3, &col);
+		}
+		ListView_SetItemCount(d->hList, UXN_RAM_SIZE);
+		SetTimer(hWnd, 1, 50, NULL);
+		break;
+	}
+	case WM_CLOSE:
+		ShowWindow(hWnd, SW_HIDE);
+		return 0;
+	case WM_DESTROY:
+		HeapFree(GetProcessHeap(), 0, d);
+		break;
+	case WM_SIZE:
+		MoveWindow(d->hList, 0, 0, LOWORD(lParam), HIWORD(lParam), TRUE);
+		break;
+	case WM_NOTIFY:
+		if (wParam == 1) return BeetbugListNotify(d, lParam);
+		break;
+	case WM_TIMER:
+		if (wParam == 1)
+		{
+			// int top = ListView_GetTopIndex(d->hList), bot = top + ListView_GetCountPerPage(d->hList);
+			// for (; top < bot; top++) ListView_Update(d->hList, top);
+			InvalidateRect(d->hList, NULL, FALSE); /* TODO only changed areas */
+			return 0;
+		}
+		break;
+	}
+	return DefWindowProc(hWnd, msg, wParam, lParam);
+}
+
 static LRESULT CALLBACK ConEditWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	LRESULT result;
@@ -1572,6 +1698,9 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			if (!d->consoleHWnd) CreateConsoleWindow(d);
 			ShowWindow(d->consoleHWnd, IsWindowVisible(d->consoleHWnd) ? SW_HIDE : SW_SHOW);
 			return 0;
+		case IDM_OPENBEETBUG:
+			OpenBeetbugWindow(d);
+			return 0;
 		}
 		break;
 
@@ -1630,7 +1759,11 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	wc.lpszMenuName = NULL;
 	wc.lpfnWndProc = ConsoleWndProc;
 	RegisterClassEx(&wc);
+	wc.lpszClassName = BeetbugWinClass;
+	wc.lpfnWndProc = BeetbugWndProc;
+	RegisterClassEx(&wc);
 	hAccel = LoadAccelerators(instance, (LPCSTR)IDC_UXN32);
+	InitCommonControls();
 
 	hWin = CreateUxnWindow(instance, TEXT("launcher.rom"));
 	ShowWindow(hWin, show_code);
