@@ -20,8 +20,8 @@ WITH REGARD TO THIS SOFTWARE.
 #define PUSH8(s, x) { if(s->ptr == 0xff) { errcode = 2; goto err; } s->dat[s->ptr++] = (x); }
 #define PUSH16(s, x) { if((j = s->ptr) >= 0xfe) { errcode = 2; goto err; } k = (x); s->dat[j] = k >> 8; s->dat[j + 1] = k; s->ptr = j + 2; }
 #define PUSH(s, x) { if(bs) { PUSH16(s, (x)) } else { PUSH8(s, (x)) } }
-#define POP8(o) { if(!(j = *sp)) { errcode = 0; goto err; } o = (Uint16)src->dat[--j]; *sp = j; }
-#define POP16(o) { if((j = *sp) <= 1) { errcode = 0; goto err; } o = src->dat[j - 1]; o += src->dat[j - 2] << 8; *sp = j - 2; }
+#define POP8(o) { if(!(j = *sp)) { errcode = 1; goto err; } o = (Uint16)src->dat[--j]; *sp = j; }
+#define POP16(o) { if((j = *sp) <= 1) { errcode = 1; goto err; } o = src->dat[j - 1]; o += src->dat[j - 2] << 8; *sp = j - 2; }
 #define POP(o) { if(bs) { POP16(o) } else { POP8(o) } }
 #define POKE(x, y) { if(bs) { u->ram[(x)] = (y) >> 8; u->ram[(x) + 1] = (y); } else { u->ram[(x)] = y; } }
 #define PEEK16(o, x) { o = (u->ram[(x)] << 8) + u->ram[(x) + 1]; }
@@ -94,7 +94,7 @@ UxnExec(Uxn *u, unsigned int limit)
 		case 0x18: /* ADD */ POP(a) POP(b) PUSH(src, b + a) break;
 		case 0x19: /* SUB */ POP(a) POP(b) PUSH(src, b - a) break;
 		case 0x1a: /* MUL */ POP(a) POP(b) PUSH(src, (Uint32)b * a) break;
-		case 0x1b: /* DIV */ POP(a) POP(b) if(a == 0) { errcode = 4; goto err; } PUSH(src, b / a) break;
+		case 0x1b: /* DIV */ POP(a) POP(b) if(a == 0) { errcode = 3; goto err; } PUSH(src, b / a) break;
 		case 0x1c: /* AND */ POP(a) POP(b) PUSH(src, b & a) break;
 		case 0x1d: /* ORA */ POP(a) POP(b) PUSH(src, b | a) break;
 		case 0x1e: /* EOR */ POP(a) POP(b) PUSH(src, b ^ a) break;
