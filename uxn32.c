@@ -1071,7 +1071,7 @@ static void ShowBeetbugInstruction(EmuWindow *emu, USHORT address)
 }
 
 /* TODO there's something fancy we should do with the loop to make it tell if it ran out or not by return value, returning 0 when limit is 0 means we might have succeeded in reaching the null instruction on the last allowed step, so we need to do something else */
-static void RunUxn(EmuWindow *d, BOOL step) /* TODO not a fan of this bool flag */
+static void RunUxn(EmuWindow *d, UINT step) /* TODO not a fan of this param flag, maybe */
 {
 	UINT res; Uxn *u = &d->box->core;
 	LONGLONG total = 0, t_a, t_b, t_delta;
@@ -1080,7 +1080,7 @@ static void RunUxn(EmuWindow *d, BOOL step) /* TODO not a fan of this bool flag 
 	t_a = TimeStampNow();
 	for (;;)
 	{
-		res = UxnExec(&d->box->core, step ? 1 : 100000); /* about 1900 usecs on good hardware */
+		res = UxnExec(&d->box->core, step ? step : 100000); /* about 1900 usecs on good hardware */
 		instr_interrupts++;
 		t_b = TimeStampNow();
 		t_delta = t_b - t_a;
@@ -1171,6 +1171,7 @@ static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT
 		break;
 	}
 	d->exec_state = type;
+	if (type == EmuIn_Start && IsWindowVisible(d->beetbugHWnd)) { PauseVM(d); ShowBeetbugInstruction(d, *pc); return; }
 	RunUxn(d, FALSE);
 }
 
@@ -1383,10 +1384,10 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		}
 		break;
 	case WM_COMMAND:
-		if (LOWORD(wParam) == IDM_STEP && !d->emu->running && d->emu->exec_state)
+		if ((LOWORD(wParam) == IDM_STEP || LOWORD(wParam) == IDM_BIGSTEP) && !d->emu->running && d->emu->exec_state)
 		{
 			d->emu->box->core.fault_code = 0;
-			RunUxn(d->emu, TRUE);
+			RunUxn(d->emu, LOWORD(wParam) == IDM_STEP ? 1 : 100);
 			ShowBeetbugInstruction(d->emu, d->emu->box->core.pc);
 			InvalidateRect(d->hDisList, NULL, FALSE);
 			return 0;
@@ -1724,6 +1725,14 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		case IDM_CLOSEWINDOW: PostMessage(hwnd, WM_CLOSE, 0, 0); return 0;
 		case IDM_PAUSE: if (d->running) PauseVM(d); else UnpauseVM(d); return 0;
 			break;
+		case IDM_STEP: case IDM_BIGSTEP:
+			if (!d->running && d->exec_state)
+			{
+				OpenBeetbugWindow(d);
+				SetFocus(d->beetbugHWnd);
+				SendMessage(d->beetbugHWnd, msg, wparam, lparam);
+			}
+			return 0;
 		case IDM_TOGGLECONSOLE:
 			if (!d->consoleHWnd) CreateConsoleWindow(d);
 			ShowWindow(d->consoleHWnd, IsWindowVisible(d->consoleHWnd) ? SW_HIDE : SW_SHOW);
