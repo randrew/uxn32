@@ -1001,20 +1001,6 @@ static void InvalidateUxnScreenRect(EmuWindow *d)
 		InvalidateRect(d->hWnd, &d->viewport_rect, FALSE);
 }
 
-static BOOL IllegalInstrunctionDialog(EmuWindow *d)
-{
-	int res; BOOL retry; unsigned int fcode = d->box->core.fault_code;
-	LPCSTR place = fcode & 1 ? "Return" : "Working";
-	LPCSTR action = fcode < 2 ? "underflow" : fcode < 4 ? "overflow" : "division by zero";
-	ShowCursor(TRUE);
-	res = FmtBox(d->hWnd, TEXT("Uxn Program Fault"), MB_RETRYCANCEL | MB_ICONEXCLAMATION, TEXT("Fault: %s-stack %s\n\nInstruction: %04x\t%Address: 0x%04x\n\nThe Uxn program performed an instruction which caused a virtual hardware fault.\n\nThis probably means there was an error in the Uxn program.\n\nYou can either retry execution while skipping over the bad instruction and hope that it works, or cancel execution and end the program."), place, action, d->box->core.ram[d->box->core.pc], d->box->core.pc);
-	ShowCursor(FALSE);
-	retry = res == IDRETRY;
-	if (retry) { d->box->core.pc++; d->box->core.fault_code = 0; }
-	/* TODO ^- skipping over div by 0 should push 0 onto stack, it's going to be unbalanced like this */
-	return retry;
-}
-
 static LinkedList emus_needing_work;
 static int emu_window_count;
 
@@ -1098,7 +1084,6 @@ static void RunUxn(EmuWindow *d)
 		instr_interrupts++;
 		t_b = TimeStampNow();
 		t_delta = t_b - t_a;
-		/* if (u->fault_code && !IllegalInstrunctionDialog(d)) goto died; */
 		if (u->fault_code) goto died;
 		if (res != 0) { total += t_delta; goto completed; }
 		if (t_delta > ExecutionTimeLimit) { total += t_delta; goto residual; }
@@ -1107,9 +1092,7 @@ static void RunUxn(EmuWindow *d)
 died:
 	PauseVM(d);
 	InvalidateUxnScreenRect(d);
-	/* if (IllegalInstrunctionDialog(d)) UnpauseVM(d); */
-	u->pc--;
-	ShowBeetbugInstruction(d, u->pc);
+	ShowBeetbugInstruction(d, --u->pc);
 	return;
 completed:
 	switch ((enum EmuIn)d->exec_state)
