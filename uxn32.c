@@ -1345,7 +1345,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	case WM_NOTIFY:
 		switch (((LPNMHDR)lParam)->code)
 		{
-		case LVN_MARQUEEBEGIN: return -1; /* Disable. Broken in Win10 1809, WTF? */
+		case LVN_MARQUEEBEGIN: return -1; /* Disable. Broken in Win10 1809 w/o manifest, WTF? */
 		case LVN_GETDISPINFO:
 		{
 			TCHAR buff[1024]; Uxn *core = &d->emu->box->core; LV_DISPINFO *di = (LV_DISPINFO *)lParam;
