@@ -221,6 +221,11 @@ typedef struct ConWindow
 	BYTE has_newline;
 } ConWindow;
 
+typedef struct BeetbugWin {
+	EmuWindow *emu;
+	HWND hWnd, hDisList, hHexList;
+} BeetbugWin;
+
 static int VFmtBox(HWND hWnd, LPCSTR title, UINT flags, char const *fmt, va_list ap)
 {
 	char buffer[1024];
@@ -461,6 +466,7 @@ static void DevOut_System(Device *d, Uint8 port)
 	{
 	case 0x2: d->u->wst->ptr = d->dat[port]; return;
 	case 0x3: d->u->rst->ptr = d->dat[port]; return;
+	case 0xE: d->u->fault_code = 0xFF; return;
 	}
 
 	if (port > 0x7 && port < 0xE) /* modify palette */
@@ -1057,6 +1063,27 @@ static void UnpauseVM(EmuWindow *d)
 	/* Syncing held keys isn't so easy... */
 }
 
+static void OpenBeetbugWindow(EmuWindow *emu)
+{
+	if (!emu->beetbugHWnd)
+	{
+		emu->beetbugHWnd = CreateWindowEx(
+			0, BeetbugWinClass, TEXT("Beetbug"), WS_OVERLAPPEDWINDOW,
+			CW_USEDEFAULT, CW_USEDEFAULT, 200, 300,
+			emu->hWnd, NULL, (HINSTANCE)GetWindowLongPtr(emu->hWnd, GWLP_HINSTANCE), emu);
+	}
+	if (!IsWindowVisible(emu->beetbugHWnd)) ShowWindow(emu->beetbugHWnd, SW_SHOW);
+}
+static void ShowBeetbugInstruction(EmuWindow *emu, USHORT address)
+{
+	BeetbugWin *dbg;
+	OpenBeetbugWindow(emu);
+	dbg = (BeetbugWin *)GetWindowLongPtr(emu->beetbugHWnd, GWLP_USERDATA);
+	ListView_EnsureVisible(dbg->hDisList, address, FALSE);
+	ListView_SetItemState(dbg->hDisList, address, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+	SetFocus(dbg->hDisList);
+}
+
 /* TODO there's something fancy we should do with the loop to make it tell if it ran out or not by return value, returning 0 when limit is 0 means we might have succeeded in reaching the null instruction on the last allowed step, so we need to do something else */
 static void RunUxn(EmuWindow *d)
 {
@@ -1080,7 +1107,9 @@ static void RunUxn(EmuWindow *d)
 died:
 	PauseVM(d);
 	InvalidateUxnScreenRect(d);
-	if (IllegalInstrunctionDialog(d)) UnpauseVM(d);
+	/* if (IllegalInstrunctionDialog(d)) UnpauseVM(d); */
+	u->pc--;
+	ShowBeetbugInstruction(d, u->pc);
 	return;
 completed:
 	switch ((enum EmuIn)d->exec_state)
@@ -1253,23 +1282,6 @@ static void CloneWindow(EmuWindow *a)
 	PostMessage(hWnd, UXNMSG_BecomeClone, (WPARAM)a, 0);
 }
 
-static void OpenBeetbugWindow(EmuWindow *emu)
-{
-	if (!emu->beetbugHWnd)
-	{
-		emu->beetbugHWnd = CreateWindowEx(
-			0, BeetbugWinClass, TEXT("Beetbug"), WS_OVERLAPPEDWINDOW,
-			CW_USEDEFAULT, CW_USEDEFAULT, 200, 300,
-			emu->hWnd, NULL, (HINSTANCE)GetWindowLongPtr(emu->hWnd, GWLP_HINSTANCE), emu);
-	}
-	if (!IsWindowVisible(emu->beetbugHWnd)) ShowWindow(emu->beetbugHWnd, SW_SHOW);
-}
-
-typedef struct BeetbugWin {
-	EmuWindow *emu;
-	HWND hWnd, hDisList, hHexList;
-} BeetbugWin;
-
 static int DecodeUxnOpcode(TCHAR *out, BYTE instr)
 {
 	static LPCSTR const op_names =
@@ -1355,9 +1367,10 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			*plist = list = CreateWindowEx(
 				WS_EX_CLIENTEDGE, WC_LISTVIEW, NULL,
 				WS_TABSTOP | WS_CHILD | WS_BORDER | WS_VISIBLE |
-					LVS_AUTOARRANGE | LVS_REPORT | LVS_OWNERDATA | (i == 1 ? LVS_NOCOLUMNHEADER : 0),
+					LVS_AUTOARRANGE | LVS_REPORT | LVS_OWNERDATA | LVS_SHOWSELALWAYS | (i == 1 ? LVS_NOCOLUMNHEADER : 0),
 				0, 0, 0, 0, hWnd, (HMENU)(i + 1), (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
 			if (hFont) SendMessage(list, WM_SETFONT, (WPARAM)hFont, 0);
+			ListView_SetExtendedListViewStyle(list, LVS_EX_FULLROWSELECT);
 			ListView_DeleteAllItems(list);
 		}
 		ZeroMemory(&col, sizeof col);
@@ -1393,6 +1406,9 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		MoveWindow(d->hDisList, 0, 0, LOWORD(lParam), HIWORD(lParam) - 125, TRUE);
 		MoveWindow(d->hHexList, 0, HIWORD(lParam) - 125, LOWORD(lParam), 125, TRUE);
 		break;
+	case WM_ACTIVATE:
+		if (wParam != WA_INACTIVE) SetFocus(d->hDisList);
+		return 0;
 	case WM_NOTIFY:
 		if (wParam == 1) return BeetbugDisListNotify(d, lParam);
 		if (wParam == 2) return BeetbugHexListNotify(d, lParam);

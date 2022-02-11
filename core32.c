@@ -89,7 +89,7 @@ UxnExec(Uxn *u, unsigned int limit)
 		case 0x14: /* LDA */ POP16(a) PEEK(b, a) PUSH(src, b) break;
 		case 0x15: /* STA */ POP16(a) POP(b) POKE(a, b) break;
 		case 0x16: /* DEI */ POP8(a) DEVR(b, &u->dev[a >> 4], a) PUSH(src, b) break;
-		case 0x17: /* DEO */ POP8(a) POP(b) DEVW(&u->dev[a >> 4], a, b) break;
+		case 0x17: /* DEO */ POP8(a) POP(b) DEVW(&u->dev[a >> 4], a, b) if (u->fault_code) goto done; break;
 		/* Arithmetic */
 		case 0x18: /* ADD */ POP(a) POP(b) PUSH(src, b + a) break;
 		case 0x19: /* SUB */ POP(a) POP(b) PUSH(src, b - a) break;
@@ -104,10 +104,7 @@ UxnExec(Uxn *u, unsigned int limit)
 done:
 	u->pc = pc;
 	return limit;
-
 err:
-	/* set 1 in errcode if it involved the return stack instead of the working stack */
-	/*        (stack overflow & ( opcode was STH / JSR )) ^ Return Mode */
-	u->fault_code = errcode | (((errcode >> 1 & ((instr & 0x1e) == 0x0e)) ^ instr >> 6) & 1);
+	u->fault_code = errcode;
 	goto done;
 }
