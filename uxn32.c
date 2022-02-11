@@ -1060,16 +1060,18 @@ static void OpenBeetbugWindow(EmuWindow *emu)
 	}
 	if (!IsWindowVisible(emu->beetbugHWnd)) ShowWindow(emu->beetbugHWnd, SW_SHOW);
 }
+
 static void ShowBeetbugInstruction(EmuWindow *emu, USHORT address)
 {
 	BeetbugWin *dbg;
 	OpenBeetbugWindow(emu);
 	dbg = (BeetbugWin *)GetWindowLongPtr(emu->beetbugHWnd, GWLP_USERDATA);
-	ListView_EnsureVisible(dbg->hDisList, address, FALSE);
+	ListView_EnsureVisible(dbg->hDisList, ((UINT)address - 4) % UXN_RAM_SIZE, FALSE); /* TODO probably wasteful */
+	ListView_EnsureVisible(dbg->hDisList, (address + 4) % UXN_RAM_SIZE, FALSE);
 }
 
 /* TODO there's something fancy we should do with the loop to make it tell if it ran out or not by return value, returning 0 when limit is 0 means we might have succeeded in reaching the null instruction on the last allowed step, so we need to do something else */
-static void RunUxn(EmuWindow *d)
+static void RunUxn(EmuWindow *d, BOOL step) /* TODO not a fan of this bool flag */
 {
 	UINT res; Uxn *u = &d->box->core;
 	LONGLONG total = 0, t_a, t_b, t_delta;
@@ -1078,13 +1080,13 @@ static void RunUxn(EmuWindow *d)
 	t_a = TimeStampNow();
 	for (;;)
 	{
-		res = UxnExec(&d->box->core, 100000); /* about 1900 usecs on good hardware */
+		res = UxnExec(&d->box->core, step ? 1 : 100000); /* about 1900 usecs on good hardware */
 		instr_interrupts++;
 		t_b = TimeStampNow();
 		t_delta = t_b - t_a;
 		if (u->fault_code) goto died;
 		if (res != 0) { total += t_delta; goto completed; }
-		if (t_delta > ExecutionTimeLimit) { total += t_delta; goto residual; }
+		if (t_delta > ExecutionTimeLimit || step) { total += t_delta; goto residual; }
 		/* total will include some non-Uxn work, but close enough */
 	}
 died:
@@ -1169,7 +1171,7 @@ static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT
 		break;
 	}
 	d->exec_state = type;
-	RunUxn(d);
+	RunUxn(d, FALSE);
 }
 
 static void SendInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT y)
@@ -1380,7 +1382,16 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		}
 		}
 		break;
-	case WM_COMMAND: return SendMessage(d->emu->hWnd, msg, wParam, lParam);
+	case WM_COMMAND:
+		if (LOWORD(wParam) == IDM_STEP && !d->emu->running && d->emu->exec_state)
+		{
+			d->emu->box->core.fault_code = 0;
+			RunUxn(d->emu, TRUE);
+			ShowBeetbugInstruction(d->emu, d->emu->box->core.pc);
+			InvalidateRect(d->hDisList, NULL, FALSE);
+			return 0;
+		}
+		return SendMessage(d->emu->hWnd, msg, wParam, lParam);
 	case WM_TIMER:
 		if (wParam == 1)
 		{
@@ -1725,7 +1736,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 
 	case UXNMSG_ContinueExec:
 		if (!d->running) return 0;
-		if (d->exec_state) RunUxn(d); /* Unfinished vector execution */
+		if (d->exec_state) RunUxn(d, FALSE); /* Unfinished vector execution */
 		else if (d->queue_count) /* Buffered events */
 		{
 			EmuInEvent *evt = &d->queue_buffer[d->queue_first];

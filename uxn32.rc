@@ -59,7 +59,7 @@ BEGIN
     END
     POPUP "&Tools"
     BEGIN
-        MENUITEM "&Pause/Unpause\tF8",          IDM_PAUSE
+        MENUITEM "&Pause/Unpause\tF9",          IDM_PAUSE
     END
     POPUP "&Help"
     BEGIN
@@ -81,7 +81,8 @@ BEGIN
     VK_F3,          IDM_TOGGLECONSOLE,      VIRTKEY, NOINVERT
     VK_F4,          IDM_RELOAD,             VIRTKEY, NOINVERT
     VK_F5,          IDM_OPENBEETBUG,        VIRTKEY, NOINVERT
-    VK_F8,          IDM_PAUSE,              VIRTKEY, NOINVERT
+    VK_F8,          IDM_STEP,               VIRTKEY, NOINVERT
+    VK_F9,          IDM_PAUSE,              VIRTKEY, NOINVERT
 END
 
 
