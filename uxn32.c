@@ -1358,13 +1358,12 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					LVS_AUTOARRANGE | LVS_REPORT | LVS_OWNERDATA | (i == 1 ? LVS_NOCOLUMNHEADER : 0),
 				0, 0, 0, 0, hWnd, (HMENU)(i + 1), (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
 			if (hFont) SendMessage(list, WM_SETFONT, (WPARAM)hFont, 0);
+			ListView_DeleteAllItems(list);
 		}
-		ListView_DeleteAllItems(d->hDisList);
 		ZeroMemory(&col, sizeof col);
-		col.mask = LVCF_FMT | LVCF_WIDTH | LVCF_SUBITEM;
+		col.mask = LVCF_FMT | LVCF_WIDTH | LVCF_TEXT;
 		col.cx = 10;
 		ListView_InsertColumn(d->hDisList, 0, &col);
-		col.mask |= LVCF_TEXT;
 		col.fmt = LVCFMT_RIGHT;
 		col.cx = 55; col.pszText = (LPSTR)TEXT("Address");
 		ListView_InsertColumn(d->hDisList, 1, &col);
@@ -1373,13 +1372,14 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		ListView_InsertColumn(d->hDisList, 2, &col);
 		col.cx = 50; col.pszText = (LPSTR)TEXT("Opcode");
 		ListView_InsertColumn(d->hDisList, 3, &col);
-		ListView_SetItemCount(d->hDisList, UXN_RAM_SIZE);
-		ListView_DeleteAllItems(d->hHexList);
 		col.cx = 40; col.pszText = NULL;
 		ListView_InsertColumn(d->hHexList, 0, &col);
 		col.cx = 130;
 		ListView_InsertColumn(d->hHexList, 1, &col);
 		ListView_SetItemCount(d->hHexList, UXN_RAM_SIZE / 8);
+		ListView_SetItemCount(d->hDisList, UXN_RAM_SIZE);
+		ListView_EnsureVisible(d->hDisList, 0, FALSE);
+		ListView_EnsureVisible(d->hHexList, 0, FALSE);
 		SetTimer(hWnd, 1, 50, NULL);
 		break;
 	}
