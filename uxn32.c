@@ -1276,60 +1276,6 @@ static int DecodeUxnOpcode(TCHAR *out, BYTE instr)
 	return n;
 }
 
-static LRESULT BeetbugDisListNotify(BeetbugWin *d, LPARAM lParam)
-{
-	switch (((LPNMHDR)lParam)->code)
-	{
-	case LVN_GETDISPINFO:
-	{
-		LV_DISPINFO *di = (LV_DISPINFO *)lParam; TCHAR buff[1024];
-		if (di->item.mask & LVIF_TEXT)
-		{
-			UINT iItem = di->item.iItem; Uxn *core = &d->emu->box->core;
-			switch (di->item.iSubItem)
-			{
-			case 0: wsprintf(buff, "%c %04X", core->pc == iItem ? '>' : ' ', (UINT)iItem); break;
-			case 1: wsprintf(buff, "%02X", (UINT)core->ram[iItem]); break;
-			case 2: DecodeUxnOpcode(buff, (BYTE)core->ram[iItem]); break;
-			default: return 0;
-			}
-			lstrcpyn(di->item.pszText, buff, di->item.cchTextMax);
-		}
-		break;
-	}
-	}
-	return 0;
-}
-static LRESULT BeetbugHexListNotify(BeetbugWin *d, LPARAM lParam)
-{
-	switch (((LPNMHDR)lParam)->code)
-	{
-	case LVN_GETDISPINFO:
-	{
-		LV_DISPINFO *di = (LV_DISPINFO *)lParam; UINT addr = di->item.iItem * 8; TCHAR buff[1024];
-		if (di->item.mask & LVIF_TEXT)
-		{
-			switch (di->item.iSubItem)
-			{
-			case 0: wsprintf(buff, "%04X", addr); break;
-			case 1:
-			{
-				BYTE *mem = d->emu->box->core.ram + addr;
-				wsprintf(buff, "%02X%02X %02X%02X %02X%02X %02X%02X",
-					(UINT)mem[0], (UINT)mem[1], (UINT)mem[2], (UINT)mem[3],
-					(UINT)mem[4], (UINT)mem[5], (UINT)mem[6], (UINT)mem[7]);
-				break;
-			}
-			default: return 0;
-			}
-			lstrcpyn(di->item.pszText, buff, di->item.cchTextMax);
-		}
-		break;
-	}
-	}
-	return 0;
-}
-
 static LRESULT CALLBACK BeetbugSubWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	return msg == WM_COMMAND ?
@@ -1397,9 +1343,42 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		if (wParam != WA_INACTIVE) SetFocus(d->hDisList);
 		return 0;
 	case WM_NOTIFY:
-		if (((LPNMHDR)lParam)->code == LVN_MARQUEEBEGIN) return -1; /* Disable. Broken in Win10 1809, WTF? */
-		if (wParam == 1) return BeetbugDisListNotify(d, lParam);
-		if (wParam == 2) return BeetbugHexListNotify(d, lParam);
+		switch (((LPNMHDR)lParam)->code)
+		{
+		case LVN_MARQUEEBEGIN: return -1; /* Disable. Broken in Win10 1809, WTF? */
+		case LVN_GETDISPINFO:
+		{
+			TCHAR buff[1024]; Uxn *core = &d->emu->box->core; LV_DISPINFO *di = (LV_DISPINFO *)lParam;
+			UINT iItem = di->item.iItem; UINT addr = iItem;
+			if (!(di->item.mask & LVIF_TEXT)) return 0;
+			buff[0] = 0;
+			switch (wParam)
+			{
+			case 1: switch (di->item.iSubItem)
+				{
+				case 0: wsprintf(buff, "%c %04X", core->pc == iItem ? '>' : ' ', (UINT)iItem); break;
+				case 1: wsprintf(buff, "%02X", (UINT)core->ram[iItem]); break;
+				case 2: DecodeUxnOpcode(buff, (BYTE)core->ram[iItem]); break;
+				}
+				break;
+			case 2: addr *= 8; switch (di->item.iSubItem)
+				{
+				case 0: wsprintf(buff, "%04X", addr); break;
+				case 1:
+				{
+					BYTE *mem = d->emu->box->core.ram + addr;
+					wsprintf(buff, "%02X%02X %02X%02X %02X%02X %02X%02X",
+						(UINT)mem[0], (UINT)mem[1], (UINT)mem[2], (UINT)mem[3],
+						(UINT)mem[4], (UINT)mem[5], (UINT)mem[6], (UINT)mem[7]);
+					break;
+				}
+				}
+				break;
+			}
+			lstrcpyn(di->item.pszText, buff, di->item.cchTextMax);
+			return 0;
+		}
+		}
 		break;
 	case WM_COMMAND: return SendMessage(d->emu->hWnd, msg, wParam, lParam);
 	case WM_TIMER:
