@@ -1066,8 +1066,6 @@ static void ShowBeetbugInstruction(EmuWindow *emu, USHORT address)
 	OpenBeetbugWindow(emu);
 	dbg = (BeetbugWin *)GetWindowLongPtr(emu->beetbugHWnd, GWLP_USERDATA);
 	ListView_EnsureVisible(dbg->hDisList, address, FALSE);
-	ListView_SetItemState(dbg->hDisList, address, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
-	SetFocus(dbg->hDisList);
 }
 
 /* TODO there's something fancy we should do with the loop to make it tell if it ran out or not by return value, returning 0 when limit is 0 means we might have succeeded in reaching the null instruction on the last allowed step, so we need to do something else */
@@ -1092,7 +1090,7 @@ static void RunUxn(EmuWindow *d)
 died:
 	PauseVM(d);
 	InvalidateUxnScreenRect(d);
-	ShowBeetbugInstruction(d, --u->pc);
+	ShowBeetbugInstruction(d, u->pc);
 	return;
 completed:
 	switch ((enum EmuIn)d->exec_state)
@@ -1287,11 +1285,12 @@ static LRESULT BeetbugDisListNotify(BeetbugWin *d, LPARAM lParam)
 		LV_DISPINFO *di = (LV_DISPINFO *)lParam; TCHAR buff[1024];
 		if (di->item.mask & LVIF_TEXT)
 		{
+			UINT iItem = di->item.iItem; Uxn *core = &d->emu->box->core;
 			switch (di->item.iSubItem)
 			{
-			case 1: wsprintf(buff, "%04X", (UINT)di->item.iItem); break;
-			case 2: wsprintf(buff, "%02X", (UINT)d->emu->box->core.ram[di->item.iItem]); break;
-			case 3: DecodeUxnOpcode(buff, (BYTE)d->emu->box->core.ram[di->item.iItem]); break;
+			case 0: wsprintf(buff, "%c %04X", core->pc == iItem ? '>' : ' ', (UINT)iItem); break;
+			case 1: wsprintf(buff, "%02X", (UINT)core->ram[iItem]); break;
+			case 2: DecodeUxnOpcode(buff, (BYTE)core->ram[iItem]); break;
 			default: return 0;
 			}
 			lstrcpyn(di->item.pszText, buff, di->item.cchTextMax);
@@ -1331,6 +1330,13 @@ static LRESULT BeetbugHexListNotify(BeetbugWin *d, LPARAM lParam)
 	return 0;
 }
 
+static LRESULT CALLBACK BeetbugSubWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+	return msg == WM_COMMAND ?
+		SendMessage(GetParent(hWnd), msg, wParam, lParam) :
+		CallWindowProc((WNDPROC)GetWindowLongPtr(hWnd, GWLP_USERDATA), hWnd, msg, wParam, lParam);
+}
+
 static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	BeetbugWin *d = (BeetbugWin *)GetWindowLongPtr(hWnd, GWLP_USERDATA);
@@ -1350,25 +1356,23 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			*plist = list = CreateWindowEx(
 				WS_EX_CLIENTEDGE, WC_LISTVIEW, NULL,
 				WS_TABSTOP | WS_CHILD | WS_BORDER | WS_VISIBLE |
-					LVS_AUTOARRANGE | LVS_REPORT | LVS_OWNERDATA | LVS_SHOWSELALWAYS | (i == 1 ? LVS_NOCOLUMNHEADER : 0),
+					LVS_REPORT | LVS_OWNERDATA | LVS_SHOWSELALWAYS | LVS_NOCOLUMNHEADER,
 				0, 0, 0, 0, hWnd, (HMENU)(i + 1), (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
 			if (hFont) SendMessage(list, WM_SETFONT, (WPARAM)hFont, 0);
 			ListView_SetExtendedListViewStyle(list, LVS_EX_FULLROWSELECT);
 			ListView_DeleteAllItems(list);
+			SetWindowLongPtr(list, GWLP_USERDATA, (LONG_PTR)GetWindowLongPtr(list, GWLP_WNDPROC)); /* redundant with below */
+			SetWindowLongPtr(list, GWLP_WNDPROC,  (LONG_PTR)BeetbugSubWndProc);
 		}
 		ZeroMemory(&col, sizeof col);
-		col.mask = LVCF_FMT | LVCF_WIDTH | LVCF_TEXT;
-		col.cx = 10;
+		col.mask = LVCF_FMT | LVCF_WIDTH;
+		col.cx = 45;
 		ListView_InsertColumn(d->hDisList, 0, &col);
-		col.fmt = LVCFMT_RIGHT;
-		col.cx = 55; col.pszText = (LPSTR)TEXT("Address");
+		col.cx = 25;
 		ListView_InsertColumn(d->hDisList, 1, &col);
-		col.fmt = LVCFMT_LEFT;
-		col.cx = 25; col.pszText = NULL;
+		col.cx = 50;
 		ListView_InsertColumn(d->hDisList, 2, &col);
-		col.cx = 50; col.pszText = (LPSTR)TEXT("Opcode");
-		ListView_InsertColumn(d->hDisList, 3, &col);
-		col.cx = 40; col.pszText = NULL;
+		col.cx = 40;
 		ListView_InsertColumn(d->hHexList, 0, &col);
 		col.cx = 130;
 		ListView_InsertColumn(d->hHexList, 1, &col);
@@ -1393,6 +1397,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		if (wParam != WA_INACTIVE) SetFocus(d->hDisList);
 		return 0;
 	case WM_NOTIFY:
+		if (((LPNMHDR)lParam)->code == LVN_MARQUEEBEGIN) return -1; /* Disable. Broken in Win10 1809, WTF? */
 		if (wParam == 1) return BeetbugDisListNotify(d, lParam);
 		if (wParam == 2) return BeetbugHexListNotify(d, lParam);
 		break;
