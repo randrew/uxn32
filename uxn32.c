@@ -1366,12 +1366,12 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		ListView_InsertColumn(d->hDisList, 0, &col);
 		col.mask |= LVCF_TEXT;
 		col.fmt = LVCFMT_RIGHT;
-		col.cx = 55; col.pszText = TEXT("Address");
+		col.cx = 55; col.pszText = (LPSTR)TEXT("Address");
 		ListView_InsertColumn(d->hDisList, 1, &col);
 		col.fmt = LVCFMT_LEFT;
 		col.cx = 25; col.pszText = NULL;
 		ListView_InsertColumn(d->hDisList, 2, &col);
-		col.cx = 50; col.pszText = TEXT("Opcode");
+		col.cx = 50; col.pszText = (LPSTR)TEXT("Opcode");
 		ListView_InsertColumn(d->hDisList, 3, &col);
 		ListView_SetItemCount(d->hDisList, UXN_RAM_SIZE);
 		ListView_DeleteAllItems(d->hHexList);
