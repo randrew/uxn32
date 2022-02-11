@@ -1397,6 +1397,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		if (wParam == 1) return BeetbugDisListNotify(d, lParam);
 		if (wParam == 2) return BeetbugHexListNotify(d, lParam);
 		break;
+	case WM_COMMAND: return SendMessage(d->emu->hWnd, msg, wParam, lParam);
 	case WM_TIMER:
 		if (wParam == 1)
 		{
