@@ -239,6 +239,7 @@ typedef struct BeetbugWin {
 	EmuWindow *emu;
 	HWND hWnd, hDisList, hHexList, hStatus;
 	USHORT sbar_pc;
+	RECT rcBlank;
 	BYTE sbar_play_mode, sbar_input_event;
 } BeetbugWin;
 
@@ -1083,7 +1084,7 @@ static void OpenBeetbugWindow(EmuWindow *emu)
 	{
 		emu->beetbugHWnd = CreateWindowEx(
 			0, BeetbugWinClass, TEXT("Beetbug"), WS_OVERLAPPEDWINDOW,
-			CW_USEDEFAULT, CW_USEDEFAULT, 200, 300,
+			CW_USEDEFAULT, CW_USEDEFAULT, 400, 300,
 			emu->hWnd, NULL, (HINSTANCE)GetWindowLongPtr(emu->hWnd, GWLP_HINSTANCE), emu);
 	}
 	if (!IsWindowVisible(emu->beetbugHWnd)) ShowWindow(emu->beetbugHWnd, SW_SHOW);
@@ -1364,14 +1365,25 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		break;
 	case WM_SIZE:
 	{
-		RECT rSbar, rMain = {0, 0, LOWORD(lParam), HIWORD(lParam)}, r;
+		RECT r = {0, 0, LOWORD(lParam), HIWORD(lParam)}, rSbar, rLists;
 		SendMessage(d->hStatus, WM_SIZE, 0, 0);
 		GetClientRect(d->hStatus, &rSbar);
-		MapWindowPoints(d->hStatus, hWnd, (LPPOINT)&rSbar, 4); /* must violate strict aliasing */
-		rMain.bottom = rSbar.top;
-		CutRect(&rMain, CutBottom, 125, &r);
-		MoveWindowRect(d->hDisList, &rMain, TRUE);
+		MapWindowPoints(d->hStatus, hWnd, (LPPOINT)&rSbar, 2); /* must violate strict aliasing */
+		r.bottom = rSbar.top;
+		CutRect(&r, CutLeft, 200, &rLists);
+		d->rcBlank = r;
+		CutRect(&rLists, CutBottom, 125, &r);
+		MoveWindowRect(d->hDisList, &rLists, TRUE);
 		MoveWindowRect(d->hHexList, &r, TRUE);
+		break;
+	}
+	case WM_PAINT:
+	{
+		/* TODO do we actually need this? just use background painting? */
+		RECT rTmp; PAINTSTRUCT ps; HDC hDC = BeginPaint(hWnd, &ps);
+		if (IntersectRect(&rTmp, &ps.rcPaint, &d->rcBlank))
+			FillRect(hDC, &rTmp, (HBRUSH)(COLOR_3DFACE + 1));
+		EndPaint(hWnd, &ps);
 		break;
 	}
 	case WM_ACTIVATE:
