@@ -1292,13 +1292,17 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	{
 	case WM_CREATE:
 	{
-		static HFONT hFont; /* TODO REDUNDANT */ LONG_PTR i; HWND list; LV_COLUMN col;
+		static HFONT hFont; /* TODO REDUNDANT */ LONG_PTR i, j, k; HWND list; LV_COLUMN col;
+		static const int columns[] = { /* Instr list */ 45, 25, 50, 0,
+									   /* Hex list   */ 40, 130, 0};
 		if (!hFont) hFont = CreateFont(8, 6, 0, 0, 0, 0, 0, 0, OEM_CHARSET, OUT_RASTER_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, FIXED_PITCH, TEXT("Terminal"));
 		d = AllocZeroedOrFail(sizeof *d);
 		SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)d);
 		d->emu = ((CREATESTRUCT *)lParam)->lpCreateParams;
 		d->hWnd = hWnd;
-		for (i = 0; i < 2; i++)
+		ZeroMemory(&col, sizeof col);
+		col.mask = LVCF_FMT | LVCF_WIDTH;
+		for (i = j = 0; i < 2; i++)
 		{
 			(&d->hDisList)[i] = list = CreateWindowEx(
 				WS_EX_CLIENTEDGE, WC_LISTVIEW, NULL,
@@ -1310,23 +1314,10 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			ListView_DeleteAllItems(list);
 			SetWindowLongPtr(list, GWLP_USERDATA, (LONG_PTR)GetWindowLongPtr(list, GWLP_WNDPROC)); /* redundant with below */
 			SetWindowLongPtr(list, GWLP_WNDPROC,  (LONG_PTR)BeetbugSubWndProc);
+			for (k = 0; (col.cx = columns[j++]);) ListView_InsertColumn(list, k++, &col);
+			ListView_SetItemCount(list, UXN_RAM_SIZE / (i ? 8 : 1));
+			ListView_EnsureVisible(list, 0, FALSE);
 		}
-		ZeroMemory(&col, sizeof col);
-		col.mask = LVCF_FMT | LVCF_WIDTH;
-		col.cx = 45;
-		ListView_InsertColumn(d->hDisList, 0, &col);
-		col.cx = 25;
-		ListView_InsertColumn(d->hDisList, 1, &col);
-		col.cx = 50;
-		ListView_InsertColumn(d->hDisList, 2, &col);
-		col.cx = 40;
-		ListView_InsertColumn(d->hHexList, 0, &col);
-		col.cx = 130;
-		ListView_InsertColumn(d->hHexList, 1, &col);
-		ListView_SetItemCount(d->hHexList, UXN_RAM_SIZE / 8);
-		ListView_SetItemCount(d->hDisList, UXN_RAM_SIZE);
-		ListView_EnsureVisible(d->hDisList, 0, FALSE);
-		ListView_EnsureVisible(d->hHexList, 0, FALSE);
 		SetTimer(hWnd, 1, 50, NULL);
 		break;
 	}
