@@ -223,7 +223,9 @@ typedef struct ConWindow
 
 typedef struct BeetbugWin {
 	EmuWindow *emu;
-	HWND hWnd, hDisList, hHexList;
+	HWND hWnd, hDisList, hHexList, hStatus;
+	USHORT sbar_pc;
+	BYTE sbar_play_mode;
 } BeetbugWin;
 
 static int VFmtBox(HWND hWnd, LPCSTR title, UINT flags, char const *fmt, va_list ap)
@@ -1303,8 +1305,9 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	case WM_CREATE:
 	{
 		LONG_PTR i, j, k; HWND list; LV_COLUMN col; HFONT hFont = GetSmallFixedFont();
-		static const int columns[] = { /* Instr list */ 45, 25, 50, 0,
-		                               /* Hex list   */ 40, 130, 0};
+		static const int
+			columns[] = { /* Instr list */ 45, 25, 50, 0, /* Hex list */ 40, 130, 0},
+			status_parts[] = {70, 120, -1};
 		d = AllocZeroedOrFail(sizeof *d);
 		SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)d);
 		d->emu = ((CREATESTRUCT *)lParam)->lpCreateParams;
@@ -1327,6 +1330,10 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			ListView_SetItemCount(list, UXN_RAM_SIZE / (i ? 8 : 1));
 			ListView_EnsureVisible(list, 0, FALSE);
 		}
+		d->hStatus = CreateWindowEx(
+			0, STATUSCLASSNAME, NULL, WS_CHILD | WS_VISIBLE | SBARS_SIZEGRIP,
+			0, 0, 0, 0, hWnd, (HMENU)3, (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
+		SendMessage(d->hStatus, SB_SETPARTS, sizeof status_parts / sizeof(int), (LPARAM)status_parts);
 		SetTimer(hWnd, 1, 50, NULL);
 		break;
 	}
@@ -1337,9 +1344,15 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		HeapFree(GetProcessHeap(), 0, d);
 		break;
 	case WM_SIZE:
-		MoveWindow(d->hDisList, 0, 0, LOWORD(lParam), HIWORD(lParam) - 125, TRUE);
-		MoveWindow(d->hHexList, 0, HIWORD(lParam) - 125, LOWORD(lParam), 125, TRUE);
+	{
+		RECT rect;
+		SendMessage(d->hStatus, WM_SIZE, 0, 0);
+		GetClientRect(d->hStatus, &rect);
+		MapWindowPoints(d->hStatus, hWnd, (LPPOINT)&rect, 4); /* must violate strict aliasing */
+		MoveWindow(d->hDisList, 0, 0, LOWORD(lParam), rect.top - 125, TRUE);
+		MoveWindow(d->hHexList, 0, rect.top - 125, LOWORD(lParam), 125, TRUE);
 		break;
+	}
 	case WM_ACTIVATE:
 		if (wParam != WA_INACTIVE) SetFocus(d->hDisList);
 		return 0;
@@ -1394,10 +1407,20 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	case WM_TIMER:
 		if (wParam == 1)
 		{
+			static const LPCSTR play_texts[] = {0, TEXT("Running"), TEXT("Suspended"), TEXT("Paused")};
+			TCHAR buff[6];
+			BYTE new_play = d->emu->running ? 1 : d->emu->exec_state ? 2 : 3;
 			// int top = ListView_GetTopIndex(d->hList), bot = top + ListView_GetCountPerPage(d->hList);
 			// for (; top < bot; top++) ListView_Update(d->hList, top);
 			InvalidateRect(d->hDisList, NULL, FALSE); /* TODO only changed areas */
 			InvalidateRect(d->hHexList, NULL, FALSE);
+			if (d->sbar_play_mode != new_play)
+				SendMessage(d->hStatus, SB_SETTEXT, 0, (LPARAM)(play_texts[d->sbar_play_mode = new_play]));
+			if (d->sbar_pc != d->emu->box->core.pc)
+			{
+				wsprintf(buff, "%04X", (UINT)(d->sbar_pc = d->emu->box->core.pc));
+				SendMessage(d->hStatus, SB_SETTEXT, 1, (LPARAM)buff);
+			}
 			return 0;
 		}
 		break;
