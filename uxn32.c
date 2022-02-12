@@ -123,6 +123,20 @@ static void _impl_ListRemove(LinkedList *list, ListLink *a)
 #define ListPushBack(list, a, link_field) _impl_ListPushBack((list), &(a)->link_field)
 #define ListRemove(list, a, link_field) _impl_ListRemove((list), &(a->link_field))
 
+enum {CutLeft, CutTop, CutRight, CutBottom};
+static void CutRect(RECT *in, int dir, int length, RECT *out)
+{
+	LONG b = dir + 2 & 3, c = dir + 1 & 3, d = dir + 3 & 3, in_a = (&in->left)[dir];
+	/* There's probably a smarter way to do this with unsigned math */
+	LONG avail = dir & 2 ? in_a - (&in->left)[b] : (&in->left)[b] - in_a;
+	if (avail > length) avail = length;
+	if (dir & 2) avail = -avail;
+	(&out->left)[b] = (&in->left)[dir] = in_a + avail;
+	(&out->left)[dir] = in_a;
+	(&out->left)[c] = (&in->left)[c];
+	(&out->left)[d] = (&in->left)[d];
+}
+
 typedef struct UxnBox
 {
 	void *user;
@@ -328,6 +342,11 @@ static HFONT GetSmallFixedFont(void)
 		8, 6, 0, 0, 0, 0, 0, 0, OEM_CHARSET, OUT_RASTER_PRECIS,
 		CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, FIXED_PITCH, TEXT("Terminal"));
 	return hFont;
+}
+
+static BOOL MoveWindowRect(HWND hWnd, RECT const *to, BOOL bRepaint)
+{
+	return MoveWindow(hWnd, to->left, to->top, to->right - to->left, to->bottom - to->top, bRepaint);
 }
 
 static const Uint8 SpriteBlendingTable[5][16] = {
@@ -1345,12 +1364,14 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		break;
 	case WM_SIZE:
 	{
-		RECT rect;
+		RECT rSbar, rMain = {0, 0, LOWORD(lParam), HIWORD(lParam)}, r;
 		SendMessage(d->hStatus, WM_SIZE, 0, 0);
-		GetClientRect(d->hStatus, &rect);
-		MapWindowPoints(d->hStatus, hWnd, (LPPOINT)&rect, 4); /* must violate strict aliasing */
-		MoveWindow(d->hDisList, 0, 0, LOWORD(lParam), rect.top - 125, TRUE);
-		MoveWindow(d->hHexList, 0, rect.top - 125, LOWORD(lParam), 125, TRUE);
+		GetClientRect(d->hStatus, &rSbar);
+		MapWindowPoints(d->hStatus, hWnd, (LPPOINT)&rSbar, 4); /* must violate strict aliasing */
+		rMain.bottom = rSbar.top;
+		CutRect(&rMain, CutBottom, 125, &r);
+		MoveWindowRect(d->hDisList, &rMain, TRUE);
+		MoveWindowRect(d->hHexList, &r, TRUE);
 		break;
 	}
 	case WM_ACTIVATE:
