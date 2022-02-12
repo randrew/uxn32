@@ -319,6 +319,15 @@ static BOOL LoadFileInto(LPCSTR path, char *dest, DWORD max_bytes, DWORD *bytes_
 	return TRUE;
 }
 
+static HFONT GetSmallFixedFont(void)
+{
+	static HFONT hFont;
+	if (!hFont) hFont = CreateFont(
+		8, 6, 0, 0, 0, 0, 0, 0, OEM_CHARSET, OUT_RASTER_PRECIS,
+		CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, FIXED_PITCH, TEXT("Terminal"));
+	return hFont;
+}
+
 static const Uint8 SpriteBlendingTable[5][16] = {
 	{0, 0, 0, 0, 1, 0, 1, 1, 2, 2, 0, 2, 3, 3, 3, 0},
 	{0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3},
@@ -1293,10 +1302,9 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	{
 	case WM_CREATE:
 	{
-		static HFONT hFont; /* TODO REDUNDANT */ LONG_PTR i, j, k; HWND list; LV_COLUMN col;
+		LONG_PTR i, j, k; HWND list; LV_COLUMN col; HFONT hFont = GetSmallFixedFont();
 		static const int columns[] = { /* Instr list */ 45, 25, 50, 0,
 		                               /* Hex list   */ 40, 130, 0};
-		if (!hFont) hFont = CreateFont(8, 6, 0, 0, 0, 0, 0, 0, OEM_CHARSET, OUT_RASTER_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, FIXED_PITCH, TEXT("Terminal"));
 		d = AllocZeroedOrFail(sizeof *d);
 		SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)d);
 		d->emu = ((CREATESTRUCT *)lParam)->lpCreateParams;
@@ -1421,9 +1429,8 @@ static LRESULT CALLBACK ConsoleWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	{
 	case WM_CREATE:
 	{
-		static HFONT hFont; HWND hwTmp; int i;
+		HWND hwTmp; int i; HFONT hFont = GetSmallFixedFont();
 		HINSTANCE hinstTmp = (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE);
-		if (!hFont) hFont = CreateFont(8, 6, 0, 0, 0, 0, 0, 0, OEM_CHARSET, OUT_RASTER_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, FIXED_PITCH, TEXT("Terminal"));
 		d = AllocZeroedOrFail(sizeof *d);
 		SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)d);
 		d->outHWnd = CreateWindowEx(
