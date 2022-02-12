@@ -1069,7 +1069,8 @@ static void ShowBeetbugInstruction(EmuWindow *emu, USHORT address)
 }
 
 /* TODO there's something fancy we should do with the loop to make it tell if it ran out or not by return value, returning 0 when limit is 0 means we might have succeeded in reaching the null instruction on the last allowed step, so we need to do something else */
-static void RunUxn(EmuWindow *d, UINT step) /* TODO not a fan of this param flag, maybe */
+/* Pass non-zero steps to use fixed-stepping mode. Pass 0 to use normal run mode with an automatic number of steps. */
+static void RunUxn(EmuWindow *d, UINT steps)
 {
 	UINT res; Uxn *u = &d->box->core;
 	LONGLONG total = 0, t_a, t_b, t_delta;
@@ -1078,13 +1079,13 @@ static void RunUxn(EmuWindow *d, UINT step) /* TODO not a fan of this param flag
 	t_a = TimeStampNow();
 	for (;;)
 	{
-		res = UxnExec(&d->box->core, step ? step : 100000); /* about 1900 usecs on good hardware */
+		res = UxnExec(&d->box->core, steps ? steps : 100000); /* about 1900 usecs on good hardware */
 		instr_interrupts++;
 		t_b = TimeStampNow();
 		t_delta = t_b - t_a;
 		if (u->fault_code) goto died;
 		if (res != 0) { total += t_delta; goto completed; }
-		if (t_delta > ExecutionTimeLimit || step) { total += t_delta; goto residual; }
+		if (t_delta > ExecutionTimeLimit || steps) { total += t_delta; goto residual; }
 		/* total will include some non-Uxn work, but close enough */
 	}
 died:
@@ -1170,7 +1171,7 @@ static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT
 	}
 	d->exec_state = type;
 	if (type == EmuIn_Start && IsWindowVisible(d->beetbugHWnd)) { PauseVM(d); ShowBeetbugInstruction(d, *pc); return; }
-	RunUxn(d, FALSE);
+	RunUxn(d, 0);
 }
 
 static void SendInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT y)
@@ -1291,7 +1292,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	{
 	case WM_CREATE:
 	{
-		static HFONT hFont; /* TODO REDUNDANT */ LONG_PTR i; HWND list, *plist; LV_COLUMN col;
+		static HFONT hFont; /* TODO REDUNDANT */ LONG_PTR i; HWND list; LV_COLUMN col;
 		if (!hFont) hFont = CreateFont(8, 6, 0, 0, 0, 0, 0, 0, OEM_CHARSET, OUT_RASTER_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, FIXED_PITCH, TEXT("Terminal"));
 		d = AllocZeroedOrFail(sizeof *d);
 		SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)d);
@@ -1299,8 +1300,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		d->hWnd = hWnd;
 		for (i = 0; i < 2; i++)
 		{
-			plist = &d->hDisList + i;
-			*plist = list = CreateWindowEx(
+			(&d->hDisList)[i] = list = CreateWindowEx(
 				WS_EX_CLIENTEDGE, WC_LISTVIEW, NULL,
 				WS_TABSTOP | WS_CHILD | WS_BORDER | WS_VISIBLE |
 					LVS_REPORT | LVS_OWNERDATA | LVS_SHOWSELALWAYS | LVS_NOCOLUMNHEADER,
@@ -1743,7 +1743,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 
 	case UXNMSG_ContinueExec:
 		if (!d->running) return 0;
-		if (d->exec_state) RunUxn(d, FALSE); /* Unfinished vector execution */
+		if (d->exec_state) RunUxn(d, 0); /* Unfinished vector execution */
 		else if (d->queue_count) /* Buffered events */
 		{
 			EmuInEvent *evt = &d->queue_buffer[d->queue_first];
