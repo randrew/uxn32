@@ -1061,11 +1061,12 @@ static void OpenBeetbugWindow(EmuWindow *emu)
 
 static void ShowBeetbugInstruction(EmuWindow *emu, USHORT address)
 {
-	BeetbugWin *dbg;
+	BeetbugWin *dbg; int pad_rows;
 	OpenBeetbugWindow(emu);
 	dbg = (BeetbugWin *)GetWindowLongPtr(emu->beetbugHWnd, GWLP_USERDATA);
-	ListView_EnsureVisible(dbg->hDisList, ((UINT)address - 4) % UXN_RAM_SIZE, FALSE); /* TODO probably wasteful */
-	ListView_EnsureVisible(dbg->hDisList, (address + 4) % UXN_RAM_SIZE, FALSE);
+	pad_rows = ListView_GetCountPerPage(dbg->hDisList) / 3;
+	ListView_EnsureVisible(dbg->hDisList, ((UINT)address - pad_rows) % UXN_RAM_SIZE, FALSE); /* TODO probably wasteful */
+	ListView_EnsureVisible(dbg->hDisList, (address + pad_rows) % UXN_RAM_SIZE, FALSE);
 }
 
 /* TODO there's something fancy we should do with the loop to make it tell if it ran out or not by return value, returning 0 when limit is 0 means we might have succeeded in reaching the null instruction on the last allowed step, so we need to do something else */
