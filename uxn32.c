@@ -1408,8 +1408,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		if (wParam == 1)
 		{
 			static const LPCSTR play_texts[] = {0, TEXT("Running"), TEXT("Suspended"), TEXT("Paused")};
-			TCHAR buff[6]; LPCSTR event_text = NULL;
-			BYTE new_play = d->emu->running ? 1 : d->emu->exec_state ? 2 : 3;
+			TCHAR buff[6]; BYTE new_play = d->emu->running ? 1 : d->emu->exec_state ? 2 : 3;
 			// int top = ListView_GetTopIndex(d->hList), bot = top + ListView_GetCountPerPage(d->hList);
 			// for (; top < bot; top++) ListView_Update(d->hList, top);
 			InvalidateRect(d->hDisList, NULL, FALSE); /* TODO only changed areas */
