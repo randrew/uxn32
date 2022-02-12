@@ -742,9 +742,7 @@ static void WriteOutSynths(EmuWindow *d)
 	hdr->lpData = (LPSTR)samples;
 	ZeroMemory(samples, AUDIO_BUF_SAMPLES * 2 * sizeof(SHORT));
 	for (i = still_running = 0; i < UXN_VOICES; i++)
-	{
 		still_running |= VoiceRender(&d->synth_voices[i], d->box->core.ram, samples, samples + AUDIO_BUF_SAMPLES * 2);
-	}
 	res = waveOutPrepareHeader(wave_out->hWaveOut, hdr, sizeof(WAVEHDR));
 	res = waveOutWrite(wave_out->hWaveOut, hdr, sizeof(WAVEHDR));
 }
