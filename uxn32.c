@@ -225,7 +225,7 @@ typedef struct BeetbugWin {
 	EmuWindow *emu;
 	HWND hWnd, hDisList, hHexList, hStatus;
 	USHORT sbar_pc;
-	BYTE sbar_play_mode;
+	BYTE sbar_play_mode, sbar_input_event;
 } BeetbugWin;
 
 static int VFmtBox(HWND hWnd, LPCSTR title, UINT flags, char const *fmt, va_list ap)
@@ -1307,7 +1307,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		LONG_PTR i, j, k; HWND list; LV_COLUMN col; HFONT hFont = GetSmallFixedFont();
 		static const int
 			columns[] = { /* Instr list */ 45, 25, 50, 0, /* Hex list */ 40, 130, 0},
-			status_parts[] = {70, 120, -1};
+			status_parts[] = {70, 140, 180, -1};
 		d = AllocZeroedOrFail(sizeof *d);
 		SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)d);
 		d->emu = ((CREATESTRUCT *)lParam)->lpCreateParams;
@@ -1408,7 +1408,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		if (wParam == 1)
 		{
 			static const LPCSTR play_texts[] = {0, TEXT("Running"), TEXT("Suspended"), TEXT("Paused")};
-			TCHAR buff[6];
+			TCHAR buff[6]; LPCSTR event_text = NULL;
 			BYTE new_play = d->emu->running ? 1 : d->emu->exec_state ? 2 : 3;
 			// int top = ListView_GetTopIndex(d->hList), bot = top + ListView_GetCountPerPage(d->hList);
 			// for (; top < bot; top++) ListView_Update(d->hList, top);
@@ -1416,10 +1416,20 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			InvalidateRect(d->hHexList, NULL, FALSE);
 			if (d->sbar_play_mode != new_play)
 				SendMessage(d->hStatus, SB_SETTEXT, 0, (LPARAM)(play_texts[d->sbar_play_mode = new_play]));
+			if (d->sbar_input_event != d->emu->exec_state)
+			{
+				static const LPCSTR event_texts[EmuIn_Start + 1] = { /* TODO crappy */
+					TEXT(""), TEXT("KeyChar"), TEXT("CtrlDown"), TEXT("CtrlUp"),
+					TEXT("CtrlUp"), TEXT("MouseDown"), TEXT("MouseUp"), TEXT("Wheel"),
+					TEXT("Screen"), TEXT("ConChar"), TEXT("Init")
+				};
+				SendMessage(d->hStatus, SB_SETTEXT, 1,
+					(LPARAM)event_texts[d->sbar_input_event = d->emu->exec_state]);
+			}
 			if (d->sbar_pc != d->emu->box->core.pc)
 			{
 				wsprintf(buff, "%04X", (UINT)(d->sbar_pc = d->emu->box->core.pc));
-				SendMessage(d->hStatus, SB_SETTEXT, 1, (LPARAM)buff);
+				SendMessage(d->hStatus, SB_SETTEXT, 2, (LPARAM)buff);
 			}
 			return 0;
 		}
