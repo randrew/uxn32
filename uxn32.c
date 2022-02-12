@@ -1559,11 +1559,9 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			d->dib_dims.cy = d->screen.height;
 		}
 		hDC = BeginPaint(hwnd, &ps);
-		if (!EqualRect(&ps.rcPaint, &d->viewport_rect))
-		{
+		if ((UnionRect(&tmp, &ps.rcPaint, &d->viewport_rect), !EqualRect(&d->viewport_rect, &tmp)))
 			FillRect(hDC, &ps.rcPaint, (HBRUSH)GetStockObject(BLACK_BRUSH));
-			if (!IntersectRect(&tmp, &d->viewport_rect, &ps.rcPaint)) goto done_painting;
-		}
+		if (!IntersectRect(&tmp, &d->viewport_rect, &ps.rcPaint)) goto done_painting;
 		if (!d->hBMP || !d->hDibDC) goto done_painting;
 		{
 			DIBSECTION sec; UxnScreen *p = &d->screen;
