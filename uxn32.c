@@ -1295,7 +1295,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	{
 		static HFONT hFont; /* TODO REDUNDANT */ LONG_PTR i, j, k; HWND list; LV_COLUMN col;
 		static const int columns[] = { /* Instr list */ 45, 25, 50, 0,
-									   /* Hex list   */ 40, 130, 0};
+		                               /* Hex list   */ 40, 130, 0};
 		if (!hFont) hFont = CreateFont(8, 6, 0, 0, 0, 0, 0, 0, OEM_CHARSET, OUT_RASTER_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, FIXED_PITCH, TEXT("Terminal"));
 		d = AllocZeroedOrFail(sizeof *d);
 		SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)d);
