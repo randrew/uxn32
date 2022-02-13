@@ -1084,7 +1084,7 @@ static void OpenBeetbugWindow(EmuWindow *emu)
 	{
 		emu->beetbugHWnd = CreateWindowEx(
 			0, BeetbugWinClass, TEXT("Beetbug"), WS_OVERLAPPEDWINDOW,
-			CW_USEDEFAULT, CW_USEDEFAULT, 400, 300,
+			CW_USEDEFAULT, CW_USEDEFAULT, 442, 360,
 			emu->hWnd, NULL, (HINSTANCE)GetWindowLongPtr(emu->hWnd, GWLP_HINSTANCE), emu);
 	}
 	if (!IsWindowVisible(emu->beetbugHWnd)) ShowWindow(emu->beetbugHWnd, SW_SHOW);
@@ -1349,7 +1349,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		SendMessage(d->hStatus, SB_SETPARTS, sizeof status_parts / sizeof(int), (LPARAM)status_parts);
 		for (i = 0; i < 3; i++)
 		{
-			HWND btn = (&d->hStepBtn)[i] = CreateWindowEx(0, TEXT("Button"), NULL, WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 0, 0, 0, 0, hWnd, (HMENU)(BBID_StepBtn + i), (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
+			HWND btn = (&d->hStepBtn)[i] = CreateWindowEx(0, TEXT("Button"), NULL, WS_TABSTOP | WS_VISIBLE | WS_CHILD, 0, 0, 0, 0, hWnd, (HMENU)(BBID_StepBtn + i), (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
 			SendMessage(btn, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), 0);
 		}
 		SetWindowText(d->hStepBtn, TEXT("Step (F8)"));
