@@ -1375,7 +1375,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		break;
 	case WM_SIZE:
 	{
-		static const SIZE stepBtnSize = {75, 19}; int i;
+		static const SIZE btnSize = {75, 19}; int i;
 		RECT r = {0, 0, LOWORD(lParam), HIWORD(lParam)}, tmp;
 		SendMessage(d->hStatus, WM_SIZE, 0, 0);
 		GetClientRect(d->hStatus, &tmp);
@@ -1386,12 +1386,12 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		CutRectForWindow(&tmp, FromBottom, 125, d->hHexList);
 		MoveWindowRect(d->hDisList, &tmp, TRUE);
 		r.top += 5;
-		CutRect(&r, FromTop, stepBtnSize.cy, &tmp);
+		CutRect(&r, FromTop, btnSize.cy, &tmp);
 		r.top += 5;
 		tmp.left += 5; tmp.right = tmp.left + 500;
 		for (i = 0; i < 3; i++)
 		{
-			CutRectForWindow(&tmp, FromLeft, stepBtnSize.cx, (&d->hBigStepBtn)[i]);
+			CutRectForWindow(&tmp, FromLeft, btnSize.cx, (&d->hBigStepBtn)[i]);
 			tmp.right--;
 		}
 		for (i = 0; i < 2; i++)
