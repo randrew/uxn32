@@ -136,6 +136,15 @@ static void CutRect(RECT *in, int dir, int length, RECT *out)
 	(&out->left)[c] = (&in->left)[c];
 	(&out->left)[d] = (&in->left)[d];
 }
+static BOOL MoveWindowRect(HWND hWnd, RECT const *to, BOOL bRepaint)
+{
+	return MoveWindow(hWnd, to->left, to->top, to->right - to->left, to->bottom - to->top, bRepaint);
+}
+static void CutRectForWindow(RECT *prect, int dir, int length, HWND window)
+{
+	RECT r; CutRect(prect, dir, length, &r);
+	MoveWindowRect(window, &r, TRUE);
+}
 
 typedef struct UxnBox
 {
@@ -237,9 +246,9 @@ typedef struct ConWindow
 
 typedef struct BeetbugWin {
 	EmuWindow *emu;
-	HWND hWnd, hDisList, hHexList, hStatus, hStepBtn, hBigStepBtn, hPauseBtn;
+	HWND hWnd, hDisList, hHexList, hWrkStack, hRetStack, hStatus, hStepBtn, hBigStepBtn, hPauseBtn;
 	USHORT sbar_pc;
-	RECT rcBlank;
+	RECT rcBlank, rcWstLabel, rcRstLabel;
 	BYTE sbar_play_mode, sbar_input_event;
 } BeetbugWin;
 
@@ -343,11 +352,6 @@ static HFONT GetSmallFixedFont(void)
 		8, 6, 0, 0, 0, 0, 0, 0, OEM_CHARSET, OUT_RASTER_PRECIS,
 		CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, FIXED_PITCH, TEXT("Terminal"));
 	return hFont;
-}
-
-static BOOL MoveWindowRect(HWND hWnd, RECT const *to, BOOL bRepaint)
-{
-	return MoveWindow(hWnd, to->left, to->top, to->right - to->left, to->bottom - to->top, bRepaint);
 }
 
 static const Uint8 SpriteBlendingTable[5][16] = {
@@ -1310,7 +1314,11 @@ static int DecodeUxnOpcode(TCHAR *out, BYTE instr)
 	return n;
 }
 
-enum {BBID_AsmList = 1, BBID_HexList, BBID_Status, BBID_StepBtn, BBID_BigStepBtn, BBID_PauseBtn};
+enum
+{
+	BBID_AsmList = 1, BBID_HexList, BBID_WrkStack, BBID_RetStack, BBID_Status,
+	BBID_StepBtn, BBID_BigStepBtn, BBID_PauseBtn
+};
 
 static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
@@ -1321,7 +1329,9 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	{
 		LONG_PTR i, j, k; HWND list; LV_COLUMN col; HFONT hFont = GetSmallFixedFont();
 		static const int
-			columns[] = { /* Instr list */ 45, 25, 50, 0, /* Hex list */ 40, 130, 0},
+			columns[] = { /* Instr list */ 45, 25, 50, 0, /* Hex list */ 40, 130, 0,
+			              /* Stacks */ 25, 0, 25, 0},
+			rows[] = {UXN_RAM_SIZE, UXN_RAM_SIZE / 8, 256, 256},
 			status_parts[] = {70, 140, 180, -1};
 		d = AllocZeroedOrFail(sizeof *d);
 		SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)d);
@@ -1329,7 +1339,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		d->hWnd = hWnd;
 		ZeroMemory(&col, sizeof col);
 		col.mask = LVCF_FMT | LVCF_WIDTH;
-		for (i = j = 0; i < 2; i++)
+		for (i = j = 0; i < 4; i++)
 		{
 			(&d->hDisList)[i] = list = CreateWindowEx(
 				WS_EX_CLIENTEDGE, WC_LISTVIEW, NULL,
@@ -1340,7 +1350,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			ListView_SetExtendedListViewStyle(list, LVS_EX_FULLROWSELECT);
 			ListView_DeleteAllItems(list);
 			for (k = 0; (col.cx = columns[j++]);) ListView_InsertColumn(list, k++, &col);
-			ListView_SetItemCount(list, UXN_RAM_SIZE / (i ? 8 : 1));
+			ListView_SetItemCount(list, rows[i]);
 			ListView_EnsureVisible(list, 0, FALSE);
 		}
 		d->hStatus = CreateWindowEx(
@@ -1365,36 +1375,52 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		break;
 	case WM_SIZE:
 	{
-		RECT r = {0, 0, LOWORD(lParam), HIWORD(lParam)}, rSbar, rDisList, rHexList, rBtn;
-		SIZE stepBtnSize = {75, 19};
+		static const SIZE stepBtnSize = {75, 19}; int i;
+		RECT r = {0, 0, LOWORD(lParam), HIWORD(lParam)}, tmp;
 		SendMessage(d->hStatus, WM_SIZE, 0, 0);
-		GetClientRect(d->hStatus, &rSbar);
-		MapWindowPoints(d->hStatus, hWnd, (LPPOINT)&rSbar, 2); /* must violate strict aliasing */
-		r.bottom = rSbar.top;
-		CutRect(&r, FromLeft, 200, &rDisList);
+		GetClientRect(d->hStatus, &tmp);
+		MapWindowPoints(d->hStatus, hWnd, (LPPOINT)&tmp, 2); /* must violate strict aliasing */
+		r.bottom = tmp.top;
+		CutRect(&r, FromLeft, 200, &tmp);
 		d->rcBlank = r;
-		InflateRect(&r, -5, -5);
-		r.right = r.left + 500; r.bottom = r.top + 500;
-		CutRect(&r, FromTop, stepBtnSize.cy, &r);
-		CutRect(&r, FromLeft, stepBtnSize.cx, &rBtn);
-		MoveWindowRect(d->hBigStepBtn, &rBtn, TRUE);
-		r.right--;
-		CutRect(&r, FromLeft, stepBtnSize.cx, &rBtn);
-		MoveWindowRect(d->hStepBtn, &rBtn, TRUE);
-		r.right--;
-		CutRect(&r, FromLeft, stepBtnSize.cx, &rBtn);
-		MoveWindowRect(d->hPauseBtn, &rBtn, TRUE);
-		CutRect(&rDisList, FromBottom, 125, &rHexList);
-		MoveWindowRect(d->hDisList, &rDisList, TRUE);
-		MoveWindowRect(d->hHexList, &rHexList, TRUE);
+		CutRectForWindow(&tmp, FromBottom, 125, d->hHexList);
+		MoveWindowRect(d->hDisList, &tmp, TRUE);
+		r.top += 5;
+		CutRect(&r, FromTop, stepBtnSize.cy, &tmp);
+		r.top += 5;
+		tmp.left += 5; tmp.right = tmp.left + 500;
+		CutRectForWindow(&tmp, FromLeft, stepBtnSize.cx, d->hBigStepBtn);
+		tmp.right--;
+		CutRectForWindow(&tmp, FromLeft, stepBtnSize.cx, d->hStepBtn);
+		tmp.right--;
+		CutRectForWindow(&tmp, FromLeft, stepBtnSize.cx, d->hPauseBtn);
+		for (i = 0; i < 2; i++)
+		{
+			CutRect(&r, FromLeft, 50, &tmp);
+			CutRect(&tmp, FromBottom, 20, &d->rcWstLabel + i);
+			MoveWindowRect((&d->hWrkStack)[i], &tmp, TRUE);
+		}
 		break;
 	}
 	case WM_PAINT:
 	{
 		/* TODO do we actually need this? just use background painting? */
+		static const LPCSTR st_labels[] = {TEXT("WST"), TEXT("RST")};
 		RECT rTmp; PAINTSTRUCT ps; HDC hDC = BeginPaint(hWnd, &ps);
+		TCHAR buff[32]; int i, old_bkmode; HGDIOBJ old_font;
 		if (IntersectRect(&rTmp, &ps.rcPaint, &d->rcBlank))
 			FillRect(hDC, &rTmp, (HBRUSH)(COLOR_3DFACE + 1));
+		old_bkmode = SetBkMode(hDC, TRANSPARENT);
+		old_font = SelectObject(hDC, GetSmallFixedFont());
+		for (i = 0; i < 2; i++)
+		{
+			RECT *rc = &d->rcWstLabel + i;
+			if (!IntersectRect(&rTmp, &ps.rcPaint, rc)) continue;
+			wsprintf(buff, "%s %02X", st_labels[i], (UINT)(&d->emu->box->core.wst)[i]->ptr);
+			DrawText(hDC, buff, -1, rc, DT_SINGLELINE | DT_CENTER | DT_VCENTER);
+		}
+		SetBkMode(hDC, old_bkmode);
+		SelectObject(hDC, old_font);
 		EndPaint(hWnd, &ps);
 		break;
 	}
@@ -1421,11 +1447,11 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				}
 				break;
 			case BBID_HexList: addr *= 8; switch (di->item.iSubItem)
-				{
+			{
 				case 0: wsprintf(buff, "%04X", addr); break;
 				case 1:
 				{
-					BYTE *mem = d->emu->box->core.ram + addr;
+					BYTE *mem = core->ram + addr;
 					wsprintf(buff, "%02X%02X %02X%02X %02X%02X %02X%02X",
 						(UINT)mem[0], (UINT)mem[1], (UINT)mem[2], (UINT)mem[3],
 						(UINT)mem[4], (UINT)mem[5], (UINT)mem[6], (UINT)mem[7]);
@@ -1433,6 +1459,13 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				}
 				}
 				break;
+			case BBID_WrkStack: case BBID_RetStack: addr *= 1;
+			{
+				Stack *stack = (&core->wst)[wParam - BBID_WrkStack];
+				if (addr < stack->ptr) wsprintf(buff, "%02X", (UINT)stack->dat[addr]);
+				else buff[0] = ' ', buff[1] = ' ', buff[2] = 0;
+				break;
+			}
 			}
 			lstrcpyn(di->item.pszText, buff, di->item.cchTextMax);
 			return 0;
@@ -1463,12 +1496,12 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		if (wParam == 1)
 		{
 			static const LPCSTR play_texts[] = {0, TEXT("Running"), TEXT("Suspended"), TEXT("Paused")};
-			TCHAR buff[6]; BYTE new_play = d->emu->running ? 1 : d->emu->exec_state ? 2 : 3;
-			BOOL step_ctrls = new_play == 2;
+			BYTE new_play = d->emu->running ? 1 : d->emu->exec_state ? 2 : 3;
+			BOOL step_ctrls = new_play == 2; TCHAR buff[6]; int i;
 			// int top = ListView_GetTopIndex(d->hList), bot = top + ListView_GetCountPerPage(d->hList);
 			// for (; top < bot; top++) ListView_Update(d->hList, top);
-			InvalidateRect(d->hDisList, NULL, FALSE); /* TODO only changed areas */
-			InvalidateRect(d->hHexList, NULL, FALSE);
+			for (i = 0; i < 4; i++) InvalidateRect((&d->hDisList)[i], NULL, FALSE); /* TODO only changed areas */
+			for (i = 0; i < 2; i++) InvalidateRect(hWnd, &d->rcWstLabel + i, FALSE);
 			if (d->sbar_play_mode != new_play)
 			{
 				SendMessage(d->hStatus, SB_SETTEXT, 0, (LPARAM)(play_texts[d->sbar_play_mode = new_play]));
