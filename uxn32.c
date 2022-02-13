@@ -1206,7 +1206,9 @@ static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT
 		break;
 	}
 	d->exec_state = type;
+#ifndef NDEBUG
 	if (type == EmuIn_Start && IsWindowVisible(d->beetbugHWnd)) { PauseVM(d); ShowBeetbugInstruction(d, *pc); return; }
+#endif
 	RunUxn(d, 0);
 }
 
