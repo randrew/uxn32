@@ -246,7 +246,7 @@ typedef struct ConWindow
 
 typedef struct BeetbugWin {
 	EmuWindow *emu;
-	HWND hWnd, hDisList, hHexList, hWrkStack, hRetStack, hStatus, hStepBtn, hBigStepBtn, hPauseBtn;
+	HWND hWnd, hDisList, hHexList, hWrkStack, hRetStack, hStatus, hBigStepBtn, hStepBtn, hPauseBtn;
 	USHORT sbar_pc;
 	RECT rcBlank, rcWstLabel, rcRstLabel;
 	BYTE sbar_play_mode, sbar_input_event;
@@ -1359,11 +1359,11 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		SendMessage(d->hStatus, SB_SETPARTS, sizeof status_parts / sizeof(int), (LPARAM)status_parts);
 		for (i = 0; i < 3; i++)
 		{
-			HWND btn = (&d->hStepBtn)[i] = CreateWindowEx(0, TEXT("Button"), NULL, WS_TABSTOP | WS_VISIBLE | WS_CHILD, 0, 0, 0, 0, hWnd, (HMENU)(BBID_StepBtn + i), (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
+			HWND btn = (&d->hBigStepBtn)[i] = CreateWindowEx(0, TEXT("Button"), NULL, WS_TABSTOP | WS_VISIBLE | WS_CHILD, 0, 0, 0, 0, hWnd, (HMENU)(BBID_StepBtn + i), (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
 			SendMessage(btn, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), 0);
 		}
-		SetWindowText(d->hStepBtn, TEXT("Step (F8)"));
 		SetWindowText(d->hBigStepBtn, TEXT("Big Step (F7)"));
+		SetWindowText(d->hStepBtn, TEXT("Step (F8)"));
 		SetTimer(hWnd, 1, 50, NULL);
 		break;
 	}
@@ -1389,11 +1389,11 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		CutRect(&r, FromTop, stepBtnSize.cy, &tmp);
 		r.top += 5;
 		tmp.left += 5; tmp.right = tmp.left + 500;
-		CutRectForWindow(&tmp, FromLeft, stepBtnSize.cx, d->hBigStepBtn);
-		tmp.right--;
-		CutRectForWindow(&tmp, FromLeft, stepBtnSize.cx, d->hStepBtn);
-		tmp.right--;
-		CutRectForWindow(&tmp, FromLeft, stepBtnSize.cx, d->hPauseBtn);
+		for (i = 0; i < 3; i++)
+		{
+			CutRectForWindow(&tmp, FromLeft, stepBtnSize.cx, (&d->hBigStepBtn)[i]);
+			tmp.right--;
+		}
 		for (i = 0; i < 2; i++)
 		{
 			CutRect(&r, FromLeft, 50, &tmp);
@@ -1522,10 +1522,10 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				wsprintf(buff, "%04X", (UINT)(d->sbar_pc = d->emu->box->core.pc));
 				SendMessage(d->hStatus, SB_SETTEXT, 2, (LPARAM)buff);
 			}
-			if (IsWindowEnabled(d->hStepBtn) != step_ctrls)
+			if (IsWindowEnabled(d->hBigStepBtn) != step_ctrls)
 			{
-				EnableWindow(d->hStepBtn, step_ctrls);
 				EnableWindow(d->hBigStepBtn, step_ctrls);
+				EnableWindow(d->hStepBtn, step_ctrls);
 			}
 			return 0;
 		}
