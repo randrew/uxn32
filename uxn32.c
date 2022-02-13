@@ -1310,6 +1310,8 @@ static int DecodeUxnOpcode(TCHAR *out, BYTE instr)
 	return n;
 }
 
+enum {BBID_AsmList = 1, BBID_HexList, BBID_Status, BBID_StepBtn, BBID_BigStepBtn, BBID_PauseBtn};
+
 static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	BeetbugWin *d = (BeetbugWin *)GetWindowLongPtr(hWnd, GWLP_USERDATA);
@@ -1333,7 +1335,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				WS_EX_CLIENTEDGE, WC_LISTVIEW, NULL,
 				WS_TABSTOP | WS_CHILD | WS_BORDER | WS_VISIBLE |
 					LVS_REPORT | LVS_OWNERDATA | LVS_SHOWSELALWAYS | LVS_NOCOLUMNHEADER,
-				0, 0, 0, 0, hWnd, (HMENU)(i + 1), (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
+				0, 0, 0, 0, hWnd, (HMENU)(i + BBID_AsmList), (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
 			if (hFont) SendMessage(list, WM_SETFONT, (WPARAM)hFont, 0);
 			ListView_SetExtendedListViewStyle(list, LVS_EX_FULLROWSELECT);
 			ListView_DeleteAllItems(list);
@@ -1343,11 +1345,11 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		}
 		d->hStatus = CreateWindowEx(
 			0, STATUSCLASSNAME, NULL, WS_CHILD | WS_VISIBLE | SBARS_SIZEGRIP,
-			0, 0, 0, 0, hWnd, (HMENU)3, (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
+			0, 0, 0, 0, hWnd, (HMENU)BBID_Status, (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
 		SendMessage(d->hStatus, SB_SETPARTS, sizeof status_parts / sizeof(int), (LPARAM)status_parts);
 		for (i = 0; i < 3; i++)
 		{
-			HWND btn = (&d->hStepBtn)[i] = CreateWindowEx(0, TEXT("Button"), NULL, WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 0, 0, 0, 0, hWnd, (HMENU)(4 + i), (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
+			HWND btn = (&d->hStepBtn)[i] = CreateWindowEx(0, TEXT("Button"), NULL, WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 0, 0, 0, 0, hWnd, (HMENU)(BBID_StepBtn + i), (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
 			SendMessage(btn, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), 0);
 		}
 		SetWindowText(d->hStepBtn, TEXT("Step (F8)"));
@@ -1411,14 +1413,14 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			buff[0] = 0;
 			switch (wParam)
 			{
-			case 1: switch (di->item.iSubItem)
+			case BBID_AsmList: switch (di->item.iSubItem)
 				{
 				case 0: wsprintf(buff, "%c %04X", core->pc == iItem ? '>' : ' ', (UINT)iItem); break;
 				case 1: wsprintf(buff, "%02X", (UINT)core->ram[iItem]); break;
 				case 2: DecodeUxnOpcode(buff, (BYTE)core->ram[iItem]); break;
 				}
 				break;
-			case 2: addr *= 8; switch (di->item.iSubItem)
+			case BBID_HexList: addr *= 8; switch (di->item.iSubItem)
 				{
 				case 0: wsprintf(buff, "%04X", addr); break;
 				case 1:
@@ -1443,9 +1445,9 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		if (lParam && HIWORD(wParam) == BN_CLICKED)
 			switch (idm)
 			{
-			case 4: idm = IDM_STEP; break;
-			case 5: idm = IDM_BIGSTEP; break;
-			case 6: return SendMessage(d->emu->hWnd, WM_COMMAND, MAKEWPARAM(IDM_PAUSE, 0), 0);
+			case BBID_StepBtn: idm = IDM_STEP; break;
+			case BBID_BigStepBtn: idm = IDM_BIGSTEP; break;
+			case BBID_PauseBtn: return SendMessage(d->emu->hWnd, WM_COMMAND, MAKEWPARAM(IDM_PAUSE, 0), 0);
 			}
 		if ((idm == IDM_STEP || idm == IDM_BIGSTEP) && !d->emu->running && d->emu->exec_state)
 		{
