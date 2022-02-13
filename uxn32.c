@@ -123,7 +123,7 @@ static void _impl_ListRemove(LinkedList *list, ListLink *a)
 #define ListPushBack(list, a, link_field) _impl_ListPushBack((list), &(a)->link_field)
 #define ListRemove(list, a, link_field) _impl_ListRemove((list), &(a->link_field))
 
-enum {CutLeft, CutTop, CutRight, CutBottom};
+enum {FromLeft, FromTop, FromRight, FromBottom};
 static void CutRect(RECT *in, int dir, int length, RECT *out)
 {
 	LONG b = dir + 2 & 3, c = dir + 1 & 3, d = dir + 3 & 3, in_a = (&in->left)[dir];
@@ -237,7 +237,7 @@ typedef struct ConWindow
 
 typedef struct BeetbugWin {
 	EmuWindow *emu;
-	HWND hWnd, hDisList, hHexList, hStatus;
+	HWND hWnd, hDisList, hHexList, hStatus, hStepBtn, hBigStepBtn, hPauseBtn;
 	USHORT sbar_pc;
 	RECT rcBlank;
 	BYTE sbar_play_mode, sbar_input_event;
@@ -1354,6 +1354,13 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			0, STATUSCLASSNAME, NULL, WS_CHILD | WS_VISIBLE | SBARS_SIZEGRIP,
 			0, 0, 0, 0, hWnd, (HMENU)3, (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
 		SendMessage(d->hStatus, SB_SETPARTS, sizeof status_parts / sizeof(int), (LPARAM)status_parts);
+		for (i = 0; i < 3; i++)
+		{
+			HWND btn = (&d->hStepBtn)[i] = CreateWindowEx(0, TEXT("Button"), NULL, WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON, 0, 0, 0, 0, hWnd, (HMENU)(4 + i), (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
+			SendMessage(btn, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), 0);
+		}
+		SetWindowText(d->hStepBtn, TEXT("Step (F8)"));
+		SetWindowText(d->hBigStepBtn, TEXT("Big Step (F7)"));
 		SetTimer(hWnd, 1, 50, NULL);
 		break;
 	}
@@ -1365,16 +1372,28 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		break;
 	case WM_SIZE:
 	{
-		RECT r = {0, 0, LOWORD(lParam), HIWORD(lParam)}, rSbar, rLists;
+		RECT r = {0, 0, LOWORD(lParam), HIWORD(lParam)}, rSbar, rDisList, rHexList, rBtn;
+		SIZE stepBtnSize = {75, 19};
 		SendMessage(d->hStatus, WM_SIZE, 0, 0);
 		GetClientRect(d->hStatus, &rSbar);
 		MapWindowPoints(d->hStatus, hWnd, (LPPOINT)&rSbar, 2); /* must violate strict aliasing */
 		r.bottom = rSbar.top;
-		CutRect(&r, CutLeft, 200, &rLists);
+		CutRect(&r, FromLeft, 200, &rDisList);
 		d->rcBlank = r;
-		CutRect(&rLists, CutBottom, 125, &r);
-		MoveWindowRect(d->hDisList, &rLists, TRUE);
-		MoveWindowRect(d->hHexList, &r, TRUE);
+		InflateRect(&r, -5, -5);
+		r.right = r.left + 500; r.bottom = r.top + 500;
+		CutRect(&r, FromTop, stepBtnSize.cy, &r);
+		CutRect(&r, FromLeft, stepBtnSize.cx, &rBtn);
+		MoveWindowRect(d->hBigStepBtn, &rBtn, TRUE);
+		r.right--;
+		CutRect(&r, FromLeft, stepBtnSize.cx, &rBtn);
+		MoveWindowRect(d->hStepBtn, &rBtn, TRUE);
+		r.right--;
+		CutRect(&r, FromLeft, stepBtnSize.cx, &rBtn);
+		MoveWindowRect(d->hPauseBtn, &rBtn, TRUE);
+		CutRect(&rDisList, FromBottom, 125, &rHexList);
+		MoveWindowRect(d->hDisList, &rDisList, TRUE);
+		MoveWindowRect(d->hHexList, &rHexList, TRUE);
 		break;
 	}
 	case WM_PAINT:
@@ -1428,26 +1447,41 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		}
 		break;
 	case WM_COMMAND:
-		if ((LOWORD(wParam) == IDM_STEP || LOWORD(wParam) == IDM_BIGSTEP) && !d->emu->running && d->emu->exec_state)
-		{
-			d->emu->box->core.fault_code = 0;
-			RunUxn(d->emu, LOWORD(wParam) == IDM_STEP ? 1 : 100);
-			ShowBeetbugInstruction(d->emu, d->emu->box->core.pc);
-			InvalidateRect(d->hDisList, NULL, FALSE);
-			return 0;
-		}
+		if (HIWORD(wParam) == 0 || HIWORD(wParam) == 1)
+			switch (LOWORD(wParam))
+			{
+			int steps;
+			case IDM_STEP: one_step: steps = 1; goto do_step;
+			case IDM_BIGSTEP: big_step: steps = 100; goto do_step;
+			do_step: if (d->emu->running || !d->emu->exec_state) break;
+				d->emu->box->core.fault_code = 0;
+				RunUxn(d->emu, steps);
+				ShowBeetbugInstruction(d->emu, d->emu->box->core.pc);
+				InvalidateRect(d->hDisList, NULL, FALSE);
+				return 0;
+			}
+		if (HIWORD(wParam) == BN_CLICKED)
+			switch (LOWORD(wParam))
+			{
+			case 4: goto one_step; case 5: goto big_step;
+			case 6: return SendMessage(d->emu->hWnd, WM_COMMAND, MAKEWPARAM(IDM_PAUSE, 0), 0);
+			}
 		return SendMessage(d->emu->hWnd, msg, wParam, lParam);
 	case WM_TIMER:
 		if (wParam == 1)
 		{
 			static const LPCSTR play_texts[] = {0, TEXT("Running"), TEXT("Suspended"), TEXT("Paused")};
 			TCHAR buff[6]; BYTE new_play = d->emu->running ? 1 : d->emu->exec_state ? 2 : 3;
+			BOOL step_ctrls = new_play == 2;
 			// int top = ListView_GetTopIndex(d->hList), bot = top + ListView_GetCountPerPage(d->hList);
 			// for (; top < bot; top++) ListView_Update(d->hList, top);
 			InvalidateRect(d->hDisList, NULL, FALSE); /* TODO only changed areas */
 			InvalidateRect(d->hHexList, NULL, FALSE);
 			if (d->sbar_play_mode != new_play)
+			{
 				SendMessage(d->hStatus, SB_SETTEXT, 0, (LPARAM)(play_texts[d->sbar_play_mode = new_play]));
+				SetWindowText(d->hPauseBtn, new_play == 1 ? TEXT("Pause (F9)") : TEXT("Resume (F9)"));
+			}
 			if (d->sbar_input_event != d->emu->exec_state)
 			{
 				static const LPCSTR event_texts[EmuIn_Start + 1] = { /* TODO crappy */
@@ -1462,6 +1496,11 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			{
 				wsprintf(buff, "%04X", (UINT)(d->sbar_pc = d->emu->box->core.pc));
 				SendMessage(d->hStatus, SB_SETTEXT, 2, (LPARAM)buff);
+			}
+			if (IsWindowEnabled(d->hStepBtn) != step_ctrls)
+			{
+				EnableWindow(d->hStepBtn, step_ctrls);
+				EnableWindow(d->hBigStepBtn, step_ctrls);
 			}
 			return 0;
 		}
