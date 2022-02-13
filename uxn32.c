@@ -246,9 +246,10 @@ typedef struct ConWindow
 
 typedef struct BeetbugWin {
 	EmuWindow *emu;
-	HWND hWnd, hDisList, hHexList, hWrkStack, hRetStack, hStatus, hBigStepBtn, hStepBtn, hPauseBtn;
+	HWND hWnd, hDisList, hHexList, hWrkStack, hRetStack, hDevMem,
+	     hStatus, hBigStepBtn, hStepBtn, hPauseBtn;
 	USHORT sbar_pc;
-	RECT rcBlank, rcWstLabel, rcRstLabel;
+	RECT rcBlank, rcWstLabel, rcRstLabel, rcDevMemLabel;
 	BYTE sbar_play_mode, sbar_input_event;
 } BeetbugWin;
 
@@ -1088,7 +1089,7 @@ static void OpenBeetbugWindow(EmuWindow *emu)
 	{
 		emu->beetbugHWnd = CreateWindowEx(
 			0, BeetbugWinClass, TEXT("Beetbug"), WS_OVERLAPPEDWINDOW,
-			CW_USEDEFAULT, CW_USEDEFAULT, 442, 360,
+			CW_USEDEFAULT, CW_USEDEFAULT, 480, 395,
 			emu->hWnd, NULL, (HINSTANCE)GetWindowLongPtr(emu->hWnd, GWLP_HINSTANCE), emu);
 	}
 	if (!IsWindowVisible(emu->beetbugHWnd)) ShowWindow(emu->beetbugHWnd, SW_SHOW);
@@ -1318,8 +1319,8 @@ static int DecodeUxnOpcode(TCHAR *out, BYTE instr)
 
 enum
 {
-	BBID_AsmList = 1, BBID_HexList, BBID_WrkStack, BBID_RetStack, BBID_Status,
-	BBID_StepBtn, BBID_BigStepBtn, BBID_PauseBtn
+	BBID_AsmList = 1, BBID_HexList, BBID_WrkStack, BBID_RetStack, BBID_DevMem,
+	BBID_Status, BBID_StepBtn, BBID_BigStepBtn, BBID_PauseBtn
 };
 
 static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -1332,8 +1333,8 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		LONG_PTR i, j, k; HWND list; LV_COLUMN col; HFONT hFont = GetSmallFixedFont();
 		static const int
 			columns[] = { /* Instr list */ 45, 25, 50, 0, /* Hex list */ 40, 130, 0,
-			              /* Stacks */ 25, 0, 25, 0},
-			rows[] = {UXN_RAM_SIZE, UXN_RAM_SIZE / 8, 256, 256},
+			              /* Stacks */ 25, 0, 25, 0, /* Device mem */ 20, 130, 0},
+			rows[] = {UXN_RAM_SIZE, UXN_RAM_SIZE / 8, 256, 256, 256 / 8},
 			status_parts[] = {70, 140, 180, -1};
 		d = AllocZeroedOrFail(sizeof *d);
 		SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)d);
@@ -1341,7 +1342,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		d->hWnd = hWnd;
 		ZeroMemory(&col, sizeof col);
 		col.mask = LVCF_FMT | LVCF_WIDTH;
-		for (i = j = 0; i < 4; i++)
+		for (i = j = 0; i < 5; i++)
 		{
 			(&d->hDisList)[i] = list = CreateWindowEx(
 				WS_EX_CLIENTEDGE, WC_LISTVIEW, NULL,
@@ -1377,7 +1378,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		break;
 	case WM_SIZE:
 	{
-		static const SIZE btnSize = {75, 19}; int i;
+		static const SIZE btnSize = {87, 19}; int i;
 		RECT r = {0, 0, LOWORD(lParam), HIWORD(lParam)}, tmp;
 		SendMessage(d->hStatus, WM_SIZE, 0, 0);
 		GetClientRect(d->hStatus, &tmp);
@@ -1402,6 +1403,8 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			CutRect(&tmp, FromBottom, 20, &d->rcWstLabel + i);
 			MoveWindowRect((&d->hWrkStack)[i], &tmp, TRUE);
 		}
+		CutRect(&r, FromBottom, 20, &d->rcDevMemLabel);
+		MoveWindowRect(d->hDevMem, &r, TRUE);
 		break;
 	}
 	case WM_PAINT:
@@ -1409,17 +1412,22 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		/* TODO do we actually need this? just use background painting? */
 		static const LPCSTR st_labels[] = {TEXT("WST"), TEXT("RST")};
 		RECT rTmp; PAINTSTRUCT ps; HDC hDC = BeginPaint(hWnd, &ps);
-		TCHAR buff[32]; int i, old_bkmode; HGDIOBJ old_font;
+		TCHAR buff[32], *str; int i, old_bkmode; HGDIOBJ old_font;
 		if (IntersectRect(&rTmp, &ps.rcPaint, &d->rcBlank))
 			FillRect(hDC, &rTmp, (HBRUSH)(COLOR_3DFACE + 1));
 		old_bkmode = SetBkMode(hDC, TRANSPARENT);
 		old_font = SelectObject(hDC, GetSmallFixedFont());
-		for (i = 0; i < 2; i++)
+		for (i = 0; i < 3; i++)
 		{
 			RECT *rc = &d->rcWstLabel + i;
 			if (!IntersectRect(&rTmp, &ps.rcPaint, rc)) continue;
-			wsprintf(buff, "%s %02X", st_labels[i], (UINT)(&d->emu->box->core.wst)[i]->ptr);
-			DrawText(hDC, buff, -1, rc, DT_SINGLELINE | DT_CENTER | DT_VCENTER);
+			if (i < 2)
+			{
+				wsprintf(buff, "%s %02X", st_labels[i], (UINT)(&d->emu->box->core.wst)[i]->ptr);
+				str = buff;
+			}
+			else str = TEXT("DEVICE MEMORY");
+			DrawText(hDC, str, -1, rc, DT_SINGLELINE | DT_CENTER | DT_VCENTER);
 		}
 		SetBkMode(hDC, old_bkmode);
 		SelectObject(hDC, old_font);
@@ -1468,6 +1476,18 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				else buff[0] = ' ', buff[1] = ' ', buff[2] = 0;
 				break;
 			}
+			case BBID_DevMem: addr *= 8; switch (di->item.iSubItem)
+			{
+			case 0: wsprintf(buff, "%02X", addr); break;
+			case 1:
+			{
+				BYTE *mem = d->emu->box->device_memory + addr;
+				wsprintf(buff, "%02X%02X %02X%02X %02X%02X %02X%02X",
+					(UINT)mem[0], (UINT)mem[1], (UINT)mem[2], (UINT)mem[3],
+					(UINT)mem[4], (UINT)mem[5], (UINT)mem[6], (UINT)mem[7]);
+				break;
+			}
+			}
 			}
 			lstrcpyn(di->item.pszText, buff, di->item.cchTextMax);
 			return 0;
@@ -1502,7 +1522,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			BOOL step_ctrls = new_play == 2; TCHAR buff[6]; int i;
 			// int top = ListView_GetTopIndex(d->hList), bot = top + ListView_GetCountPerPage(d->hList);
 			// for (; top < bot; top++) ListView_Update(d->hList, top);
-			for (i = 0; i < 4; i++) InvalidateRect((&d->hDisList)[i], NULL, FALSE); /* TODO only changed areas */
+			for (i = 0; i < 5; i++) InvalidateRect((&d->hDisList)[i], NULL, FALSE); /* TODO only changed areas */
 			for (i = 0; i < 2; i++) InvalidateRect(hWnd, &d->rcWstLabel + i, FALSE);
 			if (d->sbar_play_mode != new_play)
 			{
