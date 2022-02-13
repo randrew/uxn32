@@ -1438,26 +1438,25 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		}
 		break;
 	case WM_COMMAND:
-		if (HIWORD(wParam) == 0 || HIWORD(wParam) == 1)
-			switch (LOWORD(wParam))
+	{
+		int idm = LOWORD(wParam);
+		if (lParam && HIWORD(wParam) == BN_CLICKED)
+			switch (idm)
 			{
-			int steps;
-			case IDM_STEP: one_step: steps = 1; goto do_step;
-			case IDM_BIGSTEP: big_step: steps = 100; goto do_step;
-			do_step: if (d->emu->running || !d->emu->exec_state) break;
-				d->emu->box->core.fault_code = 0;
-				RunUxn(d->emu, steps);
-				ShowBeetbugInstruction(d->emu, d->emu->box->core.pc);
-				InvalidateRect(d->hDisList, NULL, FALSE);
-				return 0;
-			}
-		if (HIWORD(wParam) == BN_CLICKED)
-			switch (LOWORD(wParam))
-			{
-			case 4: goto one_step; case 5: goto big_step;
+			case 4: idm = IDM_STEP; break;
+			case 5: idm = IDM_BIGSTEP; break;
 			case 6: return SendMessage(d->emu->hWnd, WM_COMMAND, MAKEWPARAM(IDM_PAUSE, 0), 0);
 			}
+		if ((idm == IDM_STEP || idm == IDM_BIGSTEP) && !d->emu->running && d->emu->exec_state)
+		{
+			d->emu->box->core.fault_code = 0;
+			RunUxn(d->emu, idm == IDM_STEP ? 1 : 100);
+			ShowBeetbugInstruction(d->emu, d->emu->box->core.pc);
+			InvalidateRect(d->hDisList, NULL, FALSE);
+			return 0;
+		}
 		break;
+	}
 	case WM_TIMER:
 		if (wParam == 1)
 		{
