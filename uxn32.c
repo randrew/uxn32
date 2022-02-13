@@ -1310,13 +1310,6 @@ static int DecodeUxnOpcode(TCHAR *out, BYTE instr)
 	return n;
 }
 
-static LRESULT CALLBACK BeetbugSubWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
-{
-	return msg == WM_COMMAND ?
-		SendMessage(GetParent(hWnd), msg, wParam, lParam) :
-		CallWindowProc((WNDPROC)GetWindowLongPtr(hWnd, GWLP_USERDATA), hWnd, msg, wParam, lParam);
-}
-
 static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	BeetbugWin *d = (BeetbugWin *)GetWindowLongPtr(hWnd, GWLP_USERDATA);
@@ -1344,8 +1337,6 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			if (hFont) SendMessage(list, WM_SETFONT, (WPARAM)hFont, 0);
 			ListView_SetExtendedListViewStyle(list, LVS_EX_FULLROWSELECT);
 			ListView_DeleteAllItems(list);
-			SetWindowLongPtr(list, GWLP_USERDATA, (LONG_PTR)GetWindowLongPtr(list, GWLP_WNDPROC)); /* redundant with below */
-			SetWindowLongPtr(list, GWLP_WNDPROC,  (LONG_PTR)BeetbugSubWndProc);
 			for (k = 0; (col.cx = columns[j++]);) ListView_InsertColumn(list, k++, &col);
 			ListView_SetItemCount(list, UXN_RAM_SIZE / (i ? 8 : 1));
 			ListView_EnsureVisible(list, 0, FALSE);
@@ -1466,7 +1457,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			case 4: goto one_step; case 5: goto big_step;
 			case 6: return SendMessage(d->emu->hWnd, WM_COMMAND, MAKEWPARAM(IDM_PAUSE, 0), 0);
 			}
-		return SendMessage(d->emu->hWnd, msg, wParam, lParam);
+		break;
 	case WM_TIMER:
 		if (wParam == 1)
 		{
@@ -1514,7 +1505,7 @@ static LRESULT CALLBACK ConEditWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	LRESULT result;
 	if (msg == WM_COMMAND && LOWORD(wParam) == IDM_SELECTALL)
 		return SendMessage(hWnd, EM_SETSEL, 0, -1);
-	if (msg == WM_KEYDOWN && (wParam == VK_ESCAPE || wParam == VK_RETURN) || msg == WM_COMMAND)
+	if (msg == WM_KEYDOWN && (wParam == VK_ESCAPE || wParam == VK_RETURN))
 		return SendMessage(GetParent(hWnd), msg, wParam, lParam);
 	result = CallWindowProc((WNDPROC)GetWindowLongPtr(hWnd, GWLP_USERDATA), hWnd, msg, wParam, lParam);
 	if (result && msg == WM_CHAR && GetDlgCtrlID(hWnd) == 1)
@@ -1581,10 +1572,6 @@ static LRESULT CALLBACK ConsoleWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				SendInputEvent(emu, EmuIn_Console, (BYTE)buff[i], 0, 0);
 		}
 		break;
-	case WM_COMMAND:
-		/* Not sure if this is the right way to do this */
-		SendMessage((HWND)GetWindowLongPtr(hWnd, GWLP_HWNDPARENT), msg, wParam, lParam);
-		return 0;
 	case WM_CTLCOLORSTATIC:
 		if ((HWND)lParam != d->outHWnd) break;
 		return (LRESULT)GetSysColorBrush(COLOR_WINDOW);
@@ -1878,7 +1865,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 
 int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
 {
-	WNDCLASSEX wc; HWND hWin;
+	WNDCLASSEX wc; HWND hWin, hParent;
 	MSG msg; HACCEL hAccel;
 	(void)command_line; (void)prev_instance;
 	QueryPerformanceFrequency(&_perfcount_freq);
@@ -1911,7 +1898,13 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 		while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
 		{
 			if (msg.message == WM_QUIT) goto quitting;
-			if (TranslateAccelerator(msg.hwnd, hAccel, &msg)) continue;
+			if (msg.message == WM_KEYDOWN || msg.message == WM_SYSKEYDOWN)
+			{
+				hWin = msg.hwnd;
+				if (msg.wParam >= VK_F1 && msg.wParam <= VK_F24)
+					while ((hParent = (HWND)GetWindowLongPtr(hWin, GWLP_HWNDPARENT))) hWin = hParent;
+				if (TranslateAccelerator(hWin, hAccel, &msg)) continue;
+			}
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		}
