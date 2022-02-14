@@ -1365,7 +1365,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			(&d->hDisList)[i] = list = CreateWindowEx(
 				WS_EX_CLIENTEDGE, WC_LISTVIEW, NULL,
 				WS_TABSTOP | WS_CHILD | WS_BORDER | WS_VISIBLE |
-					LVS_REPORT | LVS_OWNERDATA | LVS_SHOWSELALWAYS | LVS_NOCOLUMNHEADER | LVS_SINGLESEL,
+					LVS_REPORT | LVS_OWNERDATA | LVS_SHOWSELALWAYS | LVS_NOCOLUMNHEADER | LVS_EDITLABELS | LVS_SINGLESEL,
 				0, 0, 0, 0, hWnd, (HMENU)(i + BBID_AsmList), (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
 			if (hFont) SendMessage(list, WM_SETFONT, (WPARAM)hFont, 0);
 			ListView_SetExtendedListViewStyle(list, LVS_EX_FULLROWSELECT);
@@ -1463,6 +1463,19 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		switch (((LPNMHDR)lParam)->code)
 		{
 		case LVN_MARQUEEBEGIN: return -1; /* Disable. Broken in Win10 1809 w/o manifest, WTF? */
+		case NM_DBLCLK:
+			ListView_EditLabel(GetDlgItem(hWnd, wParam), ((NMITEMACTIVATE *)lParam)->iItem);
+			return 0;
+		case LVN_BEGINLABELEDIT: return !(wParam == BBID_WrkStack || wParam == BBID_RetStack);
+		case LVN_ENDLABELEDIT:
+		{
+			NMLVDISPINFO *inf = (NMLVDISPINFO *)lParam; TCHAR buff[32]; int n;
+			if (!inf->item.pszText || (n = lstrlen(inf->item.pszText)) >= 31 - 2) return FALSE;
+			buff[0] = '0', buff[1] = 'x'; lstrcpyn(buff + 2, inf->item.pszText, 32 - 2);
+			if (!StrToIntEx(buff, STIF_SUPPORT_HEX, &n) || n > 0xFF) return FALSE;
+			d->emu->box->core.wst->dat[inf->item.iItem] = (BYTE)n;
+			return TRUE;
+		}
 		case LVN_GETDISPINFO:
 		{
 			TCHAR buff[1024]; Uxn *core = &d->emu->box->core; LV_DISPINFO *di = (LV_DISPINFO *)lParam;
