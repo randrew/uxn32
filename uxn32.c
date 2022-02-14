@@ -247,7 +247,8 @@ typedef struct ConWindow
 typedef struct BeetbugWin {
 	EmuWindow *emu;
 	HWND hWnd, hDisList, hHexList, hWrkStack, hRetStack, hDevMem,
-	     hStatus, hBigStepBtn, hStepBtn, hPauseBtn;
+	     hStatus, hBigStepBtn, hStepBtn, hPauseBtn,
+		 hStackPushBtn0, hStackPushBtn1, hStackPopBtn0, hStackPopBtn1;
 	USHORT sbar_pc;
 	RECT rcBlank, rcWstLabel, rcRstLabel, rcDevMemLabel;
 	BYTE sbar_play_mode, sbar_input_event;
@@ -1336,7 +1337,8 @@ static int DecodeUxnOpcode(TCHAR *out, BYTE instr)
 enum
 {
 	BBID_AsmList = 1, BBID_HexList, BBID_WrkStack, BBID_RetStack, BBID_DevMem,
-	BBID_Status, BBID_StepBtn, BBID_BigStepBtn, BBID_PauseBtn
+	BBID_Status, BBID_StepBtn, BBID_BigStepBtn, BBID_PauseBtn,
+	BBID_PushStackBtn0, BBID_PushStackBtn1, BBID_PopStackBtn0, BBID_PopStackBtn1
 };
 
 static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
@@ -1363,7 +1365,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			(&d->hDisList)[i] = list = CreateWindowEx(
 				WS_EX_CLIENTEDGE, WC_LISTVIEW, NULL,
 				WS_TABSTOP | WS_CHILD | WS_BORDER | WS_VISIBLE |
-					LVS_REPORT | LVS_OWNERDATA | LVS_SHOWSELALWAYS | LVS_NOCOLUMNHEADER,
+					LVS_REPORT | LVS_OWNERDATA | LVS_SHOWSELALWAYS | LVS_NOCOLUMNHEADER | LVS_SINGLESEL,
 				0, 0, 0, 0, hWnd, (HMENU)(i + BBID_AsmList), (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
 			if (hFont) SendMessage(list, WM_SETFONT, (WPARAM)hFont, 0);
 			ListView_SetExtendedListViewStyle(list, LVS_EX_FULLROWSELECT);
@@ -1376,13 +1378,15 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			0, STATUSCLASSNAME, NULL, WS_CHILD | WS_VISIBLE | SBARS_SIZEGRIP,
 			0, 0, 0, 0, hWnd, (HMENU)BBID_Status, (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
 		SendMessage(d->hStatus, SB_SETPARTS, sizeof status_parts / sizeof(int), (LPARAM)status_parts);
-		for (i = 0; i < 3; i++)
+		for (i = 0; i < 7; i++)
 		{
 			HWND btn = (&d->hBigStepBtn)[i] = CreateWindowEx(0, TEXT("Button"), NULL, WS_TABSTOP | WS_VISIBLE | WS_CHILD, 0, 0, 0, 0, hWnd, (HMENU)(BBID_StepBtn + i), (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
-			SendMessage(btn, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), 0);
+			SendMessage(btn, WM_SETFONT, i < 3 ? (WPARAM)GetStockObject(DEFAULT_GUI_FONT) : (WPARAM)hFont, 0);
 		}
 		SetWindowText(d->hBigStepBtn, TEXT("Big Step (F7)"));
 		SetWindowText(d->hStepBtn, TEXT("Step (F8)"));
+		for (i = 0; i < 4; i++)
+			SetWindowText((&d->hStackPushBtn0)[i], i < 2 ? TEXT("PUSH") : TEXT("POP"));
 		SetTimer(hWnd, 1, 50, NULL);
 		break;
 	}
@@ -1417,6 +1421,8 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		{
 			CutRect(&r, FromLeft, 50, &tmp);
 			CutRect(&tmp, FromBottom, 20, &d->rcWstLabel + i);
+			CutRectForWindow(&tmp, FromBottom, 15, (&d->hStackPopBtn0)[i]);
+			CutRectForWindow(&tmp, FromBottom, 15, (&d->hStackPushBtn0)[i]);
 			MoveWindowRect((&d->hWrkStack)[i], &tmp, TRUE);
 		}
 		CutRect(&r, FromBottom, 20, &d->rcDevMemLabel);
@@ -1519,6 +1525,20 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			case BBID_StepBtn: idm = IDM_STEP; break;
 			case BBID_BigStepBtn: idm = IDM_BIGSTEP; break;
 			case BBID_PauseBtn: return SendMessage(d->emu->hWnd, WM_COMMAND, MAKEWPARAM(IDM_PAUSE, 0), 0);
+
+			{
+				enum {Flags = LVIS_SELECTED | LVIS_FOCUSED}; int btn, i; HWND hList; Stack *stack;
+			case BBID_PushStackBtn0: case BBID_PushStackBtn1: int push = 1; goto push_pop;
+			case BBID_PopStackBtn0:  case BBID_PopStackBtn1:      push = 0; push_pop:
+				btn = idm - (push ? BBID_PushStackBtn0 : BBID_PopStackBtn0);
+				hList = (&d->hWrkStack)[btn]; stack = (&d->emu->box->core.wst)[btn];
+				if (stack->ptr == (push ? 255 : 0)) break;
+				i = push ? stack->ptr++ : --stack->ptr - 1; if (i < 0) i = 0;
+				ListView_SetItemState(hList, i, Flags, Flags);
+				SetFocus(hList);
+				break;
+			}
+
 			}
 		if ((idm == IDM_STEP || idm == IDM_BIGSTEP) && !d->emu->running && d->emu->exec_state)
 		{
