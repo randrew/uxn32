@@ -1120,8 +1120,6 @@ static void ShowBeetbugInstruction(EmuWindow *emu, USHORT address)
 	BeetbugAutoScrollStacks(dbg);
 }
 
-}
-
 /* TODO there's something fancy we should do with the loop to make it tell if it ran out or not by return value, returning 0 when limit is 0 means we might have succeeded in reaching the null instruction on the last allowed step, so we need to do something else */
 /* Pass non-zero steps to use fixed-stepping mode. Pass 0 to use normal run mode with an automatic number of steps. */
 static void RunUxn(EmuWindow *d, UINT steps)
