@@ -1538,9 +1538,9 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			case BBID_PauseBtn: return SendMessage(d->emu->hWnd, WM_COMMAND, MAKEWPARAM(IDM_PAUSE, 0), 0);
 
 			{
-				enum {Flags = LVIS_SELECTED | LVIS_FOCUSED}; int btn, i; HWND hList; Stack *stack;
-			case BBID_PushStackBtn0: case BBID_PushStackBtn1: int push = 1; goto push_pop;
-			case BBID_PopStackBtn0:  case BBID_PopStackBtn1:      push = 0; push_pop:
+				enum {Flags = LVIS_SELECTED | LVIS_FOCUSED}; int push, btn, i; HWND hList; Stack *stack;
+			case BBID_PushStackBtn0: case BBID_PushStackBtn1: push = 1; goto push_pop;
+			case BBID_PopStackBtn0:  case BBID_PopStackBtn1: push = 0; push_pop:
 				btn = idm - (push ? BBID_PushStackBtn0 : BBID_PopStackBtn0);
 				hList = (&d->hWrkStack)[btn]; stack = (&d->emu->box->core.wst)[btn];
 				if (stack->ptr == (push ? 255 : 0)) break;
