@@ -1512,6 +1512,9 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		break;
 
 		case LVN_MARQUEEBEGIN: return -1; /* Disable. Broken in Win10 1809 w/o manifest, WTF? */
+		case NM_RETURN:
+			ListView_EditLabel(GetDlgItem(hWnd, wParam), ListView_GetNextItem(GetDlgItem(hWnd, wParam), -1, LVNI_SELECTED));
+			break;
 		case NM_DBLCLK:
 			ListView_EditLabel(GetDlgItem(hWnd, wParam), ((NMITEMACTIVATE *)lParam)->iItem);
 			return 0;
@@ -1597,6 +1600,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				i = push ? stack->ptr++ : --stack->ptr - 1; if (i < 0) i = 0;
 				ListView_SetItemState(hList, i, Flags, Flags);
 				SetFocus(hList);
+				if (push) ListView_EditLabel(hList, i);
 				break;
 			}
 
