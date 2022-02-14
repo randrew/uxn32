@@ -249,7 +249,7 @@ typedef struct BeetbugWin {
 	HWND hWnd, hDisList, hHexList, hWrkStack, hRetStack, hDevMem,
 	     hStatus, hBigStepBtn, hStepBtn, hPauseBtn,
 		 hStackPushBtn0, hStackPushBtn1, hStackPopBtn0, hStackPopBtn1;
-	USHORT sbar_pc;
+	USHORT sbar_pc, sbar_fault;
 	RECT rcBlank, rcWstLabel, rcRstLabel, rcDevMemLabel;
 	BYTE sbar_play_mode, sbar_input_event;
 } BeetbugWin;
@@ -1590,6 +1590,18 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			{
 				wsprintf(buff, "%04X", (UINT)(d->sbar_pc = d->emu->box->core.pc));
 				SendMessage(d->hStatus, SB_SETTEXT, 2, (LPARAM)buff);
+			}
+			if (d->sbar_fault != d->emu->box->core.fault_code)
+			{
+				LPCSTR text = NULL;
+				switch (d->sbar_fault = d->emu->box->core.fault_code)
+				{
+				case 1:   text = TEXT("Stack underflow"); break;
+				case 2:   text = TEXT("Stack overflow"); break;
+				case 3:   text = TEXT("Division by zero"); break;
+				case 255: text = TEXT("Debug device break"); break;
+				}
+				SendMessage(d->hStatus, SB_SETTEXT, 3, (LPARAM)text);
 			}
 			if (IsWindowEnabled(d->hBigStepBtn) != step_ctrls)
 			{
