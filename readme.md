@@ -16,6 +16,7 @@ Features
 * Specifically built to also work with Wine on Linux and other OSs.
 * Small and simple - single .exe, no installer, no dependencies.
 * Sandboxed file system access for Uxn program ROMs.
+* Debugger with stepping, disassembly view, memory view, and stack views.
 * Uxn programs receive events at full speed and repaint immediately. Got a 240hz display? Now your Uxn drawing program can make use of it.
 * Pre-emptive execution, so it won't freeze up if the Uxn program goes into an infinite loop, unlike the SDL2 version.
 * Compiles with: every version of Visual Studio back to and including VC6, Clang, clang-cl, MinGW Clang, and MinGW GCC.
@@ -26,6 +27,24 @@ Use
 ---
 
 Download the pre-built [Uxn32 Essentials Pack - a bundle of Uxn32.exe and a collection of ROMs](https://github.com/randrew/uxn32/releases/latest/download/uxn32-essentials.zip). Unzip into a new directory and run Uxn32.exe.
+
+Shortcuts & Controls
+--------------------
+
+    F1  Toggle 1x and 2x zoom        F5  Show debugger
+    F2  Clone window & state         F7  Step debugger by 100 instructions
+    F3  Show/hide console            F8  Step debugger by 1 instruction
+    F4  Reset and reload ROM file    F9  Resume or pause emulation
+
+Gamepad Keyboard Mapping
+------------------------
+
+    Control Key -> Gamepad 'A'
+        Alt Key -> Gamepad 'B'
+      Shift Key -> Gamepad 'Select'
+       Home Key -> Gamepad 'Start'
+    
+![](https://raw.githubusercontent.com/wiki/randrew/uxn32/uxn32-1.3-screenshot.gif)
 
 Uxn32 TODO
 ----------
@@ -39,7 +58,7 @@ Uxn32 TODO
 - [x] ~~Add File, View, etc. menus.~~
 - [ ] Add toggle to show/hide menu bar.
 - [ ] Add preferences.
-- [ ] Add a graphical debugger.
+- [x] ~~Add a graphical debugger.~~
 - [x] ~~Add "About" dialog box. (Currently sitting unused in the resources file.)~~
 - [ ] Add a preference to set filesystem sandbox directory, and to restrict read and write operations. (Filesystem sandboxing is currently based on the current working directory.)
 - [ ] Fix mixing of too many synonmous types (DWORD, ULONG, Uint32, etc.) in places where just 1 would do.
