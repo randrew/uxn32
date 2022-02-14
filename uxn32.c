@@ -1095,6 +1095,19 @@ static void OpenBeetbugWindow(EmuWindow *emu)
 	if (!IsWindowVisible(emu->beetbugHWnd)) ShowWindow(emu->beetbugHWnd, SW_SHOW);
 }
 
+static void BeetbugAutoScrollStacks(BeetbugWin *dbg)
+{
+	int pp = ListView_GetCountPerPage(dbg->hWrkStack), pad = pp / 3, top, i, s;
+	for (i = 0; i < 2; i++)
+	{
+		top = ListView_GetTopIndex((&dbg->hWrkStack)[i]);
+		s = (&dbg->emu->box->core.wst)[i]->ptr; /* actually points to 1 past the last value */
+		if (s-- == 0 || s >= top && s < top + pp) continue;
+		ListView_EnsureVisible((&dbg->hWrkStack)[i], MAX(0, s - pp), FALSE);
+		ListView_EnsureVisible((&dbg->hWrkStack)[i], MIN(255, s + pad), FALSE);
+	}
+}
+
 static void ShowBeetbugInstruction(EmuWindow *emu, USHORT address)
 {
 	BeetbugWin *dbg; int pad_rows;
@@ -1103,6 +1116,9 @@ static void ShowBeetbugInstruction(EmuWindow *emu, USHORT address)
 	pad_rows = ListView_GetCountPerPage(dbg->hDisList) / 3;
 	ListView_EnsureVisible(dbg->hDisList, ((UINT)address - pad_rows) % UXN_RAM_SIZE, FALSE); /* TODO probably wasteful */
 	ListView_EnsureVisible(dbg->hDisList, (address + pad_rows) % UXN_RAM_SIZE, FALSE);
+	BeetbugAutoScrollStacks(dbg);
+}
+
 }
 
 /* TODO there's something fancy we should do with the loop to make it tell if it ran out or not by return value, returning 0 when limit is 0 means we might have succeeded in reaching the null instruction on the last allowed step, so we need to do something else */
@@ -1334,7 +1350,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		static const int
 			columns[] = { /* Instr list */ 45, 25, 50, 0, /* Hex list */ 40, 130, 0,
 			              /* Stacks */ 25, 0, 25, 0, /* Device mem */ 20, 130, 0},
-			rows[] = {UXN_RAM_SIZE, UXN_RAM_SIZE / 8, 256, 256, 256 / 8},
+			rows[] = {UXN_RAM_SIZE, UXN_RAM_SIZE / 8, 255, 255, 256 / 8},
 			status_parts[] = {70, 140, 180, -1};
 		d = AllocZeroedOrFail(sizeof *d);
 		SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)d);
@@ -1521,7 +1537,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			BYTE new_play = d->emu->running ? 1 : d->emu->exec_state ? 2 : 3;
 			BOOL step_ctrls = new_play == 2; TCHAR buff[6]; int i;
 			// int top = ListView_GetTopIndex(d->hList), bot = top + ListView_GetCountPerPage(d->hList);
-			// for (; top < bot; top++) ListView_Update(d->hList, top);
+			/* TODO ust ListView_RedrawItems() instead? */
 			for (i = 0; i < 5; i++) InvalidateRect((&d->hDisList)[i], NULL, FALSE); /* TODO only changed areas */
 			for (i = 0; i < 2; i++) InvalidateRect(hWnd, &d->rcWstLabel + i, FALSE);
 			if (d->sbar_play_mode != new_play)
