@@ -1460,6 +1460,57 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	case WM_NOTIFY:
 		switch (((LPNMHDR)lParam)->code)
 		{
+		case NM_CUSTOMDRAW:
+		{
+			NMLVCUSTOMDRAW *cdraw = (NMLVCUSTOMDRAW *)lParam;
+			switch (cdraw->nmcd.dwDrawStage)
+			{
+			case CDDS_PREPAINT:
+				if (wParam == BBID_WrkStack || wParam == BBID_RetStack)
+					return CDRF_NOTIFYITEMDRAW | CDRF_NOTIFYPOSTPAINT;
+				break;
+			case CDDS_POSTPAINT: /* clean up line junk left at top when scrolling */
+			{
+				RECT r;
+				if (ListView_GetTopIndex(
+					(&d->hWrkStack)[wParam - BBID_WrkStack]) ==
+					(&d->emu->box->core.wst)[wParam - BBID_WrkStack]->ptr) return CDRF_NEWFONT;
+				r.left = 0, r.top = 0, r.right = cdraw->nmcd.rc.right, r.bottom = 2;
+				FillRect(cdraw->nmcd.hdc, &r, GetSysColorBrush(COLOR_WINDOW));
+				return CDRF_NEWFONT;
+			}
+			case CDDS_ITEMPREPAINT:
+				switch (wParam)
+				{
+				case BBID_WrkStack: case BBID_RetStack:
+				{
+					Stack *stack = (&d->emu->box->core.wst)[wParam - BBID_WrkStack];
+					int solid = cdraw->nmcd.dwItemSpec < stack->ptr;
+					cdraw->clrText = solid ? GetSysColor(COLOR_WINDOWTEXT) : GetSysColor(COLOR_GRAYTEXT);
+					return CDRF_NEWFONT | (stack->ptr == cdraw->nmcd.dwItemSpec + 1 ? CDRF_NOTIFYPOSTPAINT : 0);
+				}
+				}
+				break;
+			case CDDS_ITEMPOSTPAINT:
+				switch (wParam)
+				{
+				case BBID_WrkStack: case BBID_RetStack:
+				{
+					RECT r; Stack *stack = (&d->emu->box->core.wst)[wParam - BBID_WrkStack];
+					if (cdraw->nmcd.dwItemSpec + 1 != stack->ptr) break;
+					if (!ListView_GetItemRect((&d->hWrkStack)[wParam - BBID_WrkStack],
+						cdraw->nmcd.dwItemSpec, &r, LVIR_LABEL)) return 0;
+					r.top = r.bottom - 1;
+					FillRect(cdraw->nmcd.hdc, &r, GetSysColorBrush(COLOR_WINDOWTEXT));
+					return CDRF_NEWFONT;
+				}
+				}
+				break;
+			}
+			break;
+		}
+		break;
+
 		case LVN_MARQUEEBEGIN: return -1; /* Disable. Broken in Win10 1809 w/o manifest, WTF? */
 		case NM_DBLCLK:
 			ListView_EditLabel(GetDlgItem(hWnd, wParam), ((NMITEMACTIVATE *)lParam)->iItem);
@@ -1505,8 +1556,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			case BBID_WrkStack: case BBID_RetStack: addr *= 1;
 			{
 				Stack *stack = (&core->wst)[wParam - BBID_WrkStack];
-				if (addr < stack->ptr) wsprintf(buff, "%02X", (UINT)stack->dat[addr]);
-				else buff[0] = ' ', buff[1] = ' ', buff[2] = 0;
+				wsprintf(buff, "%02X", (UINT)stack->dat[addr]);
 				break;
 			}
 			case BBID_DevMem: addr *= 8; switch (di->item.iSubItem)
