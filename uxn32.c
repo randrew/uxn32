@@ -1546,7 +1546,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					(UINT)mem[4], (UINT)mem[5], (UINT)mem[6], (UINT)mem[7]);
 				break;
 			case BB_WrkStack: case BB_RetStack:
-				addr *= 1; stack = (&core->wst)[wParam - BB_WrkStack];
+				stack = (&core->wst)[wParam - BB_WrkStack];
 				wsprintf(buff, "%02X", (UINT)stack->dat[addr]);
 				break;
 			case BB_DevMem:
