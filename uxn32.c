@@ -1325,18 +1325,63 @@ static void CloneWindow(EmuWindow *a)
 	PostMessage(hWnd, UXNMSG_BecomeClone, (WPARAM)a, 0);
 }
 
+static LPCSTR const uxn_op_names =
+TEXT("LITINCPOPDUPNIPSWPOVRROTEQUNEQGTHLTHJMPJCNJSRSTHLDZSTZLDRSTRLDASTADEIDEOADDSUBMULDIVANDORAEORSFT");
+
 static int DecodeUxnOpcode(TCHAR *out, BYTE instr)
 {
-	static LPCSTR const op_names =
-	TEXT("LITINCPOPDUPNIPSWPOVRROTEQUNEQGTHLTHJMPJCNJSRSTHLDZSTZLDRSTRLDASTADEIDEOADDSUBMULDIVANDORAEORSFT");
 	int n = 3;
-	CopyMemory(out, op_names + (instr & 0x1F) * 3, 3 * sizeof(TCHAR));
+	CopyMemory(out, uxn_op_names + (instr & 0x1F) * 3, 3 * sizeof(TCHAR));
 	if (instr & 0x20) out[n++] = '2';
 	if (instr & 0x80) out[n++] = 'k';
 	if (instr & 0x40) out[n++] = 'r';
 	out[n] = 0;
 	return n;
 }
+
+static BOOL EncodeUxnOpcode(LPCSTR in, BYTE *out)
+{
+	int i, len; TCHAR tmp[6], c;
+	UINT a = 0;
+	while (IsCharSpace(*in)) in++;
+	for (i = 0; i < 6; i++)
+	{
+		if (!(tmp[i] = in[i])) break;
+		if (IsCharSpace(tmp[i])) break;
+		if (tmp[i] >= 'a' && tmp[i] <= 'z')
+			tmp[i] = tmp[i] - ('a' - 'A');
+	}
+	if (!(len = i)) return FALSE;
+	if (len < 3) /* Try as hex */
+	{
+		for (i = 0; i < len; i++)
+		{
+			if ((c = tmp[i]) >= '0' && c <= '9') a = (a << 4) + c - '0';
+			else if       (c >= 'A' && c <= 'F') a = (a << 4) + c - 'A' + 10;
+			else return FALSE;
+		}
+		*out = (BYTE)a;
+		return TRUE;
+	}
+	/* Try as mnemonic */
+	for (in = uxn_op_names; *in; in += 3, a++)
+		if (in[0] == tmp[0] && in[1] == tmp[1] && in[2] == tmp[2])
+			goto found;
+	// for (i = 0; i < 96; i += 3)
+	// 	if (uxn_op_names[i    ] == tmp[0] &&
+	// 	    uxn_op_names[i + 1] == tmp[1] &&
+	// 	    uxn_op_names[i + 2] == tmp[2]) goto found;
+	return FALSE;
+found:
+	for (i = 3; i < len; i++)
+		if (tmp[i] == '2') a |= 0x20;
+		else if (tmp[i] == 'K') a |= 0x80;
+		else if (tmp[i] == 'R') a |= 0x40;
+		else return FALSE;
+	*out = (BYTE)a;
+	return TRUE;
+}
+
 
 static void UpdateBeetbugStuff(HWND hWnd, BeetbugWin *d)
 {
@@ -1558,21 +1603,36 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		break;
 
 		case LVN_MARQUEEBEGIN: return -1; /* Disable. Broken in Win10 1809 w/o manifest, WTF? */
+
+		{
+		HWND hEdit; TCHAR buff[256]; int i;
 		case NM_RETURN:
-			ListView_EditLabel(GetDlgItem(hWnd, wParam), ListView_GetNextItem(GetDlgItem(hWnd, wParam), -1, LVNI_SELECTED));
-			return 0;
+			hEdit = ListView_EditLabel(GetDlgItem(hWnd, wParam), ListView_GetNextItem(GetDlgItem(hWnd, wParam), -1, LVNI_SELECTED));
+			goto custom_edit;
 		case NM_DBLCLK:
-			ListView_EditLabel(GetDlgItem(hWnd, wParam), ((NMITEMACTIVATE *)lParam)->iItem);
+			hEdit = ListView_EditLabel(GetDlgItem(hWnd, wParam), ((NMITEMACTIVATE *)lParam)->iItem);
+		custom_edit:
+			if (!hEdit || wParam != BB_AsmList) return 0;
+			GetWindowText(hEdit, buff, 256);
+			for (i = 0; i < 10; i++) buff[i] = ' ';
+			SetWindowText(hEdit, buff);
+			SendMessage(hEdit, EM_SETSEL, 10, -1);
 			return 0;
-		case LVN_BEGINLABELEDIT: return !(wParam == BB_WrkStack || wParam == BB_RetStack);
+		}
+
+		case LVN_BEGINLABELEDIT:
+			if (wParam == BB_WrkStack || wParam == BB_RetStack || wParam == BB_AsmList) return FALSE; /* false means ok */
+			return TRUE;
 		case LVN_ENDLABELEDIT:
 		{
-			NMLVDISPINFO *inf = (NMLVDISPINFO *)lParam; TCHAR buff[32]; int n;
-			Stack *stack = (&d->emu->box->core.wst)[wParam - BB_WrkStack];
-			if (!inf->item.pszText || (n = lstrlen(inf->item.pszText)) >= 31 - 2) return FALSE;
-			buff[0] = '0', buff[1] = 'x'; lstrcpyn(buff + 2, inf->item.pszText, 32 - 2);
-			if (!StrToIntEx(buff, STIF_SUPPORT_HEX, &n) || n > 0xFF) return FALSE;
-			stack->dat[inf->item.iItem] = (BYTE)n;
+			NMLVDISPINFO *inf = (NMLVDISPINFO *)lParam; BYTE *base;
+			if (!inf->item.pszText) return FALSE;
+			if (wParam == BB_AsmList)
+				base = d->emu->box->core.ram;
+			else if (wParam == BB_WrkStack || wParam == BB_RetStack)
+				base = (&d->emu->box->core.wst)[wParam - BB_WrkStack]->dat;
+			else return FALSE;
+			if (!EncodeUxnOpcode(inf->item.pszText, base + inf->item.iItem)) return FALSE;
 			return TRUE;
 		}
 		case LVN_GETDISPINFO:
