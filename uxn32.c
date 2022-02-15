@@ -325,26 +325,6 @@ static void * AllocZeroedOrFail(SIZE_T bytes)
 	return result;
 }
 
-#if 0
-static char *
-LoadEntireFile(LPCSTR path)
-{
-	DWORD bytes_read; char *result = NULL;
-	BY_HANDLE_FILE_INFORMATION info;
-	HANDLE hFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	if (hFile == INVALID_HANDLE_VALUE) return NULL;
-	if (!GetFileInformationByHandle(hFile, &info)) goto done;
-	if (info.nFileSizeHigh) goto done;
-	result = HeapAlloc(GetProcessHeap(), 0, info.nFileSizeLow);
-	if (!result) OutOfMemory();
-	if (!ReadFile(hFile, result, info.nFileSizeLow, &info.nFileSizeLow, &bytes_read))
-		FatalBox("Read error while reading file %s", path);
-done:
-	CloseHandle(hFile);
-	return result;
-}
-#endif
-
 static BOOL LoadFileInto(LPCSTR path, char *dest, DWORD max_bytes, DWORD *bytes_read)
 {
 	HANDLE hFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
