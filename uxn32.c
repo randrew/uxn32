@@ -244,11 +244,17 @@ typedef struct ConWindow
 	BYTE has_newline;
 } ConWindow;
 
+enum
+{
+	BB_AsmList = 0, BB_HexList, BB_WrkStack, BB_RetStack, BB_DevMem,
+	BB_Status, BB_BigStepBtn, BB_StepBtn, BB_PauseBtn,
+	BB_PushStackBtn0, BB_PushStackBtn1, BB_PopStackBtn0, BB_PopStackBtn1,
+	BB_MAX
+};
+
 typedef struct BeetbugWin {
 	EmuWindow *emu;
-	HWND hWnd, hDisList, hHexList, hWrkStack, hRetStack, hDevMem,
-	     hStatus, hBigStepBtn, hStepBtn, hPauseBtn,
-		 hStackPushBtn0, hStackPushBtn1, hStackPopBtn0, hStackPopBtn1;
+	HWND ctrls[BB_MAX];
 	USHORT sbar_pc, sbar_fault;
 	RECT rcBlank, rcWstLabel, rcRstLabel, rcDevMemLabel;
 	BYTE sbar_play_mode, sbar_input_event;
@@ -1098,14 +1104,14 @@ static void OpenBeetbugWindow(EmuWindow *emu)
 
 static void BeetbugAutoScrollStacks(BeetbugWin *dbg)
 {
-	int pp = ListView_GetCountPerPage(dbg->hWrkStack), pad = pp / 3, top, i, s;
-	for (i = 0; i < 2; i++)
+	int pp = ListView_GetCountPerPage(dbg->ctrls[BB_WrkStack]), pad = pp / 3, top, i, s;
+	for (i = BB_WrkStack; i <= BB_RetStack; i++)
 	{
-		top = ListView_GetTopIndex((&dbg->hWrkStack)[i]);
+		top = ListView_GetTopIndex(dbg->ctrls[i]);
 		s = (&dbg->emu->box->core.wst)[i]->ptr; /* actually points to 1 past the last value */
 		if (s-- == 0 || s >= top && s < top + pp) continue;
-		ListView_EnsureVisible((&dbg->hWrkStack)[i], MAX(0, s - pp), FALSE);
-		ListView_EnsureVisible((&dbg->hWrkStack)[i], MIN(255, s + pad), FALSE);
+		ListView_EnsureVisible(dbg->ctrls[i], MAX(0, s - pp), FALSE);
+		ListView_EnsureVisible(dbg->ctrls[i], MIN(255, s + pad), FALSE);
 	}
 }
 
@@ -1114,9 +1120,9 @@ static void ShowBeetbugInstruction(EmuWindow *emu, USHORT address)
 	BeetbugWin *dbg; int pad_rows;
 	OpenBeetbugWindow(emu);
 	dbg = (BeetbugWin *)GetWindowLongPtr(emu->beetbugHWnd, GWLP_USERDATA);
-	pad_rows = ListView_GetCountPerPage(dbg->hDisList) / 3;
-	ListView_EnsureVisible(dbg->hDisList, ((UINT)address - pad_rows) % UXN_RAM_SIZE, FALSE); /* TODO probably wasteful */
-	ListView_EnsureVisible(dbg->hDisList, (address + pad_rows) % UXN_RAM_SIZE, FALSE);
+	pad_rows = ListView_GetCountPerPage(dbg->ctrls[BB_AsmList]) / 3;
+	ListView_EnsureVisible(dbg->ctrls[BB_AsmList], ((UINT)address - pad_rows) % UXN_RAM_SIZE, FALSE); /* TODO probably wasteful */
+	ListView_EnsureVisible(dbg->ctrls[BB_AsmList], (address + pad_rows) % UXN_RAM_SIZE, FALSE);
 	BeetbugAutoScrollStacks(dbg);
 }
 
@@ -1332,13 +1338,6 @@ static int DecodeUxnOpcode(TCHAR *out, BYTE instr)
 	return n;
 }
 
-enum
-{
-	BBID_AsmList = 1, BBID_HexList, BBID_WrkStack, BBID_RetStack, BBID_DevMem,
-	BBID_Status, BBID_StepBtn, BBID_BigStepBtn, BBID_PauseBtn,
-	BBID_PushStackBtn0, BBID_PushStackBtn1, BBID_PopStackBtn0, BBID_PopStackBtn1
-};
-
 static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	BeetbugWin *d = (BeetbugWin *)GetWindowLongPtr(hWnd, GWLP_USERDATA);
@@ -1355,16 +1354,15 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		d = AllocZeroedOrFail(sizeof *d);
 		SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)d);
 		d->emu = ((CREATESTRUCT *)lParam)->lpCreateParams;
-		d->hWnd = hWnd;
 		ZeroMemory(&col, sizeof col);
 		col.mask = LVCF_FMT | LVCF_WIDTH;
 		for (i = j = 0; i < 5; i++)
 		{
-			(&d->hDisList)[i] = list = CreateWindowEx(
+			d->ctrls[BB_AsmList + i] = list = CreateWindowEx(
 				WS_EX_CLIENTEDGE, WC_LISTVIEW, NULL,
 				WS_TABSTOP | WS_CHILD | WS_BORDER | WS_VISIBLE |
 					LVS_REPORT | LVS_OWNERDATA | LVS_SHOWSELALWAYS | LVS_NOCOLUMNHEADER | LVS_EDITLABELS | LVS_SINGLESEL,
-				0, 0, 0, 0, hWnd, (HMENU)(i + BBID_AsmList), (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
+				0, 0, 0, 0, hWnd, (HMENU)(i + BB_AsmList), (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
 			if (hFont) SendMessage(list, WM_SETFONT, (WPARAM)hFont, 0);
 			ListView_SetExtendedListViewStyle(list, LVS_EX_FULLROWSELECT);
 			ListView_DeleteAllItems(list);
@@ -1372,19 +1370,19 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			ListView_SetItemCount(list, rows[i]);
 			ListView_EnsureVisible(list, 0, FALSE);
 		}
-		d->hStatus = CreateWindowEx(
+		d->ctrls[BB_Status] = CreateWindowEx(
 			0, STATUSCLASSNAME, NULL, WS_CHILD | WS_VISIBLE | SBARS_SIZEGRIP,
-			0, 0, 0, 0, hWnd, (HMENU)BBID_Status, (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
-		SendMessage(d->hStatus, SB_SETPARTS, sizeof status_parts / sizeof(int), (LPARAM)status_parts);
-		for (i = 0; i < 7; i++)
+			0, 0, 0, 0, hWnd, (HMENU)BB_Status, (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
+		SendMessage(d->ctrls[BB_Status], SB_SETPARTS, sizeof status_parts / sizeof(int), (LPARAM)status_parts);
+		for (i = BB_BigStepBtn; i <= BB_PopStackBtn1; i++)
 		{
-			HWND btn = (&d->hBigStepBtn)[i] = CreateWindowEx(0, TEXT("Button"), NULL, WS_TABSTOP | WS_VISIBLE | WS_CHILD, 0, 0, 0, 0, hWnd, (HMENU)(BBID_StepBtn + i), (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
-			SendMessage(btn, WM_SETFONT, i < 3 ? (WPARAM)GetStockObject(DEFAULT_GUI_FONT) : (WPARAM)hFont, 0);
+			HWND btn = d->ctrls[i] = CreateWindowEx(0, TEXT("Button"), NULL, WS_TABSTOP | WS_VISIBLE | WS_CHILD, 0, 0, 0, 0, hWnd, (HMENU)(i), (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
+			SendMessage(btn, WM_SETFONT, i < BB_PushStackBtn0 ? (WPARAM)GetStockObject(DEFAULT_GUI_FONT) : (WPARAM)hFont, 0);
 		}
-		SetWindowText(d->hBigStepBtn, TEXT("Big Step (F7)"));
-		SetWindowText(d->hStepBtn, TEXT("Step (F8)"));
-		for (i = 0; i < 4; i++)
-			SetWindowText((&d->hStackPushBtn0)[i], i < 2 ? TEXT("PUSH") : TEXT("POP"));
+		SetWindowText(d->ctrls[BB_BigStepBtn], TEXT("Big Step (F7)"));
+		SetWindowText(d->ctrls[BB_StepBtn], TEXT("Step (F8)"));
+		for (i = BB_PushStackBtn0; i <= BB_PopStackBtn1; i++)
+			SetWindowText(d->ctrls[i], i < BB_PopStackBtn0 ? TEXT("PUSH") : TEXT("POP"));
 		SetTimer(hWnd, 1, 50, NULL);
 		break;
 	}
@@ -1398,33 +1396,33 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	{
 		static const SIZE btnSize = {87, 19}; int i;
 		RECT r = {0, 0, LOWORD(lParam), HIWORD(lParam)}, tmp;
-		SendMessage(d->hStatus, WM_SIZE, 0, 0);
-		GetClientRect(d->hStatus, &tmp);
-		MapWindowPoints(d->hStatus, hWnd, (LPPOINT)&tmp, 2); /* must violate strict aliasing */
+		SendMessage(d->ctrls[BB_Status], WM_SIZE, 0, 0);
+		GetClientRect(d->ctrls[BB_Status], &tmp);
+		MapWindowPoints(d->ctrls[BB_Status], hWnd, (LPPOINT)&tmp, 2); /* must violate strict aliasing */
 		r.bottom = tmp.top;
 		CutRect(&r, FromLeft, 200, &tmp);
 		d->rcBlank = r;
-		CutRectForWindow(&tmp, FromBottom, 125, d->hHexList);
-		MoveWindowRect(d->hDisList, &tmp, TRUE);
+		CutRectForWindow(&tmp, FromBottom, 125, d->ctrls[BB_HexList]);
+		MoveWindowRect(d->ctrls[BB_AsmList], &tmp, TRUE);
 		r.top += 5;
 		CutRect(&r, FromTop, btnSize.cy, &tmp);
 		r.top += 5;
 		tmp.left += 5; tmp.right = tmp.left + 500;
-		for (i = 0; i < 3; i++)
+		for (i = BB_BigStepBtn; i <= BB_PauseBtn; i++)
 		{
-			CutRectForWindow(&tmp, FromLeft, btnSize.cx, (&d->hBigStepBtn)[i]);
+			CutRectForWindow(&tmp, FromLeft, btnSize.cx, d->ctrls[i]);
 			tmp.right--;
 		}
 		for (i = 0; i < 2; i++)
 		{
 			CutRect(&r, FromLeft, 50, &tmp);
 			CutRect(&tmp, FromBottom, 20, &d->rcWstLabel + i);
-			CutRectForWindow(&tmp, FromBottom, 15, (&d->hStackPopBtn0)[i]);
-			CutRectForWindow(&tmp, FromBottom, 15, (&d->hStackPushBtn0)[i]);
-			MoveWindowRect((&d->hWrkStack)[i], &tmp, TRUE);
+			CutRectForWindow(&tmp, FromBottom, 15, d->ctrls[BB_PopStackBtn0  + i]);
+			CutRectForWindow(&tmp, FromBottom, 15, d->ctrls[BB_PushStackBtn0 + i]);
+			MoveWindowRect(d->ctrls[BB_WrkStack + i], &tmp, TRUE);
 		}
 		CutRect(&r, FromBottom, 20, &d->rcDevMemLabel);
-		MoveWindowRect(d->hDevMem, &r, TRUE);
+		MoveWindowRect(d->ctrls[BB_DevMem], &r, TRUE);
 		break;
 	}
 	case WM_PAINT:
@@ -1455,7 +1453,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		break;
 	}
 	case WM_ACTIVATE:
-		if (wParam != WA_INACTIVE) SetFocus(d->hDisList);
+		if (wParam != WA_INACTIVE) SetFocus(d->ctrls[BB_AsmList]);
 		return 0;
 	case WM_NOTIFY:
 		switch (((LPNMHDR)lParam)->code)
@@ -1466,15 +1464,15 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			switch (cdraw->nmcd.dwDrawStage)
 			{
 			case CDDS_PREPAINT:
-				if (wParam == BBID_WrkStack || wParam == BBID_RetStack)
+				if (wParam == BB_WrkStack || wParam == BB_RetStack)
 					return CDRF_NOTIFYITEMDRAW | CDRF_NOTIFYPOSTPAINT;
 				break;
 			case CDDS_POSTPAINT: /* clean up line junk left at top when scrolling */
 			{
 				RECT r;
 				if (ListView_GetTopIndex(
-					(&d->hWrkStack)[wParam - BBID_WrkStack]) ==
-					(&d->emu->box->core.wst)[wParam - BBID_WrkStack]->ptr) return CDRF_NEWFONT;
+					d->ctrls[wParam]) == (&d->emu->box->core.wst)[wParam - BB_WrkStack]->ptr)
+					return CDRF_NEWFONT;
 				r.left = 0, r.top = 0, r.right = cdraw->nmcd.rc.right, r.bottom = 2;
 				FillRect(cdraw->nmcd.hdc, &r, GetSysColorBrush(COLOR_WINDOW));
 				return CDRF_NEWFONT;
@@ -1482,9 +1480,9 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			case CDDS_ITEMPREPAINT:
 				switch (wParam)
 				{
-				case BBID_WrkStack: case BBID_RetStack:
+				case BB_WrkStack: case BB_RetStack:
 				{
-					Stack *stack = (&d->emu->box->core.wst)[wParam - BBID_WrkStack];
+					Stack *stack = (&d->emu->box->core.wst)[wParam - BB_WrkStack];
 					int solid = cdraw->nmcd.dwItemSpec < stack->ptr;
 					cdraw->clrText = solid ? GetSysColor(COLOR_WINDOWTEXT) : GetSysColor(COLOR_GRAYTEXT);
 					return CDRF_NEWFONT | (stack->ptr == cdraw->nmcd.dwItemSpec + 1 ? CDRF_NOTIFYPOSTPAINT : 0);
@@ -1494,11 +1492,11 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			case CDDS_ITEMPOSTPAINT:
 				switch (wParam)
 				{
-				case BBID_WrkStack: case BBID_RetStack:
+				case BB_WrkStack: case BB_RetStack:
 				{
-					RECT r; Stack *stack = (&d->emu->box->core.wst)[wParam - BBID_WrkStack];
+					RECT r; Stack *stack = (&d->emu->box->core.wst)[wParam - BB_WrkStack];
 					if (cdraw->nmcd.dwItemSpec + 1 != stack->ptr) break;
-					if (!ListView_GetItemRect((&d->hWrkStack)[wParam - BBID_WrkStack],
+					if (!ListView_GetItemRect(d->ctrls[wParam],
 						cdraw->nmcd.dwItemSpec, &r, LVIR_LABEL)) return 0;
 					r.top = r.bottom - 1;
 					FillRect(cdraw->nmcd.hdc, &r, GetSysColorBrush(COLOR_WINDOWTEXT));
@@ -1518,7 +1516,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		case NM_DBLCLK:
 			ListView_EditLabel(GetDlgItem(hWnd, wParam), ((NMITEMACTIVATE *)lParam)->iItem);
 			return 0;
-		case LVN_BEGINLABELEDIT: return !(wParam == BBID_WrkStack || wParam == BBID_RetStack);
+		case LVN_BEGINLABELEDIT: return !(wParam == BB_WrkStack || wParam == BB_RetStack);
 		case LVN_ENDLABELEDIT:
 		{
 			NMLVDISPINFO *inf = (NMLVDISPINFO *)lParam; TCHAR buff[32]; int n;
@@ -1536,14 +1534,14 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			buff[0] = 0;
 			switch (wParam)
 			{
-			case BBID_AsmList: switch (di->item.iSubItem)
+			case BB_AsmList: switch (di->item.iSubItem)
 				{
 				case 0: wsprintf(buff, "%c %04X", core->pc == iItem ? '>' : ' ', (UINT)iItem); break;
 				case 1: wsprintf(buff, "%02X", (UINT)core->ram[iItem]); break;
 				case 2: DecodeUxnOpcode(buff, (BYTE)core->ram[iItem]); break;
 				}
 				break;
-			case BBID_HexList: addr *= 8; switch (di->item.iSubItem)
+			case BB_HexList: addr *= 8; switch (di->item.iSubItem)
 			{
 				case 0: wsprintf(buff, "%04X", addr); break;
 				case 1:
@@ -1556,13 +1554,13 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				}
 				}
 				break;
-			case BBID_WrkStack: case BBID_RetStack: addr *= 1;
+			case BB_WrkStack: case BB_RetStack: addr *= 1;
 			{
-				Stack *stack = (&core->wst)[wParam - BBID_WrkStack];
+				Stack *stack = (&core->wst)[wParam - BB_WrkStack];
 				wsprintf(buff, "%02X", (UINT)stack->dat[addr]);
 				break;
 			}
-			case BBID_DevMem: addr *= 8; switch (di->item.iSubItem)
+			case BB_DevMem: addr *= 8; switch (di->item.iSubItem)
 			{
 			case 0: wsprintf(buff, "%02X", addr); break;
 			case 1:
@@ -1586,16 +1584,16 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		if (lParam && HIWORD(wParam) == BN_CLICKED)
 			switch (idm)
 			{
-			case BBID_StepBtn: idm = IDM_STEP; break;
-			case BBID_BigStepBtn: idm = IDM_BIGSTEP; break;
-			case BBID_PauseBtn: return SendMessage(d->emu->hWnd, WM_COMMAND, MAKEWPARAM(IDM_PAUSE, 0), 0);
+			case BB_StepBtn: idm = IDM_STEP; break;
+			case BB_BigStepBtn: idm = IDM_BIGSTEP; break;
+			case BB_PauseBtn: return SendMessage(d->emu->hWnd, WM_COMMAND, MAKEWPARAM(IDM_PAUSE, 0), 0);
 
 			{
 				enum {Flags = LVIS_SELECTED | LVIS_FOCUSED}; int push, btn, i; HWND hList; Stack *stack;
-			case BBID_PushStackBtn0: case BBID_PushStackBtn1: push = 1; goto push_pop;
-			case BBID_PopStackBtn0:  case BBID_PopStackBtn1: push = 0; push_pop:
-				btn = idm - (push ? BBID_PushStackBtn0 : BBID_PopStackBtn0);
-				hList = (&d->hWrkStack)[btn]; stack = (&d->emu->box->core.wst)[btn];
+			case BB_PushStackBtn0: case BB_PushStackBtn1: push = 1; goto push_pop;
+			case BB_PopStackBtn0:  case BB_PopStackBtn1: push = 0; push_pop:
+				btn = idm - (push ? BB_PushStackBtn0 : BB_PopStackBtn0);
+				hList = d->ctrls[BB_WrkStack + btn]; stack = (&d->emu->box->core.wst)[btn];
 				if (stack->ptr == (push ? 255 : 0)) break;
 				i = push ? stack->ptr++ : --stack->ptr - 1; if (i < 0) i = 0;
 				ListView_SetItemState(hList, i, Flags, Flags);
@@ -1610,7 +1608,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			d->emu->box->core.fault_code = 0;
 			RunUxn(d->emu, idm == IDM_STEP ? 1 : 100);
 			ShowBeetbugInstruction(d->emu, d->emu->box->core.pc);
-			InvalidateRect(d->hDisList, NULL, FALSE);
+			InvalidateRect(d->ctrls[BB_AsmList], NULL, FALSE);
 			return 0;
 		}
 		break;
@@ -1623,12 +1621,12 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			BOOL step_ctrls = new_play == 2; TCHAR buff[6]; int i;
 			// int top = ListView_GetTopIndex(d->hList), bot = top + ListView_GetCountPerPage(d->hList);
 			/* TODO ust ListView_RedrawItems() instead? */
-			for (i = 0; i < 5; i++) InvalidateRect((&d->hDisList)[i], NULL, FALSE); /* TODO only changed areas */
+			for (i = BB_AsmList; i <= BB_DevMem; i++) InvalidateRect(d->ctrls[i], NULL, FALSE); /* TODO only changed areas */
 			for (i = 0; i < 2; i++) InvalidateRect(hWnd, &d->rcWstLabel + i, FALSE);
 			if (d->sbar_play_mode != new_play)
 			{
-				SendMessage(d->hStatus, SB_SETTEXT, 0, (LPARAM)(play_texts[d->sbar_play_mode = new_play]));
-				SetWindowText(d->hPauseBtn, new_play == 1 ? TEXT("Pause (F9)") : TEXT("Resume (F9)"));
+				SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 0, (LPARAM)(play_texts[d->sbar_play_mode = new_play]));
+				SetWindowText(d->ctrls[BB_PauseBtn], new_play == 1 ? TEXT("Pause (F9)") : TEXT("Resume (F9)"));
 			}
 			if (d->sbar_input_event != d->emu->exec_state)
 			{
@@ -1637,13 +1635,13 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					TEXT("CtrlUp"), TEXT("MouseDown"), TEXT("MouseUp"), TEXT("Wheel"),
 					TEXT("Screen"), TEXT("ConChar"), TEXT("Init")
 				};
-				SendMessage(d->hStatus, SB_SETTEXT, 1,
+				SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 1,
 					(LPARAM)event_texts[d->sbar_input_event = d->emu->exec_state]);
 			}
 			if (d->sbar_pc != d->emu->box->core.pc)
 			{
 				wsprintf(buff, "%04X", (UINT)(d->sbar_pc = d->emu->box->core.pc));
-				SendMessage(d->hStatus, SB_SETTEXT, 2, (LPARAM)buff);
+				SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 2, (LPARAM)buff);
 			}
 			if (d->sbar_fault != d->emu->box->core.fault_code)
 			{
@@ -1655,12 +1653,12 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				case 3:   text = TEXT("Division by zero"); break;
 				case 255: text = TEXT("Debug device break"); break;
 				}
-				SendMessage(d->hStatus, SB_SETTEXT, 3, (LPARAM)text);
+				SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 3, (LPARAM)text);
 			}
-			if (IsWindowEnabled(d->hBigStepBtn) != step_ctrls)
+			if (IsWindowEnabled(d->ctrls[BB_BigStepBtn]) != step_ctrls)
 			{
-				EnableWindow(d->hBigStepBtn, step_ctrls);
-				EnableWindow(d->hStepBtn, step_ctrls);
+				EnableWindow(d->ctrls[BB_BigStepBtn], step_ctrls);
+				EnableWindow(d->ctrls[BB_StepBtn], step_ctrls);
 			}
 			return 0;
 		}
