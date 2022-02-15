@@ -1642,6 +1642,15 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				EnableWindow(d->ctrls[BB_BigStepBtn], step_ctrls);
 				EnableWindow(d->ctrls[BB_StepBtn], step_ctrls);
 			}
+			for (i = 0; i < 2; i++)
+			{
+				int p = (&d->emu->box->core.wst)[i]->ptr;
+				BOOL ok_push = p < 255, ok_pop = p > 0;
+				if (IsWindowEnabled(d->ctrls[BB_PushStackBtn0 + i]) != ok_push)
+					EnableWindow(d->ctrls[BB_PushStackBtn0 + i], ok_push);
+				if (IsWindowEnabled(d->ctrls[BB_PopStackBtn0 + i]) != ok_pop)
+					EnableWindow(d->ctrls[BB_PopStackBtn0 + i], ok_pop);
+			}
 			return 0;
 		}
 		break;
