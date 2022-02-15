@@ -1529,15 +1529,15 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		}
 		case LVN_GETDISPINFO:
 		{
-			TCHAR buff[1024], buff2[64]; Uxn *core = &d->emu->box->core; LV_DISPINFO *di = (LV_DISPINFO *)lParam;
-			UINT iItem = di->item.iItem; UINT addr = iItem; BYTE *mem; Stack *stack;
+			TCHAR buff[256]; Uxn *core = &d->emu->box->core; LV_DISPINFO *di = (LV_DISPINFO *)lParam;
+			UINT iItem = di->item.iItem, addr = iItem; BYTE *mem; Stack *stack;
 			if (!(di->item.mask & LVIF_TEXT)) return 0;
 			buff[0] = 0;
 			switch (wParam)
 			{
 			case BB_AsmList:
-				DecodeUxnOpcode(buff2, (BYTE)core->ram[iItem]);
-				wsprintf(buff, "%c %04X %02X %s", core->pc == iItem ? '>' : ' ', (UINT)iItem, (UINT)core->ram[iItem], buff2);
+				iItem = wsprintf(buff, "%c %04X %02X ", core->pc == addr ? '>' : ' ', (UINT)addr, (UINT)core->ram[addr]);
+				DecodeUxnOpcode(buff + iItem, (BYTE)core->ram[addr]);
 				break;
 			case BB_HexList:
 				addr *= 8; mem = core->ram + addr;
