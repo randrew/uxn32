@@ -1520,10 +1520,11 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		case LVN_ENDLABELEDIT:
 		{
 			NMLVDISPINFO *inf = (NMLVDISPINFO *)lParam; TCHAR buff[32]; int n;
+			Stack *stack = (&d->emu->box->core.wst)[wParam - BB_WrkStack];
 			if (!inf->item.pszText || (n = lstrlen(inf->item.pszText)) >= 31 - 2) return FALSE;
 			buff[0] = '0', buff[1] = 'x'; lstrcpyn(buff + 2, inf->item.pszText, 32 - 2);
 			if (!StrToIntEx(buff, STIF_SUPPORT_HEX, &n) || n > 0xFF) return FALSE;
-			d->emu->box->core.wst->dat[inf->item.iItem] = (BYTE)n;
+			stack->dat[inf->item.iItem] = (BYTE)n;
 			return TRUE;
 		}
 		case LVN_GETDISPINFO:
