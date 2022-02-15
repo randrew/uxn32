@@ -1312,7 +1312,7 @@ static LRESULT CALLBACK AboutBoxProc(HWND hDlg, UINT message, WPARAM wParam, LPA
 static HWND CreateUxnWindow(HINSTANCE hInst, LPCSTR file)
 {
 	RECT rect;
-	rect.left = 0; rect.top = 0;
+	rect.left = rect.top = 0;
 	rect.right = UXN_DEFAULT_WIDTH; rect.bottom = UXN_DEFAULT_HEIGHT;
 	AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, TRUE);
 	return CreateWindowEx(WS_EX_APPWINDOW, EmuWinClass, TEXT("Uxn"), WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, NULL, NULL, hInst, (void *)file);
