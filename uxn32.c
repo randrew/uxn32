@@ -1343,6 +1343,69 @@ static int DecodeUxnOpcode(TCHAR *out, BYTE instr)
 	return n;
 }
 
+static void UpdateBeetbugStuff(HWND hWnd, BeetbugWin *d)
+{
+	static const LPCSTR play_texts[] = {0, TEXT("Running"), TEXT("Suspended"), TEXT("Paused")};
+	BYTE new_play = d->emu->running ? 1 : d->emu->exec_state ? 2 : 3;
+	BOOL step_ctrls = new_play == 2; TCHAR buff[128]; int i;
+	// int top = ListView_GetTopIndex(d->hList), bot = top + ListView_GetCountPerPage(d->hList);
+	/* TODO ust ListView_RedrawItems() instead? */
+	for (i = BB_AsmList; i <= BB_DevMem; i++) InvalidateRect(d->ctrls[i], NULL, FALSE); /* TODO only changed areas */
+	for (i = 0; i < 2; i++) InvalidateRect(hWnd, &d->rcWstLabel + i, FALSE);
+	if (d->sbar_play_mode != new_play)
+	{
+		SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 0, (LPARAM)(play_texts[d->sbar_play_mode = new_play]));
+		SetWindowText(d->ctrls[BB_PauseBtn], new_play == 1 ? TEXT("Pause (F9)") : TEXT("Resume (F9)"));
+	}
+	if (d->sbar_input_event != d->emu->last_event)
+	{
+		static const LPCSTR event_texts[EmuIn_Start + 1] = { /* TODO crappy */
+			TEXT(""), TEXT("KeyChar"), TEXT("CtrlDown"), TEXT("CtrlUp"),
+			TEXT("CtrlUp"), TEXT("Mouse"), TEXT("MouseUp"), TEXT("Wheel"),
+			TEXT("Screen"), TEXT("ConChar"), TEXT("Init")
+		};
+		SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 1,
+			(LPARAM)event_texts[d->sbar_input_event = d->emu->last_event]);
+	}
+	if (d->sbar_pc != d->emu->box->core.pc)
+	{
+		wsprintf(buff, "PC: %04X", (UINT)(d->sbar_pc = d->emu->box->core.pc));
+		SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 2, (LPARAM)buff);
+	}
+	if (d->sbar_instrcount != d->emu->instr_count)
+	{
+		UINT u = (d->sbar_instrcount = d->emu->instr_count) > (UINT)-1 ? (UINT)-1 : d->sbar_instrcount;
+		wsprintf(buff, "Ops: %u", u);
+		SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 3, (LPARAM)buff);
+	}
+	if (d->sbar_fault != d->emu->box->core.fault_code)
+	{
+		LPCSTR text = NULL;
+		switch (d->sbar_fault = d->emu->box->core.fault_code)
+		{
+		case 1:   text = TEXT("Stack underflow"); break;
+		case 2:   text = TEXT("Stack overflow"); break;
+		case 3:   text = TEXT("Division by zero"); break;
+		case 255: text = TEXT("Debug device break"); break;
+		}
+		SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 4, (LPARAM)text);
+	}
+	if (IsWindowEnabled(d->ctrls[BB_BigStepBtn]) != step_ctrls)
+	{
+		EnableWindow(d->ctrls[BB_BigStepBtn], step_ctrls);
+		EnableWindow(d->ctrls[BB_StepBtn], step_ctrls);
+	}
+	for (i = 0; i < 2; i++)
+	{
+		int p = (&d->emu->box->core.wst)[i]->ptr;
+		BOOL ok_push = p < 255, ok_pop = p > 0;
+		if (IsWindowEnabled(d->ctrls[BB_PushStackBtn0 + i]) != ok_push)
+			EnableWindow(d->ctrls[BB_PushStackBtn0 + i], ok_push);
+		if (IsWindowEnabled(d->ctrls[BB_PopStackBtn0 + i]) != ok_pop)
+			EnableWindow(d->ctrls[BB_PopStackBtn0 + i], ok_pop);
+	}
+}
+
 static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	BeetbugWin *d = (BeetbugWin *)GetWindowLongPtr(hWnd, GWLP_USERDATA);
@@ -1389,6 +1452,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		SetWindowText(d->ctrls[BB_StepBtn], TEXT("Step (F8)"));
 		for (i = BB_PushStackBtn0; i <= BB_PopStackBtn1; i++)
 			SetWindowText(d->ctrls[i], i < BB_PopStackBtn0 ? TEXT("PUSH") : TEXT("POP"));
+		UpdateBeetbugStuff(hWnd, d);
 		SetTimer(hWnd, 1, 50, NULL);
 		break;
 	}
@@ -1497,7 +1561,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		case LVN_MARQUEEBEGIN: return -1; /* Disable. Broken in Win10 1809 w/o manifest, WTF? */
 		case NM_RETURN:
 			ListView_EditLabel(GetDlgItem(hWnd, wParam), ListView_GetNextItem(GetDlgItem(hWnd, wParam), -1, LVNI_SELECTED));
-			break;
+			return 0;
 		case NM_DBLCLK:
 			ListView_EditLabel(GetDlgItem(hWnd, wParam), ((NMITEMACTIVATE *)lParam)->iItem);
 			return 0;
@@ -1566,7 +1630,8 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				ListView_SetItemState(hList, i, Flags, Flags);
 				SetFocus(hList);
 				if (push) ListView_EditLabel(hList, i);
-				break;
+				InvalidateRect(hList, NULL, FALSE);
+				return 0;
 			}
 
 			}
@@ -1574,76 +1639,14 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		{
 			d->emu->box->core.fault_code = 0;
 			RunUxn(d->emu, idm == IDM_STEP ? 1 : 100);
+			UpdateBeetbugStuff(hWnd, d);
 			ShowBeetbugInstruction(d->emu, d->emu->box->core.pc);
-			InvalidateRect(d->ctrls[BB_AsmList], NULL, FALSE);
 			return 0;
 		}
 		break;
 	}
 	case WM_TIMER:
-		if (wParam == 1)
-		{
-			static const LPCSTR play_texts[] = {0, TEXT("Running"), TEXT("Suspended"), TEXT("Paused")};
-			BYTE new_play = d->emu->running ? 1 : d->emu->exec_state ? 2 : 3;
-			BOOL step_ctrls = new_play == 2; TCHAR buff[128]; int i;
-			// int top = ListView_GetTopIndex(d->hList), bot = top + ListView_GetCountPerPage(d->hList);
-			/* TODO ust ListView_RedrawItems() instead? */
-			for (i = BB_AsmList; i <= BB_DevMem; i++) InvalidateRect(d->ctrls[i], NULL, FALSE); /* TODO only changed areas */
-			for (i = 0; i < 2; i++) InvalidateRect(hWnd, &d->rcWstLabel + i, FALSE);
-			if (d->sbar_play_mode != new_play)
-			{
-				SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 0, (LPARAM)(play_texts[d->sbar_play_mode = new_play]));
-				SetWindowText(d->ctrls[BB_PauseBtn], new_play == 1 ? TEXT("Pause (F9)") : TEXT("Resume (F9)"));
-			}
-			if (d->sbar_input_event != d->emu->last_event)
-			{
-				static const LPCSTR event_texts[EmuIn_Start + 1] = { /* TODO crappy */
-					TEXT(""), TEXT("KeyChar"), TEXT("CtrlDown"), TEXT("CtrlUp"),
-					TEXT("CtrlUp"), TEXT("Mouse"), TEXT("MouseUp"), TEXT("Wheel"),
-					TEXT("Screen"), TEXT("ConChar"), TEXT("Init")
-				};
-				SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 1,
-					(LPARAM)event_texts[d->sbar_input_event = d->emu->last_event]);
-			}
-			if (d->sbar_pc != d->emu->box->core.pc)
-			{
-				wsprintf(buff, "PC: %04X", (UINT)(d->sbar_pc = d->emu->box->core.pc));
-				SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 2, (LPARAM)buff);
-			}
-			if (d->sbar_instrcount != d->emu->instr_count)
-			{
-				UINT u = (d->sbar_instrcount = d->emu->instr_count) > (UINT)-1 ? (UINT)-1 : d->sbar_instrcount;
-				wsprintf(buff, "Ops: %u", u);
-				SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 3, (LPARAM)buff);
-			}
-			if (d->sbar_fault != d->emu->box->core.fault_code)
-			{
-				LPCSTR text = NULL;
-				switch (d->sbar_fault = d->emu->box->core.fault_code)
-				{
-				case 1:   text = TEXT("Stack underflow"); break;
-				case 2:   text = TEXT("Stack overflow"); break;
-				case 3:   text = TEXT("Division by zero"); break;
-				case 255: text = TEXT("Debug device break"); break;
-				}
-				SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 4, (LPARAM)text);
-			}
-			if (IsWindowEnabled(d->ctrls[BB_BigStepBtn]) != step_ctrls)
-			{
-				EnableWindow(d->ctrls[BB_BigStepBtn], step_ctrls);
-				EnableWindow(d->ctrls[BB_StepBtn], step_ctrls);
-			}
-			for (i = 0; i < 2; i++)
-			{
-				int p = (&d->emu->box->core.wst)[i]->ptr;
-				BOOL ok_push = p < 255, ok_pop = p > 0;
-				if (IsWindowEnabled(d->ctrls[BB_PushStackBtn0 + i]) != ok_push)
-					EnableWindow(d->ctrls[BB_PushStackBtn0 + i], ok_push);
-				if (IsWindowEnabled(d->ctrls[BB_PopStackBtn0 + i]) != ok_pop)
-					EnableWindow(d->ctrls[BB_PopStackBtn0 + i], ok_pop);
-			}
-			return 0;
-		}
+		if (wParam == 1) { UpdateBeetbugStuff(hWnd, d); return 0; }
 		break;
 	}
 	return DefWindowProc(hWnd, msg, wParam, lParam);
