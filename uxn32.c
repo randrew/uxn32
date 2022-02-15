@@ -1339,13 +1339,15 @@ static int DecodeUxnOpcode(TCHAR *out, BYTE instr)
 	return n;
 }
 
+static BOOL IsSortaSpace(TCHAR c) { return c == ' ' || c == '\r' || c == '\n' || c == '\t'; }
+
 static BOOL EncodeUxnOpcode(LPCSTR in, BYTE *out)
 {
 	int i, len; TCHAR tmp[6], c; UINT a = 0;
-	while (IsCharSpace(*in)) in++;
+	while (IsSortaSpace(*in)) in++;
 	for (i = 0; i < 6; i++)
 	{
-		if (!(tmp[i] = in[i]) || IsCharSpace(tmp[i])) break;
+		if (!(tmp[i] = in[i]) || IsSortaSpace(tmp[i])) break;
 		if (tmp[i] >= 'a' && tmp[i] <= 'z')
 			tmp[i] = tmp[i] - ('a' - 'A');
 	}
