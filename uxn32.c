@@ -1366,7 +1366,8 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			d->ctrls[BB_AsmList + i] = list = CreateWindowEx(
 				WS_EX_CLIENTEDGE, WC_LISTVIEW, NULL,
 				WS_TABSTOP | WS_CHILD | WS_BORDER | WS_VISIBLE |
-					LVS_REPORT | LVS_OWNERDATA | LVS_SHOWSELALWAYS | LVS_NOCOLUMNHEADER | LVS_EDITLABELS | LVS_SINGLESEL,
+					LVS_REPORT | LVS_OWNERDATA | LVS_SHOWSELALWAYS |
+					LVS_NOCOLUMNHEADER | LVS_EDITLABELS | LVS_SINGLESEL,
 				0, 0, 0, 0, hWnd, (HMENU)(i + BB_AsmList), MainInstance, NULL);
 			if (hFont) SendMessage(list, WM_SETFONT, (WPARAM)hFont, 0);
 			ListView_SetExtendedListViewStyle(list, LVS_EX_FULLROWSELECT);
@@ -1465,50 +1466,29 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		{
 		case NM_CUSTOMDRAW:
 		{
-			NMLVCUSTOMDRAW *cdraw = (NMLVCUSTOMDRAW *)lParam;
+			NMLVCUSTOMDRAW *cdraw = (NMLVCUSTOMDRAW *)lParam; RECT r; Stack *stack;
+			if (wParam != BB_WrkStack && wParam != BB_RetStack) break;
+			stack = (&d->emu->box->core.wst)[wParam - BB_WrkStack];
 			switch (cdraw->nmcd.dwDrawStage)
 			{
 			case CDDS_PREPAINT:
-				if (wParam == BB_WrkStack || wParam == BB_RetStack)
-					return CDRF_NOTIFYITEMDRAW | CDRF_NOTIFYPOSTPAINT;
-				break;
+				return CDRF_NOTIFYITEMDRAW | CDRF_NOTIFYPOSTPAINT;
 			case CDDS_POSTPAINT: /* clean up line junk left at top when scrolling */
-			{
-				RECT r;
-				if (ListView_GetTopIndex(
-					d->ctrls[wParam]) == (&d->emu->box->core.wst)[wParam - BB_WrkStack]->ptr)
+				if (ListView_GetTopIndex(d->ctrls[wParam]) == stack->ptr)
 					return CDRF_NEWFONT;
 				r.left = 0, r.top = 0, r.right = cdraw->nmcd.rc.right, r.bottom = 2;
 				FillRect(cdraw->nmcd.hdc, &r, GetSysColorBrush(COLOR_WINDOW));
 				return CDRF_NEWFONT;
-			}
 			case CDDS_ITEMPREPAINT:
-				switch (wParam)
-				{
-				case BB_WrkStack: case BB_RetStack:
-				{
-					Stack *stack = (&d->emu->box->core.wst)[wParam - BB_WrkStack];
-					int solid = cdraw->nmcd.dwItemSpec < stack->ptr;
-					cdraw->clrText = solid ? GetSysColor(COLOR_WINDOWTEXT) : GetSysColor(COLOR_GRAYTEXT);
-					return CDRF_NEWFONT | (stack->ptr == cdraw->nmcd.dwItemSpec + 1 ? CDRF_NOTIFYPOSTPAINT : 0);
-				}
-				}
-				break;
+				cdraw->clrText = cdraw->nmcd.dwItemSpec < stack->ptr ?
+					GetSysColor(COLOR_WINDOWTEXT) : GetSysColor(COLOR_GRAYTEXT);
+				return CDRF_NEWFONT | (stack->ptr == cdraw->nmcd.dwItemSpec + 1 ? CDRF_NOTIFYPOSTPAINT : 0);
 			case CDDS_ITEMPOSTPAINT:
-				switch (wParam)
-				{
-				case BB_WrkStack: case BB_RetStack:
-				{
-					RECT r; Stack *stack = (&d->emu->box->core.wst)[wParam - BB_WrkStack];
-					if (cdraw->nmcd.dwItemSpec + 1 != stack->ptr) break;
-					if (!ListView_GetItemRect(d->ctrls[wParam],
-						cdraw->nmcd.dwItemSpec, &r, LVIR_LABEL)) return 0;
-					r.top = r.bottom - 1;
-					FillRect(cdraw->nmcd.hdc, &r, GetSysColorBrush(COLOR_WINDOWTEXT));
-					return CDRF_NEWFONT;
-				}
-				}
-				break;
+				if (cdraw->nmcd.dwItemSpec + 1 != stack->ptr) return 0;
+				if (!ListView_GetItemRect(d->ctrls[wParam], cdraw->nmcd.dwItemSpec, &r, LVIR_LABEL)) return 0;
+				r.top = r.bottom - 1;
+				FillRect(cdraw->nmcd.hdc, &r, GetSysColorBrush(COLOR_WINDOWTEXT));
+				return CDRF_NEWFONT;
 			}
 			break;
 		}
