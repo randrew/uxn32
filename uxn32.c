@@ -220,12 +220,12 @@ typedef struct EmuWindow
 	HDC hDibDC;
 	SIZE dib_dims;
 
-	BYTE running, exec_state, host_cursor;
+	BYTE running, exec_state, last_event, host_cursor;
 
 	EmuInEvent *queue_buffer;
 	USHORT queue_count, queue_first;
 	ListLink work_link;
-	LONGLONG last_paint;
+	LONGLONG last_paint, instr_count;
 
 	RECT viewport_rect;
 	LONG viewport_scale; /* really only need 1 bit for this... */
@@ -256,6 +256,7 @@ typedef struct BeetbugWin {
 	EmuWindow *emu;
 	HWND ctrls[BB_MAX];
 	USHORT sbar_pc, sbar_fault;
+	LONGLONG sbar_instrcount;
 	RECT rcBlank, rcWstLabel, rcRstLabel, rcDevMemLabel;
 	BYTE sbar_play_mode, sbar_input_event;
 } BeetbugWin;
@@ -1130,17 +1131,18 @@ static void ShowBeetbugInstruction(EmuWindow *emu, USHORT address)
 /* Pass non-zero steps to use fixed-stepping mode. Pass 0 to use normal run mode with an automatic number of steps. */
 static void RunUxn(EmuWindow *d, UINT steps)
 {
-	UINT res; Uxn *u = &d->box->core;
-	LONGLONG total = 0, t_a, t_b, t_delta;
+	UINT res, use_steps = steps ? steps : 100000;  /* about 1900 usecs on good hardware */
+	Uxn *u = &d->box->core; LONGLONG total = 0, t_a, t_b, t_delta;
 	int instr_interrupts = 0;
 	if (!u->pc) goto completed;
 	t_a = TimeStampNow();
 	for (;;)
 	{
-		res = UxnExec(&d->box->core, steps ? steps : 100000); /* about 1900 usecs on good hardware */
+		res = UxnExec(&d->box->core, use_steps);
 		instr_interrupts++;
 		t_b = TimeStampNow();
 		t_delta = t_b - t_a;
+		d->instr_count += use_steps - res;
 		if (u->fault_code) goto died;
 		if (res != 0) { total += t_delta; goto completed; }
 		if (t_delta > ExecutionTimeLimit || steps) { total += t_delta; goto residual; }
@@ -1228,6 +1230,8 @@ static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT
 		break;
 	}
 	d->exec_state = type;
+	if (*pc) { d->last_event = type; d->instr_count = 0; }
+	/* ^- To make the debugger UI useful, don't update these if the program vector is empty */
 #ifndef NDEBUG
 	if (type == EmuIn_Start && IsWindowVisible(d->beetbugHWnd)) { PauseVM(d); ShowBeetbugInstruction(d, *pc); return; }
 #endif
@@ -1350,7 +1354,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			columns[] = { /* Instr list */ 45 + 25 + 50, /* Hex list */ 40 + 130,
 			              /* Stacks */ 25, 25, /* Device mem */ 20 + 130},
 			rows[] = {UXN_RAM_SIZE, UXN_RAM_SIZE / 8, 255, 255, 256 / 8},
-			status_parts[] = {70, 140, 180, -1};
+			status_parts[] = {70, 140, 180, 280, -1};
 		d = AllocZeroedOrFail(sizeof *d);
 		SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)d);
 		d->emu = ((CREATESTRUCT *)lParam)->lpCreateParams;
@@ -1600,7 +1604,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		{
 			static const LPCSTR play_texts[] = {0, TEXT("Running"), TEXT("Suspended"), TEXT("Paused")};
 			BYTE new_play = d->emu->running ? 1 : d->emu->exec_state ? 2 : 3;
-			BOOL step_ctrls = new_play == 2; TCHAR buff[6]; int i;
+			BOOL step_ctrls = new_play == 2; TCHAR buff[128]; int i;
 			// int top = ListView_GetTopIndex(d->hList), bot = top + ListView_GetCountPerPage(d->hList);
 			/* TODO ust ListView_RedrawItems() instead? */
 			for (i = BB_AsmList; i <= BB_DevMem; i++) InvalidateRect(d->ctrls[i], NULL, FALSE); /* TODO only changed areas */
@@ -1610,7 +1614,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 0, (LPARAM)(play_texts[d->sbar_play_mode = new_play]));
 				SetWindowText(d->ctrls[BB_PauseBtn], new_play == 1 ? TEXT("Pause (F9)") : TEXT("Resume (F9)"));
 			}
-			if (d->sbar_input_event != d->emu->exec_state)
+			if (d->sbar_input_event != d->emu->last_event)
 			{
 				static const LPCSTR event_texts[EmuIn_Start + 1] = { /* TODO crappy */
 					TEXT(""), TEXT("KeyChar"), TEXT("CtrlDown"), TEXT("CtrlUp"),
@@ -1618,12 +1622,18 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					TEXT("Screen"), TEXT("ConChar"), TEXT("Init")
 				};
 				SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 1,
-					(LPARAM)event_texts[d->sbar_input_event = d->emu->exec_state]);
+					(LPARAM)event_texts[d->sbar_input_event = d->emu->last_event]);
 			}
 			if (d->sbar_pc != d->emu->box->core.pc)
 			{
 				wsprintf(buff, "%04X", (UINT)(d->sbar_pc = d->emu->box->core.pc));
 				SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 2, (LPARAM)buff);
+			}
+			if (d->sbar_instrcount != d->emu->instr_count)
+			{
+				UINT u = (d->sbar_instrcount = d->emu->instr_count) > (UINT)-1 ? (UINT)-1 : d->sbar_instrcount;
+				wsprintf(buff, "%u", u);
+				SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 3, (LPARAM)buff);
 			}
 			if (d->sbar_fault != d->emu->box->core.fault_code)
 			{
@@ -1635,7 +1645,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				case 3:   text = TEXT("Division by zero"); break;
 				case 255: text = TEXT("Debug device break"); break;
 				}
-				SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 3, (LPARAM)text);
+				SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 4, (LPARAM)text);
 			}
 			if (IsWindowEnabled(d->ctrls[BB_BigStepBtn]) != step_ctrls)
 			{
