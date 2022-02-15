@@ -1300,15 +1300,10 @@ static LRESULT CALLBACK AboutBoxProc(HWND hDlg, UINT message, WPARAM wParam, LPA
 	(void)lParam;
 	switch (message)
 	{
-	case WM_INITDIALOG:
-		return TRUE;
-
+	case WM_INITDIALOG: return TRUE;
 	case WM_COMMAND:
 		if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL)
-		{
-			EndDialog(hDlg, LOWORD(wParam));
-			return TRUE;
-		}
+			return EndDialog(hDlg, LOWORD(wParam));
 		break;
 	}
 	return FALSE;
