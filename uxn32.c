@@ -1073,9 +1073,9 @@ static void UnpauseVM(EmuWindow *d)
 	/* Syncing held keys isn't so easy... */
 }
 
-static void OpenBeetbugWindow(EmuWindow *emu)
+static void OpenBeetbugWindow(EmuWindow *emu, BOOL force)
 {
-	if (!emu->beetbugHWnd)
+	if (!emu->beetbugHWnd || force)
 	{
 		emu->beetbugHWnd = CreateWindowEx(
 			0, BeetbugWinClass, TEXT("Beetbug"), WS_OVERLAPPEDWINDOW,
@@ -1101,7 +1101,7 @@ static void BeetbugAutoScrollStacks(BeetbugWin *dbg)
 static void ShowBeetbugInstruction(EmuWindow *emu, USHORT address)
 {
 	BeetbugWin *dbg; int pad_rows;
-	OpenBeetbugWindow(emu);
+	OpenBeetbugWindow(emu, FALSE);
 	dbg = (BeetbugWin *)GetWindowLongPtr(emu->beetbugHWnd, GWLP_USERDATA);
 	pad_rows = ListView_GetCountPerPage(dbg->ctrls[BB_AsmList]) / 3;
 	ListView_EnsureVisible(dbg->ctrls[BB_AsmList], ((UINT)address - pad_rows) % UXN_RAM_SIZE, FALSE); /* TODO probably wasteful */
@@ -2047,7 +2047,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		case IDM_STEP: case IDM_BIGSTEP:
 			if (!d->running && d->exec_state)
 			{
-				OpenBeetbugWindow(d);
+				OpenBeetbugWindow(d, FALSE);
 				SetFocus(d->beetbugHWnd);
 				SendMessage(d->beetbugHWnd, msg, wparam, lparam);
 			}
@@ -2056,8 +2056,8 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			if (!d->consoleHWnd) CreateConsoleWindow(d);
 			ShowWindow(d->consoleHWnd, IsWindowVisible(d->consoleHWnd) ? SW_HIDE : SW_SHOW);
 			return 0;
-		case IDM_OPENBEETBUG:
-			OpenBeetbugWindow(d);
+		case IDM_OPENBEETBUG: case IDM_MOREBUG:
+			OpenBeetbugWindow(d, LOWORD(wparam) == IDM_MOREBUG);
 			return 0;
 		}
 		break;

@@ -81,6 +81,7 @@ BEGIN
     VK_F3,          IDM_TOGGLECONSOLE,      VIRTKEY, NOINVERT
     VK_F4,          IDM_RELOAD,             VIRTKEY, NOINVERT
     VK_F5,          IDM_OPENBEETBUG,        VIRTKEY, NOINVERT
+    VK_F5,          IDM_MOREBUG,            VIRTKEY, CONTROL, NOINVERT
     VK_F7,          IDM_BIGSTEP,            VIRTKEY, NOINVERT
     VK_F8,          IDM_STEP,               VIRTKEY, NOINVERT
     VK_F9,          IDM_PAUSE,              VIRTKEY, NOINVERT
