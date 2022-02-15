@@ -1354,7 +1354,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			columns[] = { /* Instr list */ 45 + 25 + 50, /* Hex list */ 40 + 130,
 			              /* Stacks */ 25, 25, /* Device mem */ 20 + 130},
 			rows[] = {UXN_RAM_SIZE, UXN_RAM_SIZE / 8, 255, 255, 256 / 8},
-			status_parts[] = {70, 140, 180, 280, -1};
+			status_parts[] = {70, 140, 200, 300, -1};
 		d = AllocZeroedOrFail(sizeof *d);
 		SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)d);
 		d->emu = ((CREATESTRUCT *)lParam)->lpCreateParams;
@@ -1618,7 +1618,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			{
 				static const LPCSTR event_texts[EmuIn_Start + 1] = { /* TODO crappy */
 					TEXT(""), TEXT("KeyChar"), TEXT("CtrlDown"), TEXT("CtrlUp"),
-					TEXT("CtrlUp"), TEXT("MouseDown"), TEXT("MouseUp"), TEXT("Wheel"),
+					TEXT("CtrlUp"), TEXT("Mouse"), TEXT("MouseUp"), TEXT("Wheel"),
 					TEXT("Screen"), TEXT("ConChar"), TEXT("Init")
 				};
 				SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 1,
@@ -1626,13 +1626,13 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			}
 			if (d->sbar_pc != d->emu->box->core.pc)
 			{
-				wsprintf(buff, "%04X", (UINT)(d->sbar_pc = d->emu->box->core.pc));
+				wsprintf(buff, "PC: %04X", (UINT)(d->sbar_pc = d->emu->box->core.pc));
 				SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 2, (LPARAM)buff);
 			}
 			if (d->sbar_instrcount != d->emu->instr_count)
 			{
 				UINT u = (d->sbar_instrcount = d->emu->instr_count) > (UINT)-1 ? (UINT)-1 : d->sbar_instrcount;
-				wsprintf(buff, "%u", u);
+				wsprintf(buff, "Ops: %u", u);
 				SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 3, (LPARAM)buff);
 			}
 			if (d->sbar_fault != d->emu->box->core.fault_code)
