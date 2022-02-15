@@ -1347,8 +1347,8 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	{
 		LONG_PTR i, j, k; HWND list; LV_COLUMN col; HFONT hFont = GetSmallFixedFont();
 		static const int
-			columns[] = { /* Instr list */ 45, 25, 50, 0, /* Hex list */ 40, 130, 0,
-			              /* Stacks */ 25, 0, 25, 0, /* Device mem */ 20, 130, 0},
+			columns[] = { /* Instr list */ 45 + 25 + 50, /* Hex list */ 40 + 130,
+			              /* Stacks */ 25, 25, /* Device mem */ 20 + 130},
 			rows[] = {UXN_RAM_SIZE, UXN_RAM_SIZE / 8, 255, 255, 256 / 8},
 			status_parts[] = {70, 140, 180, -1};
 		d = AllocZeroedOrFail(sizeof *d);
@@ -1366,7 +1366,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			if (hFont) SendMessage(list, WM_SETFONT, (WPARAM)hFont, 0);
 			ListView_SetExtendedListViewStyle(list, LVS_EX_FULLROWSELECT);
 			ListView_DeleteAllItems(list);
-			for (k = 0; (col.cx = columns[j++]);) ListView_InsertColumn(list, k++, &col);
+			col.cx = columns[i]; ListView_InsertColumn(list, 0, &col);
 			ListView_SetItemCount(list, rows[i]);
 			ListView_EnsureVisible(list, 0, FALSE);
 		}
@@ -1529,50 +1529,32 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		}
 		case LVN_GETDISPINFO:
 		{
-			TCHAR buff[1024]; Uxn *core = &d->emu->box->core; LV_DISPINFO *di = (LV_DISPINFO *)lParam;
-			UINT iItem = di->item.iItem; UINT addr = iItem;
+			TCHAR buff[1024], buff2[64]; Uxn *core = &d->emu->box->core; LV_DISPINFO *di = (LV_DISPINFO *)lParam;
+			UINT iItem = di->item.iItem; UINT addr = iItem; BYTE *mem; Stack *stack;
 			if (!(di->item.mask & LVIF_TEXT)) return 0;
 			buff[0] = 0;
 			switch (wParam)
 			{
-			case BB_AsmList: switch (di->item.iSubItem)
-				{
-				case 0: wsprintf(buff, "%c %04X", core->pc == iItem ? '>' : ' ', (UINT)iItem); break;
-				case 1: wsprintf(buff, "%02X", (UINT)core->ram[iItem]); break;
-				case 2: DecodeUxnOpcode(buff, (BYTE)core->ram[iItem]); break;
-				}
+			case BB_AsmList:
+				DecodeUxnOpcode(buff2, (BYTE)core->ram[iItem]);
+				wsprintf(buff, "%c %04X %02X %s", core->pc == iItem ? '>' : ' ', (UINT)iItem, (UINT)core->ram[iItem], buff2);
 				break;
-			case BB_HexList: addr *= 8; switch (di->item.iSubItem)
-			{
-				case 0: wsprintf(buff, "%04X", addr); break;
-				case 1:
-				{
-					BYTE *mem = core->ram + addr;
-					wsprintf(buff, "%02X%02X %02X%02X %02X%02X %02X%02X",
-						(UINT)mem[0], (UINT)mem[1], (UINT)mem[2], (UINT)mem[3],
-						(UINT)mem[4], (UINT)mem[5], (UINT)mem[6], (UINT)mem[7]);
-					break;
-				}
-				}
-				break;
-			case BB_WrkStack: case BB_RetStack: addr *= 1;
-			{
-				Stack *stack = (&core->wst)[wParam - BB_WrkStack];
-				wsprintf(buff, "%02X", (UINT)stack->dat[addr]);
-				break;
-			}
-			case BB_DevMem: addr *= 8; switch (di->item.iSubItem)
-			{
-			case 0: wsprintf(buff, "%02X", addr); break;
-			case 1:
-			{
-				BYTE *mem = d->emu->box->device_memory + addr;
-				wsprintf(buff, "%02X%02X %02X%02X %02X%02X %02X%02X",
+			case BB_HexList:
+				addr *= 8; mem = core->ram + addr;
+				wsprintf(buff, "%04X  %02X%02X %02X%02X %02X%02X %02X%02X", addr,
 					(UINT)mem[0], (UINT)mem[1], (UINT)mem[2], (UINT)mem[3],
 					(UINT)mem[4], (UINT)mem[5], (UINT)mem[6], (UINT)mem[7]);
 				break;
-			}
-			}
+			case BB_WrkStack: case BB_RetStack:
+				addr *= 1; stack = (&core->wst)[wParam - BB_WrkStack];
+				wsprintf(buff, "%02X", (UINT)stack->dat[addr]);
+				break;
+			case BB_DevMem:
+				addr *= 8; mem = d->emu->box->device_memory + addr;
+				wsprintf(buff, "%02X  %02X%02X %02X%02X %02X%02X %02X%02X", addr,
+					(UINT)mem[0], (UINT)mem[1], (UINT)mem[2], (UINT)mem[3],
+					(UINT)mem[4], (UINT)mem[5], (UINT)mem[6], (UINT)mem[7]);
+				break;
 			}
 			lstrcpyn(di->item.pszText, buff, di->item.cchTextMax);
 			return 0;
