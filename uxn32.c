@@ -1341,13 +1341,11 @@ static int DecodeUxnOpcode(TCHAR *out, BYTE instr)
 
 static BOOL EncodeUxnOpcode(LPCSTR in, BYTE *out)
 {
-	int i, len; TCHAR tmp[6], c;
-	UINT a = 0;
+	int i, len; TCHAR tmp[6], c; UINT a = 0;
 	while (IsCharSpace(*in)) in++;
 	for (i = 0; i < 6; i++)
 	{
-		if (!(tmp[i] = in[i])) break;
-		if (IsCharSpace(tmp[i])) break;
+		if (!(tmp[i] = in[i]) || IsCharSpace(tmp[i])) break;
 		if (tmp[i] >= 'a' && tmp[i] <= 'z')
 			tmp[i] = tmp[i] - ('a' - 'A');
 	}
@@ -1367,14 +1365,10 @@ static BOOL EncodeUxnOpcode(LPCSTR in, BYTE *out)
 	for (in = uxn_op_names; *in; in += 3, a++)
 		if (in[0] == tmp[0] && in[1] == tmp[1] && in[2] == tmp[2])
 			goto found;
-	// for (i = 0; i < 96; i += 3)
-	// 	if (uxn_op_names[i    ] == tmp[0] &&
-	// 	    uxn_op_names[i + 1] == tmp[1] &&
-	// 	    uxn_op_names[i + 2] == tmp[2]) goto found;
 	return FALSE;
 found:
 	for (i = 3; i < len; i++)
-		if (tmp[i] == '2') a |= 0x20;
+		if      (tmp[i] == '2') a |= 0x20;
 		else if (tmp[i] == 'K') a |= 0x80;
 		else if (tmp[i] == 'R') a |= 0x40;
 		else return FALSE;
