@@ -248,8 +248,9 @@ typedef struct ConWindow
 enum
 {
 	BB_AsmList = 0, BB_HexList, BB_WrkStack, BB_RetStack, BB_DevMem,
-	BB_Status, BB_BigStepBtn, BB_StepBtn, BB_PauseBtn,
+	BB_Status, BB_BigStepBtn, BB_StepBtn, BB_PauseBtn, BB_JumpBtn,
 	BB_PushStackBtn0, BB_PushStackBtn1, BB_PopStackBtn0, BB_PopStackBtn1,
+	BB_JumpEdit,
 	BB_MAX
 };
 
@@ -1321,6 +1322,24 @@ static int DecodeUxnOpcode(TCHAR *out, BYTE instr)
 
 static BOOL IsSortaSpace(TCHAR c) { return c == ' ' || c == '\r' || c == '\n' || c == '\t'; }
 
+static BOOL ParseHex(TCHAR const *in, UINT *out)
+{
+	UINT a = 0; TCHAR c;
+	while (IsSortaSpace(*in)) in++;
+	if (!*in) return FALSE; /* TODO sloppy around here */
+	while ((c = *in++))
+	{
+		if      (c >= '0' && c <= '9') a = (a << 4) + c - '0';
+		else if (c >= 'A' && c <= 'F') a = (a << 4) + c - 'A' + 10;
+		else if (c >= 'a' && c <= 'f') a = (a << 4) + c - 'a' + 10;
+		else if (a == 0 && (c == 'x' || c == '$' || c == '#')) continue;
+		else if (c == 'h' || c == ' ' || c == '\t' || c == '\r' || c == '\n') break;
+		else return FALSE;
+	}
+	*out = a;
+	return TRUE;
+}
+
 static BOOL EncodeUxnOpcode(LPCSTR in, BYTE *out)
 {
 	int i, len; TCHAR tmp[6], c; UINT a = 0;
@@ -1357,7 +1376,6 @@ found:
 	*out = (BYTE)a;
 	return TRUE;
 }
-
 
 static void UpdateBeetbugStuff(HWND hWnd, BeetbugWin *d)
 {
@@ -1422,6 +1440,15 @@ static void UpdateBeetbugStuff(HWND hWnd, BeetbugWin *d)
 	}
 }
 
+static LRESULT CALLBACK BeetbugJumpEditProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+	if (msg == WM_KEYDOWN && wParam == VK_RETURN)
+		return SendMessage(GetParent(hWnd), WM_COMMAND, MAKEWPARAM(BB_JumpBtn, BN_CLICKED), (LPARAM)hWnd);
+	if (msg == WM_COMMAND && LOWORD(wParam) == IDM_SELECTALL)
+		return SendMessage(hWnd, EM_SETSEL, 0, -1);
+	return CallWindowProc((WNDPROC)GetWindowLongPtr(hWnd, GWLP_USERDATA), hWnd, msg, wParam, lParam);
+}
+
 static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	BeetbugWin *d = (BeetbugWin *)GetWindowLongPtr(hWnd, GWLP_USERDATA);
@@ -1466,8 +1493,17 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		}
 		SetWindowText(d->ctrls[BB_BigStepBtn], TEXT("Big Step (F7)"));
 		SetWindowText(d->ctrls[BB_StepBtn], TEXT("Step (F8)"));
+		SetWindowText(d->ctrls[BB_JumpBtn], TEXT("View Address"));
 		for (i = BB_PushStackBtn0; i <= BB_PopStackBtn1; i++)
 			SetWindowText(d->ctrls[i], i < BB_PopStackBtn0 ? TEXT("PUSH") : TEXT("POP"));
+		d->ctrls[BB_JumpEdit] = CreateWindowEx(
+			WS_EX_CLIENTEDGE, EditWinClass, NULL,
+			WS_CHILD | WS_VISIBLE,
+			0, 0, 0, 0, hWnd, (HMENU)2, MainInstance, NULL);
+		SetWindowLongPtr(d->ctrls[BB_JumpEdit], GWLP_USERDATA, (LONG_PTR)GetWindowLongPtr(d->ctrls[BB_JumpEdit], GWLP_WNDPROC));
+		SetWindowLongPtr(d->ctrls[BB_JumpEdit], GWLP_WNDPROC,  (LONG_PTR)BeetbugJumpEditProc);
+		SendMessage(d->ctrls[BB_JumpEdit], EM_SETLIMITTEXT, 4, 0);
+		SendMessage(d->ctrls[BB_JumpEdit], WM_SETFONT, (WPARAM)hFont, 0);
 		UpdateBeetbugStuff(hWnd, d);
 		SetTimer(hWnd, 1, 50, NULL);
 		break;
@@ -1481,12 +1517,15 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	case WM_SIZE:
 	{
 		static const SIZE btnSize = {87, 19}; int i;
-		RECT r = {0, 0, LOWORD(lParam), HIWORD(lParam)}, tmp;
+		RECT r = {0, 0, LOWORD(lParam), HIWORD(lParam)}, tmp, tmp2;
 		SendMessage(d->ctrls[BB_Status], WM_SIZE, 0, 0);
 		GetClientRect(d->ctrls[BB_Status], &tmp);
 		MapWindowPoints(d->ctrls[BB_Status], hWnd, (LPPOINT)&tmp, 2); /* must violate strict aliasing */
 		r.bottom = tmp.top;
 		CutRect(&r, FromLeft, 200, &tmp);
+		CutRect(&tmp, FromBottom, 15, &tmp2);
+		CutRectForWindow(&tmp2, FromLeft, 50, d->ctrls[BB_JumpEdit]);
+		MoveWindowRect(d->ctrls[BB_JumpBtn], &tmp2, TRUE);
 		CutRectForWindow(&tmp, FromBottom, 125, d->ctrls[BB_HexList]);
 		MoveWindowRect(d->ctrls[BB_AsmList], &tmp, TRUE);
 		d->rcBlank = r;
@@ -1654,7 +1693,15 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			case BB_StepBtn: idm = IDM_STEP; break;
 			case BB_BigStepBtn: idm = IDM_BIGSTEP; break;
 			case BB_PauseBtn: return SendMessage(d->emu->hWnd, WM_COMMAND, MAKEWPARAM(IDM_PAUSE, 0), 0);
-
+			case BB_JumpBtn:
+			{
+				TCHAR buff[8]; UINT addr; HWND hList = d->ctrls[BB_HexList];
+				GetWindowText(d->ctrls[BB_JumpEdit], buff, 8);
+				if (!ParseHex(buff, &addr)) return 0;
+				ListView_EnsureVisible(hList, (addr /= 8) + ListView_GetCountPerPage(hList), FALSE);
+				ListView_EnsureVisible(d->ctrls[BB_HexList], addr, FALSE);
+				return 0;
+			}
 			case BB_PushStackBtn0: case BB_PushStackBtn1: case BB_PopStackBtn0: case BB_PopStackBtn1:
 			{
 				enum {Flags = LVIS_SELECTED | LVIS_FOCUSED}; int i;
