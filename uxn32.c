@@ -1588,12 +1588,11 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			case BB_BigStepBtn: idm = IDM_BIGSTEP; break;
 			case BB_PauseBtn: return SendMessage(d->emu->hWnd, WM_COMMAND, MAKEWPARAM(IDM_PAUSE, 0), 0);
 
+			case BB_PushStackBtn0: case BB_PushStackBtn1: case BB_PopStackBtn0: case BB_PopStackBtn1:
 			{
-				enum {Flags = LVIS_SELECTED | LVIS_FOCUSED}; int push, btn, i; HWND hList; Stack *stack;
-			case BB_PushStackBtn0: case BB_PushStackBtn1: push = 1; goto push_pop;
-			case BB_PopStackBtn0:  case BB_PopStackBtn1: push = 0; push_pop:
-				btn = idm - (push ? BB_PushStackBtn0 : BB_PopStackBtn0);
-				hList = d->ctrls[BB_WrkStack + btn]; stack = (&d->emu->box->core.wst)[btn];
+				enum {Flags = LVIS_SELECTED | LVIS_FOCUSED}; int i;
+				int push = idm <= BB_PushStackBtn1, iList = idm - (push ? BB_PushStackBtn0 : BB_PopStackBtn0);
+				HWND hList = d->ctrls[BB_WrkStack + iList]; Stack *stack = (&d->emu->box->core.wst)[iList];
 				if (stack->ptr == (push ? 255 : 0)) break;
 				i = push ? stack->ptr++ : --stack->ptr - 1; if (i < 0) i = 0;
 				ListView_SetItemState(hList, i, Flags, Flags);
