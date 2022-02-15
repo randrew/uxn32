@@ -75,6 +75,7 @@ typedef ULONG_PTR DWORD_PTR, *PDWORD_PTR;
 static LARGE_INTEGER _perfcount_freq;
 static LONGLONG ExecutionTimeLimit;
 #define RepaintTimeLimit ExecutionTimeLimit
+static HINSTANCE MainInstance;
 static LPCSTR EmuWinClass = TEXT("uxn_emu_win"), ConsoleWinClass = TEXT("uxn_console_win"), EditWinClass = TEXT("EDIT");
 static LPCSTR BeetbugWinClass = TEXT("uxn_beetbug_win");
 
@@ -899,7 +900,7 @@ static void CreateConsoleWindow(EmuWindow *emu)
 	DWORD exStyle = WS_EX_TOOLWINDOW, wStyle = WS_SIZEBOX | WS_SYSMENU;
 	RECT rect; rect.left = 0; rect.top = 0; rect.right = 200; rect.bottom = 150;
 	AdjustWindowRectEx(&rect, wStyle, FALSE, exStyle);
-	emu->consoleHWnd = CreateWindowEx(exStyle, ConsoleWinClass, TEXT("Console"), wStyle, CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, emu->hWnd, NULL, (HINSTANCE)GetWindowLongPtr(emu->hWnd, GWLP_HINSTANCE), (void *)NULL);
+	emu->consoleHWnd = CreateWindowEx(exStyle, ConsoleWinClass, TEXT("Console"), wStyle, CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, emu->hWnd, NULL, MainInstance, (void *)NULL);
 }
 
 static void DevOut_Console(Device *dev, Uint8 port)
@@ -1098,7 +1099,7 @@ static void OpenBeetbugWindow(EmuWindow *emu)
 		emu->beetbugHWnd = CreateWindowEx(
 			0, BeetbugWinClass, TEXT("Beetbug"), WS_OVERLAPPEDWINDOW,
 			CW_USEDEFAULT, CW_USEDEFAULT, 480, 395,
-			emu->hWnd, NULL, (HINSTANCE)GetWindowLongPtr(emu->hWnd, GWLP_HINSTANCE), emu);
+			emu->hWnd, NULL, MainInstance, emu);
 	}
 	if (!IsWindowVisible(emu->beetbugHWnd)) ShowWindow(emu->beetbugHWnd, SW_SHOW);
 }
@@ -1324,7 +1325,7 @@ static HWND CreateUxnWindow(HINSTANCE hInst, LPCSTR file)
 
 static void CloneWindow(EmuWindow *a)
 {
-	HWND hWnd = CreateUxnWindow((HINSTANCE)GetWindowLongPtr(a->hWnd, GWLP_HINSTANCE), NULL);
+	HWND hWnd = CreateUxnWindow(MainInstance, NULL);
 	ShowWindow(hWnd, SW_SHOW);
 	PostMessage(hWnd, UXNMSG_BecomeClone, (WPARAM)a, 0);
 }
@@ -1366,7 +1367,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				WS_EX_CLIENTEDGE, WC_LISTVIEW, NULL,
 				WS_TABSTOP | WS_CHILD | WS_BORDER | WS_VISIBLE |
 					LVS_REPORT | LVS_OWNERDATA | LVS_SHOWSELALWAYS | LVS_NOCOLUMNHEADER | LVS_EDITLABELS | LVS_SINGLESEL,
-				0, 0, 0, 0, hWnd, (HMENU)(i + BB_AsmList), (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
+				0, 0, 0, 0, hWnd, (HMENU)(i + BB_AsmList), MainInstance, NULL);
 			if (hFont) SendMessage(list, WM_SETFONT, (WPARAM)hFont, 0);
 			ListView_SetExtendedListViewStyle(list, LVS_EX_FULLROWSELECT);
 			ListView_DeleteAllItems(list);
@@ -1376,11 +1377,11 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		}
 		d->ctrls[BB_Status] = CreateWindowEx(
 			0, STATUSCLASSNAME, NULL, WS_CHILD | WS_VISIBLE | SBARS_SIZEGRIP,
-			0, 0, 0, 0, hWnd, (HMENU)BB_Status, (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
+			0, 0, 0, 0, hWnd, (HMENU)BB_Status, MainInstance, NULL);
 		SendMessage(d->ctrls[BB_Status], SB_SETPARTS, sizeof status_parts / sizeof(int), (LPARAM)status_parts);
 		for (i = BB_BigStepBtn; i <= BB_PopStackBtn1; i++)
 		{
-			HWND btn = d->ctrls[i] = CreateWindowEx(0, TEXT("Button"), NULL, WS_TABSTOP | WS_VISIBLE | WS_CHILD, 0, 0, 0, 0, hWnd, (HMENU)(i), (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE), NULL);
+			HWND btn = d->ctrls[i] = CreateWindowEx(0, TEXT("Button"), NULL, WS_TABSTOP | WS_VISIBLE | WS_CHILD, 0, 0, 0, 0, hWnd, (HMENU)(i), MainInstance, NULL);
 			SendMessage(btn, WM_SETFONT, i < BB_PushStackBtn0 ? (WPARAM)GetStockObject(DEFAULT_GUI_FONT) : (WPARAM)hFont, 0);
 		}
 		SetWindowText(d->ctrls[BB_BigStepBtn], TEXT("Big Step (F7)"));
@@ -1693,17 +1694,16 @@ static LRESULT CALLBACK ConsoleWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	case WM_CREATE:
 	{
 		HWND hwTmp; int i; HFONT hFont = GetSmallFixedFont();
-		HINSTANCE hinstTmp = (HINSTANCE)GetWindowLongPtr(hWnd, GWLP_HINSTANCE);
 		d = AllocZeroedOrFail(sizeof *d);
 		SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)d);
 		d->outHWnd = CreateWindowEx(
 			WS_EX_STATICEDGE, EditWinClass, NULL,
 			WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY,
-			0, 0, 0, 0, hWnd, (HMENU)1, hinstTmp, NULL);
+			0, 0, 0, 0, hWnd, (HMENU)1, MainInstance, NULL);
 		d->inHWnd = CreateWindowEx(
 			WS_EX_CLIENTEDGE, EditWinClass, NULL,
 			WS_CHILD | WS_VISIBLE,
-			0, 0, 0, 0, hWnd, (HMENU)2, hinstTmp, NULL);
+			0, 0, 0, 0, hWnd, (HMENU)2, MainInstance, NULL);
 		for (i = 0, hwTmp = d->outHWnd; i < 2; hwTmp = (&d->outHWnd)[++i])
 		{
 			SetWindowLongPtr(hwTmp, GWLP_USERDATA, (LONG_PTR)GetWindowLongPtr(hwTmp, GWLP_WNDPROC));
@@ -1969,7 +1969,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		switch (LOWORD(wparam))
 		{
 		case IDM_ABOUT:
-			DialogBox((HINSTANCE)GetWindowLongPtr(hwnd, GWLP_HINSTANCE), MAKEINTRESOURCE(IDD_ABOUTBOX), hwnd, AboutBoxProc);
+			DialogBox(MainInstance, MAKEINTRESOURCE(IDD_ABOUTBOX), hwnd, AboutBoxProc);
 			return 0;
 		case IDM_EXIT: PostQuitMessage(0); return 0;
 		case IDM_OPENROM: OpenROMDialog(d); return 0;
@@ -2038,6 +2038,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	(void)command_line; (void)prev_instance;
 	QueryPerformanceFrequency(&_perfcount_freq);
 	ExecutionTimeLimit = _perfcount_freq.QuadPart / 20;
+	MainInstance = instance;
 	ZeroMemory(&wc, sizeof wc);
 	wc.hInstance = instance;
 	wc.cbSize = sizeof wc;
