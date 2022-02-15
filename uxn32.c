@@ -1349,7 +1349,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	{
 	case WM_CREATE:
 	{
-		LONG_PTR i, j, k; HWND list; LV_COLUMN col; HFONT hFont = GetSmallFixedFont();
+		LONG_PTR i, j; HWND list; LV_COLUMN col; HFONT hFont = GetSmallFixedFont();
 		static const int
 			columns[] = { /* Instr list */ 45 + 25 + 50, /* Hex list */ 40 + 130,
 			              /* Stacks */ 25, 25, /* Device mem */ 20 + 130},
