@@ -1466,12 +1466,13 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		MapWindowPoints(d->ctrls[BB_Status], hWnd, (LPPOINT)&tmp, 2); /* must violate strict aliasing */
 		r.bottom = tmp.top;
 		CutRect(&r, FromLeft, 200, &tmp);
-		d->rcBlank = r;
 		CutRectForWindow(&tmp, FromBottom, 125, d->ctrls[BB_HexList]);
 		MoveWindowRect(d->ctrls[BB_AsmList], &tmp, TRUE);
+		d->rcBlank = r;
 		r.top += 5;
 		CutRect(&r, FromTop, btnSize.cy, &tmp);
 		r.top += 5;
+		d->rcBlank.bottom = r.top; /* TODO fix filling over buttons by using regions? */
 		tmp.left += 5; tmp.right = tmp.left + 500;
 		for (i = BB_BigStepBtn; i <= BB_PauseBtn; i++)
 		{
@@ -1497,13 +1498,16 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		RECT rTmp; PAINTSTRUCT ps; HDC hDC = BeginPaint(hWnd, &ps);
 		TCHAR buff[32], *str; int i, old_bkmode; HGDIOBJ old_font;
 		if (IntersectRect(&rTmp, &ps.rcPaint, &d->rcBlank))
+		{
 			FillRect(hDC, &rTmp, (HBRUSH)(COLOR_3DFACE + 1));
+		}
 		old_bkmode = SetBkMode(hDC, TRANSPARENT);
 		old_font = SelectObject(hDC, GetSmallFixedFont());
 		for (i = 0; i < 3; i++)
 		{
 			RECT *rc = &d->rcWstLabel + i;
 			if (!IntersectRect(&rTmp, &ps.rcPaint, rc)) continue;
+			FillRect(hDC, &rTmp, (HBRUSH)(COLOR_3DFACE + 1));
 			if (i < 2)
 			{
 				wsprintf(buff, "%s %02X", st_labels[i], (UINT)(&d->emu->box->core.wst)[i]->ptr);
