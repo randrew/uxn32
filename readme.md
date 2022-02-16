@@ -16,7 +16,7 @@ Features
 * Specifically built to also work with Wine on Linux and other OSs.
 * Small and simple - single .exe, no installer, no dependencies.
 * Sandboxed file system access for Uxn program ROMs.
-* Debugger with stepping, disassembly view, memory view, and stack views.
+* Debugger with stepping, disassembly viewing and editing, memory view, and stack viewing and editing.
 * Uxn programs receive events at full speed and repaint immediately. Got a 240hz display? Now your Uxn drawing program can make use of it.
 * Pre-emptive execution, so it won't freeze up if the Uxn program goes into an infinite loop, unlike the SDL2 version.
 * Compiles with: every version of Visual Studio back to and including VC6, Clang, clang-cl, MinGW Clang, and MinGW GCC.
@@ -44,7 +44,7 @@ Gamepad Keyboard Mapping
       Shift Key -> Gamepad 'Select'
        Home Key -> Gamepad 'Start'
     
-![](https://raw.githubusercontent.com/wiki/randrew/uxn32/uxn32-1.3-screenshot.gif)
+![](https://raw.githubusercontent.com/wiki/randrew/uxn32/uxn32-1.4-screenshot.gif)
 
 Uxn32 TODO
 ----------
@@ -68,6 +68,8 @@ Uxn32 TODO
 - [x] ~~Test and fix C89 issues with GCC in MinGW, if any. (Tested and works in VC6, MSVC 2019, clang-cl, MinGW-w64 Clang, but not yet tested in GCC.)~~
 - [ ] Reorganize some Device stuff.
 - [ ] Add a resource usage and performance indicator panel. (See how much % Uxn virtual CPU time is being used, time spent on file access, etc.)
+
+![](https://raw.githubusercontent.com/wiki/randrew/uxn32/uxn32-1.3-screenshot.gif)
 
 License
 -------
