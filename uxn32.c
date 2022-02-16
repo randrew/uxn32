@@ -1554,13 +1554,11 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	case WM_PAINT:
 	{
 		/* TODO do we actually need this? just use background painting? */
-		static const LPCSTR st_labels[] = {TEXT("WST"), TEXT("RST")};
-		RECT rTmp; PAINTSTRUCT ps; HDC hDC = BeginPaint(hWnd, &ps);
-		TCHAR buff[32], *str; int i, old_bkmode; HGDIOBJ old_font;
+		static LPCSTR st_labels[] = {TEXT("WST"), TEXT("RST")}, str;
+		RECT rTmp; PAINTSTRUCT ps; TCHAR buff[32]; int i, old_bkmode;
+		HGDIOBJ old_font; HDC hDC = BeginPaint(hWnd, &ps);
 		if (IntersectRect(&rTmp, &ps.rcPaint, &d->rcBlank))
-		{
 			FillRect(hDC, &rTmp, (HBRUSH)(COLOR_3DFACE + 1));
-		}
 		old_bkmode = SetBkMode(hDC, TRANSPARENT);
 		old_font = SelectObject(hDC, GetSmallFixedFont());
 		for (i = 0; i < 3; i++)
@@ -1622,10 +1620,10 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		{
 		HWND hEdit; TCHAR buff[256]; int i;
 		case NM_RETURN:
-			hEdit = ListView_EditLabel(GetDlgItem(hWnd, wParam), ListView_GetNextItem(GetDlgItem(hWnd, wParam), -1, LVNI_SELECTED));
+			hEdit = ListView_EditLabel(d->ctrls[wParam], ListView_GetNextItem(d->ctrls[wParam], -1, LVNI_SELECTED));
 			goto custom_edit;
 		case NM_DBLCLK:
-			hEdit = ListView_EditLabel(GetDlgItem(hWnd, wParam), ((NMITEMACTIVATE *)lParam)->iItem);
+			hEdit = ListView_EditLabel(d->ctrls[wParam], ((NMITEMACTIVATE *)lParam)->iItem);
 		custom_edit:
 			if (!hEdit || wParam != BB_AsmList) return 0;
 			GetWindowText(hEdit, buff, 256);
