@@ -39,7 +39,6 @@ UxnExec(Uxn *u, unsigned int limit)
 	Stack *src, *dst;
 	Device *dev;
 	pc = u->pc;
-	if(u->wst->ptr > 0xf8) u->wst->ptr = 0xf8;
 	while(limit) {
 		limit--;
 		instr = u->ram[pc];
