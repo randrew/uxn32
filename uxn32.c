@@ -1110,14 +1110,20 @@ static void ShowBeetbugInstruction(EmuWindow *emu, USHORT address)
 	BeetbugAutoScrollStacks(dbg);
 }
 
-/* TODO there's something fancy we should do with the loop to make it tell if it ran out or not by return value, returning 0 when limit is 0 means we might have succeeded in reaching the null instruction on the last allowed step, so we need to do something else */
 /* Pass non-zero steps to use fixed-stepping mode. Pass 0 to use normal run mode with an automatic number of steps. */
-static void RunUxn(EmuWindow *d, UINT steps)
+/* The 'initial' parameter indicates whether or not this is first call into RunUxn() for a
+ * particular interrupt or not. All it does is check if the pc starts on address 0, and if
+ * it does, skips trying to execute code and does the other work like scheduling, cleanup, etc.
+ * This is kind of a dirty hack. Ideally we'd do something else (like split this routine into
+ * smaller pieces and call the pieces we want) but since this will probably be overhauled in
+ * the future to support executing multiple queued events without returning to the Windows event
+ * loop, we don't want to make it more complicated just yet. */
+static void RunUxn(EmuWindow *d, UINT steps, BOOL initial)
 {
 	UINT res, use_steps = steps ? steps : 100000;  /* about 1900 usecs on good hardware */
 	Uxn *u = &d->box->core; LONGLONG t_a, t_delta;
 	int instr_interrupts = 0;
-	if (!u->pc) goto completed; /* oh this is a bug if the pc wraps and starts on 0... */
+	if (initial && !u->pc) goto completed; /* oh this is a bug if the pc wraps and starts on 0... */
 	t_a = TimeStampNow();
 	for (;;)
 	{
@@ -1218,7 +1224,7 @@ static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT
 #ifndef NDEBUG
 	if (type == EmuIn_Start && IsWindowVisible(d->beetbugHWnd)) { PauseVM(d); ShowBeetbugInstruction(d, *pc); return; }
 #endif
-	RunUxn(d, 0);
+	RunUxn(d, 0, TRUE);
 }
 
 static void SendInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT y)
@@ -1720,7 +1726,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		if ((idm == IDM_STEP || idm == IDM_BIGSTEP) && !d->emu->running && d->emu->exec_state)
 		{
 			d->emu->box->core.fault_code = 0;
-			RunUxn(d->emu, idm == IDM_STEP ? 1 : 100);
+			RunUxn(d->emu, idm == IDM_STEP ? 1 : 100, FALSE);
 			UpdateBeetbugStuff(hWnd, d);
 			ShowBeetbugInstruction(d->emu, d->emu->box->core.pc);
 			return 0;
@@ -2064,7 +2070,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 
 	case UXNMSG_ContinueExec:
 		if (!d->running) return 0;
-		if (d->exec_state) RunUxn(d, 0); /* Unfinished vector execution */
+		if (d->exec_state) RunUxn(d, 0, FALSE); /* Unfinished vector execution */
 		else if (d->queue_count) /* Buffered events */
 		{
 			EmuInEvent *evt = &d->queue_buffer[d->queue_first];
