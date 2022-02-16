@@ -1115,27 +1115,26 @@ static void ShowBeetbugInstruction(EmuWindow *emu, USHORT address)
 static void RunUxn(EmuWindow *d, UINT steps)
 {
 	UINT res, use_steps = steps ? steps : 100000;  /* about 1900 usecs on good hardware */
-	Uxn *u = &d->box->core; LONGLONG total = 0, t_a, t_b, t_delta;
+	Uxn *u = &d->box->core; LONGLONG t_a, t_delta;
 	int instr_interrupts = 0;
-	if (!u->pc) goto completed;
+	if (!u->pc) goto completed; /* oh this is a bug if the pc wraps and starts on 0... */
 	t_a = TimeStampNow();
 	for (;;)
 	{
 		res = UxnExec(&d->box->core, use_steps);
 		instr_interrupts++;
-		t_b = TimeStampNow();
-		t_delta = t_b - t_a;
+		t_delta = TimeStampNow() - t_a;
 		d->instr_count += use_steps - res;
-		if (u->fault_code) goto died;
-		if (res != 0) { total += t_delta; goto completed; }
-		if (t_delta > ExecutionTimeLimit || steps) { total += t_delta; goto residual; }
-		/* total will include some non-Uxn work, but close enough */
+		if (u->fault_code) break;
+		if (t_delta > ExecutionTimeLimit || steps) goto residual;
 	}
-died:
-	PauseVM(d);
-	InvalidateUxnScreenRect(d);
-	ShowBeetbugInstruction(d, u->pc);
-	return;
+	if (u->fault_code != 1)
+	{
+		PauseVM(d);
+		InvalidateUxnScreenRect(d);
+		ShowBeetbugInstruction(d, u->pc);
+		return;
+	}
 completed:
 	switch ((enum EmuIn)d->exec_state)
 	{
@@ -1157,6 +1156,7 @@ completed:
 		DEVPOKE2(d->dev_mouse, 0xA, 0, 0);
 		break;
 	}
+	if (d->running) u->fault_code = 0;
 	d->exec_state = 0;
 residual:
 	if (d->running && (d->exec_state || d->queue_count))
@@ -1418,9 +1418,10 @@ static void UpdateBeetbugStuff(HWND hWnd, BeetbugWin *d)
 		LPCSTR text = NULL;
 		switch (d->sbar_fault = d->emu->box->core.fault_code)
 		{
-		case 1:   text = TEXT("Stack underflow"); break;
-		case 2:   text = TEXT("Stack overflow"); break;
-		case 3:   text = TEXT("Division by zero"); break;
+		case 1:   text = TEXT("Break"); break;
+		case 2:   text = TEXT("Stack underflow"); break;
+		case 3:   text = TEXT("Stack overflow"); break;
+		case 4:   text = TEXT("Division by zero"); break;
 		case 255: text = TEXT("Debug device break"); break;
 		}
 		SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 4, (LPARAM)text);
