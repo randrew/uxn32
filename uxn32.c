@@ -1105,8 +1105,8 @@ static void ShowBeetbugInstruction(EmuWindow *emu, USHORT address)
 	OpenBeetbugWindow(emu, FALSE);
 	dbg = (BeetbugWin *)GetWindowLongPtr(emu->beetbugHWnd, GWLP_USERDATA);
 	pad_rows = ListView_GetCountPerPage(dbg->ctrls[BB_AsmList]) / 3;
-	ListView_EnsureVisible(dbg->ctrls[BB_AsmList], ((UINT)address - pad_rows) % UXN_RAM_SIZE, FALSE); /* TODO probably wasteful */
-	ListView_EnsureVisible(dbg->ctrls[BB_AsmList], (address + pad_rows) % UXN_RAM_SIZE, FALSE);
+	ListView_EnsureVisible(dbg->ctrls[BB_AsmList], MAX(0, address - pad_rows), FALSE); /* TODO probably wasteful */
+	ListView_EnsureVisible(dbg->ctrls[BB_AsmList], MIN(0xFFFF, address + pad_rows), FALSE);
 	BeetbugAutoScrollStacks(dbg);
 }
 
