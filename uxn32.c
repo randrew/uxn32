@@ -1415,7 +1415,8 @@ static void UpdateBeetbugStuff(HWND hWnd, BeetbugWin *d)
 	}
 	if (d->sbar_instrcount != d->emu->instr_count)
 	{
-		UINT u = (d->sbar_instrcount = d->emu->instr_count) > (UINT)-1 ? (UINT)-1 : d->sbar_instrcount;
+		UINT u = (d->sbar_instrcount = d->emu->instr_count) > (UINT)-1 ?
+			(UINT)-1 : (UINT)d->sbar_instrcount;
 		wsprintf(buff, "Ops: %u", u);
 		SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 3, (LPARAM)buff);
 	}
