@@ -1091,10 +1091,11 @@ static void BeetbugAutoScrollStacks(BeetbugWin *dbg)
 	for (i = BB_WrkStack; i <= BB_RetStack; i++)
 	{
 		top = ListView_GetTopIndex(dbg->ctrls[i]);
-		s = (&dbg->emu->box->core.wst)[i]->ptr; /* actually points to 1 past the last value */
-		if (s-- == 0 || s >= top && s < top + pp) continue;
+		s = (&dbg->emu->box->core.wst)[i - BB_WrkStack]->ptr; /* actually points to 1 past the last value */
+		if (s-- == 0 || (s >= top && s < top + pp)) continue;
 		ListView_EnsureVisible(dbg->ctrls[i], MAX(0, s - pp), FALSE);
 		ListView_EnsureVisible(dbg->ctrls[i], MIN(255, s + pad), FALSE);
+
 	}
 }
 
@@ -1697,7 +1698,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				GetWindowText(d->ctrls[BB_JumpEdit], buff, 8);
 				if (!ParseHex(buff, &addr)) return 0;
 				ListView_EnsureVisible(hList, (addr /= 8) + ListView_GetCountPerPage(hList), FALSE);
-				ListView_EnsureVisible(d->ctrls[BB_HexList], addr, FALSE);
+				ListView_EnsureVisible(hList, addr, FALSE);
 				return 0;
 			}
 			case BB_PushStackBtn0: case BB_PushStackBtn1: case BB_PopStackBtn0: case BB_PopStackBtn1:
