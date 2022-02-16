@@ -201,6 +201,7 @@ enum EmuIn
 	EmuIn_Wheel,
 	EmuIn_Screen,
 	EmuIn_Console,
+	EmuIn_DebugJump,
 	EmuIn_Start
 };
 typedef struct EmuInEvent
@@ -1151,6 +1152,7 @@ completed:
 	case EmuIn_MouseUp:
 	case EmuIn_Screen:
 	case EmuIn_Console:
+	case EmuIn_DebugJump:
 		break;
 	case EmuIn_Start:
 		SetTimer(d->hWnd, TimerID_Screen60hz, 16, NULL);
@@ -1179,7 +1181,7 @@ residual:
 static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT y)
 {
 	Uint16 *pc = &d->box->core.pc;
-	switch (type)
+	switch ((enum EmuIn)type)
 	{
 	case EmuIn_KeyChar:
 		d->dev_ctrl->dat[3] = bits;
@@ -1214,6 +1216,7 @@ static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT
 		d->box->core.dev[0x1].dat[0x2] = bits;
 		*pc = GETVECTOR(&d->box->core.dev[0x1]);
 		break;
+	case EmuIn_DebugJump: break; /* Should not happen -- only set by debugger */
 	case EmuIn_Start:
 		*pc = UXN_ROM_OFFSET;
 		break;
@@ -1403,7 +1406,7 @@ static void UpdateBeetbugStuff(HWND hWnd, BeetbugWin *d)
 		static const LPCSTR event_texts[EmuIn_Start + 1] = { /* TODO crappy */
 			TEXT(""), TEXT("KeyChar"), TEXT("CtrlDown"), TEXT("CtrlUp"),
 			TEXT("CtrlUp"), TEXT("Mouse"), TEXT("MouseUp"), TEXT("Wheel"),
-			TEXT("Screen"), TEXT("ConChar"), TEXT("Init")
+			TEXT("Screen"), TEXT("ConChar"), TEXT("DebugJump"), TEXT("Init")
 		};
 		SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 1,
 			(LPARAM)event_texts[d->sbar_input_event = d->emu->last_event]);
@@ -1703,8 +1706,26 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				TCHAR buff[8]; UINT addr; HWND hList = d->ctrls[BB_HexList];
 				GetWindowText(d->ctrls[BB_JumpEdit], buff, 8);
 				if (!ParseHex(buff, &addr)) return 0;
-				ListView_EnsureVisible(hList, (addr /= 8) + ListView_GetCountPerPage(hList), FALSE);
-				ListView_EnsureVisible(hList, addr, FALSE);
+				if (GetKeyState(VK_SHIFT) & 0x8000) /* experimental feature: view in asm list */
+				{
+					if (GetKeyState(VK_CONTROL) & 0x8000) /* experimental feature: jump pc to address */
+					{
+						d->emu->box->core.pc = addr;
+						if (!d->emu->exec_state)
+						{
+							PauseVM(d->emu); /* temp hacks, might remove this feature later, dunno */
+							d->emu->last_event = d->emu->exec_state = EmuIn_DebugJump;
+							d->emu->instr_count = 0;
+						}
+					}
+					UpdateBeetbugStuff(hWnd, d); /* kinda dumb, repeated a few times */
+					ShowBeetbugInstruction(d->emu, addr);
+				}
+				else
+				{
+					ListView_EnsureVisible(hList, (addr /= 8) + ListView_GetCountPerPage(hList), FALSE);
+					ListView_EnsureVisible(hList, addr, FALSE);
+				}
 				return 0;
 			}
 			case BB_PushStackBtn0: case BB_PushStackBtn1: case BB_PopStackBtn0: case BB_PopStackBtn1:
