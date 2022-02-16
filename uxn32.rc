@@ -32,6 +32,7 @@ LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
 // Icon with lowest ID value placed first to ensure application icon
 // remains consistent on all systems.
 IDI_UXN32               ICON    DISCARDABLE     "uxn32.ico"
+IDI_BEETBUG             ICON    DISCARDABLE     "beetbug.ico"
 
 /////////////////////////////////////////////////////////////////////////////
 //

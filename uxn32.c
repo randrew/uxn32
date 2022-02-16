@@ -2146,6 +2146,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	RegisterClassEx(&wc);
 	wc.lpszClassName = BeetbugWinClass;
 	wc.lpfnWndProc = BeetbugWndProc;
+	wc.hIcon = LoadIcon(instance, (LPCTSTR)IDI_BEETBUG);
 	RegisterClassEx(&wc);
 	hAccel = LoadAccelerators(instance, (LPCSTR)IDC_UXN32);
 	InitCommonControls();
