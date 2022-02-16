@@ -39,7 +39,6 @@ UxnExec(Uxn *u, unsigned int limit)
 	Stack *src, *dst;
 	Device *dev;
 	pc = u->pc;
-	if(u->dev[0].dat[0xf]) return limit;
 	if(u->wst->ptr > 0xf8) u->wst->ptr = 0xf8;
 	while(limit) {
 		limit--;
