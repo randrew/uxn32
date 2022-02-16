@@ -1123,7 +1123,7 @@ static void RunUxn(EmuWindow *d, UINT steps, BOOL initial)
 	UINT res, use_steps = steps ? steps : 100000;  /* about 1900 usecs on good hardware */
 	Uxn *u = &d->box->core; LONGLONG t_a, t_delta;
 	int instr_interrupts = 0;
-	if (initial && !u->pc) goto completed; /* oh this is a bug if the pc wraps and starts on 0... */
+	if (initial && !u->pc) goto completed;
 	t_a = TimeStampNow();
 	for (;;)
 	{
