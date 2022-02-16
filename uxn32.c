@@ -1505,10 +1505,8 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		SetWindowText(d->ctrls[BB_JumpBtn], TEXT("View Address"));
 		for (i = BB_PushStackBtn0; i <= BB_PopStackBtn1; i++)
 			SetWindowText(d->ctrls[i], i < BB_PopStackBtn0 ? TEXT("PUSH") : TEXT("POP"));
-		d->ctrls[BB_JumpEdit] = CreateWindowEx(
-			WS_EX_CLIENTEDGE, EditWinClass, NULL,
-			WS_CHILD | WS_VISIBLE,
-			0, 0, 0, 0, hWnd, (HMENU)2, MainInstance, NULL);
+		d->ctrls[BB_JumpEdit] = CreateWindowEx(WS_EX_CLIENTEDGE, EditWinClass, NULL,
+			WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, hWnd, (HMENU)BB_JumpEdit, MainInstance, NULL);
 		SetWindowLongPtr(d->ctrls[BB_JumpEdit], GWLP_USERDATA, (LONG_PTR)GetWindowLongPtr(d->ctrls[BB_JumpEdit], GWLP_WNDPROC));
 		SetWindowLongPtr(d->ctrls[BB_JumpEdit], GWLP_WNDPROC,  (LONG_PTR)BeetbugJumpEditProc);
 		SendMessage(d->ctrls[BB_JumpEdit], EM_SETLIMITTEXT, 4, 0);
