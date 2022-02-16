@@ -1516,8 +1516,8 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		break;
 	case WM_SIZE:
 	{
-		static const SIZE btnSize = {87, 19}; int i;
-		RECT r = {0, 0, LOWORD(lParam), HIWORD(lParam)}, tmp, tmp2;
+		static const SIZE btnSize = {87, 19}; int i; RECT r, tmp, tmp2;
+		SetRect(&r, 0, 0, LOWORD(lParam), HIWORD(lParam));
 		SendMessage(d->ctrls[BB_Status], WM_SIZE, 0, 0);
 		GetClientRect(d->ctrls[BB_Status], &tmp);
 		MapWindowPoints(d->ctrls[BB_Status], hWnd, (LPPOINT)&tmp, 2); /* must violate strict aliasing */
