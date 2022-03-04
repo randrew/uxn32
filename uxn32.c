@@ -1135,6 +1135,7 @@ static void RunUxn(EmuWindow *d, UINT steps, BOOL initial)
 		if (u->fault_code) break;
 		if (t_delta > ExecutionTimeLimit || steps) goto residual;
 	}
+	if (u->wst->ptr || u->rst->ptr) u->fault_code = 127;
 	if (u->fault_code != 1)
 	{
 		PauseVM(d);
@@ -1432,6 +1433,7 @@ static void UpdateBeetbugStuff(HWND hWnd, BeetbugWin *d)
 		case 2:   text = TEXT("Stack underflow"); break;
 		case 3:   text = TEXT("Stack overflow"); break;
 		case 4:   text = TEXT("Division by zero"); break;
+		case 127: text = TEXT("Stack debris"); break;
 		case 255: text = TEXT("Debug device break"); break;
 		}
 		SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 4, (LPARAM)text);
