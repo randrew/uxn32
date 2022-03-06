@@ -462,17 +462,21 @@ static void DevOut_Screen(Device *d, Uint8 port)
 	}
 	case 0xF:
 	{
-		UINT x, y, addr, tmp, advnc = d->dat[0x6], sprite = d->dat[0xF];
-		UINT twobpp = !!(sprite & 0x80);
+		UINT x, y, addr, i, tmp, advance = d->dat[0x6], sprite = d->dat[0xF];
+		UINT n = advance >> 4, dx = advance << 3 & 8, dy = advance << 2 & 8;
+		UINT twobpp = !!(sprite & 0x80), daddr = (advance & 0x4) << (twobpp + 1);
 		Uint8 *layer_pixels = (sprite & 0x40) ? screen->fg : screen->bg;
 		DEVPEEK2(d, x, y, 0x8);
 		DEVPEEK(d, addr, 0xC);
-		DrawUxnSprite(screen, layer_pixels, x, y, &u->ram[addr], sprite & 0xF, sprite & 0x10, sprite & 0x20, twobpp);
-		/* auto addr+length */
-		if (advnc & 0x04) { tmp = addr + 8 + twobpp * 8; DEVPOKE(d, 0xC, tmp); }
-		if (advnc & 0x01) { tmp = x + 8; DEVPOKE(d, 0x8, tmp); } /* auto x+8 */
-		if (advnc & 0x02) { tmp = y + 8; DEVPOKE(d, 0xA, tmp); } /* auto y+8 */
-		break;
+		tmp = x + dx; DEVPOKE(d, 0x8, tmp);
+		tmp = y + dy; DEVPOKE(d, 0xA, tmp);
+		for (i = 0; i <= n; i++, x += dy, y += dx)
+		{
+			if ((tmp = addr, addr += daddr) >= UXN_RAM_SIZE) break;
+			DrawUxnSprite(screen, layer_pixels, x, y, &u->ram[tmp], sprite & 0xF, sprite & 0x10, sprite & 0x20, twobpp);
+		}
+		DEVPOKE(d, 0xC, addr);
+		break; /* TODO some perf warning if drawing same sprite redundantly on top of itself? */
 	}
 	}
 }
