@@ -1139,7 +1139,7 @@ static void RunUxn(EmuWindow *d, UINT steps, BOOL initial)
 		if (u->fault_code) break;
 		if (t_delta > ExecutionTimeLimit || steps) goto residual;
 	}
-	if (u->wst->ptr || u->rst->ptr) u->fault_code = 127;
+	/* TODO add checkbox to enable this if (u->wst->ptr || u->rst->ptr) u->fault_code = 127; */
 	if (u->fault_code != 1)
 	{
 		PauseVM(d);
