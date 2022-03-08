@@ -2,11 +2,11 @@
 #define NOMINMAX
 #include "resource.h"
 #include "core32.h"
-#include <Windows.h>
+#include <windows.h>
 #include <shellapi.h>
-#include <Shlwapi.h>
+#include <shlwapi.h>
 #include <commdlg.h>
-#include <CommCtrl.h>
+#include <commctrl.h>
 #include <mmsystem.h>
 
 #pragma comment(lib, "user32.lib")
