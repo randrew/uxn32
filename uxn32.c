@@ -17,7 +17,7 @@
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "winmm.lib")
 
-#if !defined(_WIN64) && _WINVER < 0x0500
+#if !defined(GWLP_WNDPROC)
 #define GetWindowLongPtrA   GetWindowLongA
 #define GetWindowLongPtrW   GetWindowLongW
 #define GetWindowLongPtr    GetWindowLong
