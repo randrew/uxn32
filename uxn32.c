@@ -9,14 +9,6 @@
 #include <commctrl.h>
 #include <mmsystem.h>
 
-#pragma comment(lib, "user32.lib")
-#pragma comment(lib, "gdi32.lib")
-#pragma comment(lib, "shell32.lib")
-#pragma comment(lib, "shlwapi.lib")
-#pragma comment(lib, "comdlg32.lib")
-#pragma comment(lib, "comctl32.lib")
-#pragma comment(lib, "winmm.lib")
-
 #if !defined(GWLP_WNDPROC)
 #define GetWindowLongPtrA   GetWindowLongA
 #define GetWindowLongPtrW   GetWindowLongW

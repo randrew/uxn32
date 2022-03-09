@@ -61,8 +61,5 @@ if (IS_CLANG)
 endif ()
 
 add_executable(Uxn32 WIN32 uxn32.rc core32.c uxn32.c)
-if ((NOT IS_MSVC) AND (NOT IS_CLANG_CL))
-    # MinGW requires linker flags. MSVC and clang-cl can use either, but the lib pragmas are easier to keep in sync with VC6, I think. Might change my mind later.
-    target_link_libraries(Uxn32 user32.lib gdi32.lib shell32.lib shlwapi.lib comdlg32.lib comctl32.lib winmm.lib)
-endif ()
+target_link_libraries(Uxn32 user32.lib gdi32.lib shell32.lib shlwapi.lib comdlg32.lib comctl32.lib winmm.lib)
 set_property(TARGET Uxn32 PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:DebugDLL>")
