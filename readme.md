@@ -57,11 +57,11 @@ For later Visual Studio versions and MinGW, there is a CMakeLists.txt file to us
 
 VC6 is the easiest way to produce a `.exe` that works with old Windows versions and which doesn't require bundling `.dll` files or statically linking to large C runtimes.
 
-### Linux & Other
+### Linux & Other UNIX
 
 The easiest way to develop Uxn32 from within Linux is to use Winelib. This lets you use regular GCC or clang, and doesn't require installing MinGW. The output `.exe` will be `ELF` (Linux format) instead of `PE` (Windows format) so you can't copy it to a Windows system, but it will work great with Wine on Linux.
 
-Make sure you have Wine installed, and also that you have either gcc or clang installed, then do something like:
+Make sure you have Wine installed, and also either gcc or clang installed, then do something like:
 
 ```sh
 wrc -I. -fouxn32.res uxn32.rc
