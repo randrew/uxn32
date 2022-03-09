@@ -65,7 +65,8 @@ Make sure you have Wine installed, and also that you have either gcc or clang in
 
 ```sh
 wrc -I. -fouxn32.res uxn32.rc
-winegcc -mwindows -mno-cygwin -m32 -Os -s -I. -o uxn32_elf.exe.so `find -name *.c` uxn32.res -luser32 -lgdi32 -lshell32 -lshlwapi -lcomdlg32 -lcomctl32 -lwinmm
+winegcc -mwindows -mno-cygwin -m32 -Os -s -I. -o uxn32_elf.exe.so `find -name *.c` uxn32.res \
+    -luser32 -lgdi32 -lshell32 -lshlwapi -lcomdlg32 -lcomctl32 -lwinmm
 mv uxn32_elf.exe.so uxn32_elf.exe
 ```
 
