@@ -72,7 +72,7 @@ mv uxn32_elf.exe.so uxn32_elf.exe
 
 Then run it with `wine uxn32_elf.exe`. If you want to make a debug build, replace the `-Os -s` with `-O0 -g`. You can use gdb to debug it with `winedbg uxn32_elf.exe`.
 
-<small>(Actually, if you use clang as your compiler with `winegcc`, and you have `lld` installed, you can add `-b i386-pc-windows-msvc -Wl,/safeseh:no` and then it *will* output a `PE` executable that will run on Windows. But it will probably only run on Windows 7 and later.)</small>
+<sub>(Actually, if you use clang as your compiler with `winegcc`, and you have `lld` installed, you can add `-b i386-pc-windows-msvc -Wl,/safeseh:no` and then it *will* output a `PE` executable that will run on Windows. But it will probably only run on Windows 7 and later.)</sub>
 
 If you want to use MinGW on a Linux host to produce an executable for Windows, you can do a similar invocation by hand, or try using CMake.
 
