@@ -1283,7 +1283,7 @@ static void OpenROMDialog(EmuWindow *d)
 	ReloadFromROMFile(d);
 }
 
-static LRESULT CALLBACK AboutBoxProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+static INT_PTR CALLBACK AboutBoxProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	(void)lParam;
 	switch (message)
