@@ -1489,8 +1489,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			ListView_SetExtendedListViewStyle(list, LVS_EX_FULLROWSELECT);
 			ListView_DeleteAllItems(list);
 			col.cx = columns[i]; ListView_InsertColumn(list, 0, &col);
-			ListView_SetItemCount(list, rows[i]);
-			ListView_EnsureVisible(list, 0, FALSE);
+			SendMessage(list, LVM_SETITEMCOUNT, rows[i], LVSICF_NOSCROLL);
 		}
 		d->ctrls[BB_Status] = CreateWindowEx(
 			0, STATUSCLASSNAME, NULL, WS_CHILD | WS_VISIBLE | SBARS_SIZEGRIP,
