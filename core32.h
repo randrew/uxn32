@@ -34,6 +34,16 @@ typedef struct Uxn {
 	Uint16 pc, fault_code;
 } Uxn;
 
+/* Runs up to 'limit' number of Uxn instructions.
+   Returns limit - (number of instructions executed).
+   Execution starts at address 'u->pc', so set it (or leave it) as needed.
+   `u->fault_code` should be set to 0 before calling.
+
+   Upon returning, `u->fault_code` indicates the reason execution ended:
+     0: Instruction limit was reached before executing a halt instruction.
+        The program needs to execute more before it finishes.
+     1: The program halted normally after executing a halt instruction.
+     x: The program halted after an error was encountered. */
 unsigned int UxnExec(Uxn *u, unsigned int limit);
 
 #endif
