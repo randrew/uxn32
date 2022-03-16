@@ -64,10 +64,8 @@ The easiest way to develop Uxn32 from within Linux is to use Winelib. This lets 
 Make sure you have Wine installed, and also either gcc or clang installed, then do something like:
 
 ```sh
-wrc -I. -fouxn32.res uxn32.rc
-winegcc -mwindows -mno-cygwin -m32 -Os -s -I. -o uxn32_elf.exe.so `find -name *.c` uxn32.res \
-    -luser32 -lgdi32 -lshell32 -lshlwapi -lcomdlg32 -lcomctl32 -lwinmm
-mv uxn32_elf.exe.so uxn32_elf.exe
+winemaker --wine32 uxn32.dsp
+make
 ```
 
 Then run it with `wine uxn32_elf.exe`. If you want to make a debug build, replace the `-Os -s` with `-O0 -g`. You can use gdb to debug it with `winedbg uxn32_elf.exe`.
