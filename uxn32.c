@@ -2008,6 +2008,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		case VK_DOWN:    bits = 0x20; goto allow_key_repeat;
 		case VK_LEFT:    bits = 0x40; goto allow_key_repeat;
 		case VK_RIGHT:   bits = 0x80; goto allow_key_repeat;
+		case VK_DELETE:  if (!up) { wparam = 127; goto char_down; }
 
 		/* Add quick debug keys here */
 		/* case VK_F12: if (!up) {  } return 0; */
@@ -2024,7 +2025,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		if (wparam >= 'A' && wparam <= 'Z' && !(!(GetKeyState(VK_SHIFT) & 0x8000) ^ !(GetKeyState(VK_CAPITAL)))) wparam += 0x20;
 	case WM_CHAR: char_down: /* WM_CHAR is pressing a key without holding alt or ctrl */
 		/* Disallow control characters except tab, newline, etc. */
-		if (wparam < 32 && wparam != 8 && wparam != 9 && wparam != 10 && wparam != 13 && wparam != 27) break;
+		if (wparam < 32 && wparam != 8 && wparam != 9 && wparam != 10 && wparam != 13 && wparam != 27 && wparam != 127) break;
 		SendInputEvent(d, EmuIn_KeyChar, (BYTE)wparam, 0, 0);
 		return 0;
 	}
