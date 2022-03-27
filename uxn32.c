@@ -356,7 +356,8 @@ static void DrawUxnSprite(UxnScreen *p, Uint8 *layer_pixels, Uint16 x, Uint16 y,
 			Uint8 ch = (c & 1) | ((c >> 7) & 2);
 			if (opaque || ch)
 			{
-				int x0 = x + (flipx ? 7 - h : h), y0 = y + (flipy ? 7 - v : v);
+				// TODO ok this has gotten pretty bloated... we should probably split this up into specialized subroutines for the different combination of options to speed it up.
+				int x0 = (x + (flipx ? 7 - h : h)) & 0xFFFF, y0 = (y + (flipy ? 7 - v : v)) & 0xFFFF;
 				if (x0 < width && y0 < height)
 					layer_pixels[x0 + y0 * width] = SpriteBlendingTable[ch][color];
 			}
