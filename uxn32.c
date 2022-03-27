@@ -645,6 +645,7 @@ static DWORD FileDevWrite(UxnFiler *f, char *src, DWORD src_len, int flags)
 		f->hFile = CreateFile(f->path, GENERIC_WRITE, FILE_SHARE_READ, NULL, append ? OPEN_ALWAYS : CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 	}
 	if (f->hFile == INVALID_HANDLE_VALUE) return 0;
+	f->state = FileDevState_Writing;
 	if (!WriteFile(f->hFile, src, src_len, &written, NULL))
 	{
 		ResetFiler(f); /* TODO signal error to user */
