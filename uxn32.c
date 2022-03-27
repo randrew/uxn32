@@ -224,7 +224,7 @@ typedef struct EmuWindow
 	RECT viewport_rect;
 	LONG viewport_scale; /* really only need 1 bit for this... */
 	UxnScreen screen;
-	UxnFiler filer;
+	UxnFiler filers[2];
 	UxnVoice synth_voices[UXN_VOICES];
 	UxnWaveOut *wave_out;
 
@@ -541,7 +541,7 @@ static void ResetFiler(UxnFiler *f)
 static UxnFiler * FilerOfDevice(Device *d)
 {
 	UxnBox *box = OUTER_OF(d->u, UxnBox, core);
-	return &((EmuWindow *)box->user)->filer;
+	return &((EmuWindow *)box->user)->filers[d == &d->u->dev[0xB]]; /* TODO dumb */
 }
 
 /* Returns 0 on error, including not enough space. Will not write to the dst buffer on error.
@@ -557,11 +557,11 @@ static DWORD PrintDirListRow(char *dst, DWORD dst_len, char *display_name, DWORD
 	return (DWORD)written;
 }
 
-static void FileDevPathChange(Device *d)
+/* TODO now that there's two filers, I'm especially not happy with the arguments and stuff for these file functions. */
+static void FileDevPathChange(Device *d, UxnFiler *f)
 {
 	DWORD addr, i, avail;
 	char tmp[MAX_PATH + 1], *in_mem;
-	UxnFiler *f = FilerOfDevice(d);
 	Uxn *u = d->u; /* TODO */
 	ResetFiler(f);
 	DEVPEEK(d, addr, 0x8);
@@ -844,6 +844,18 @@ static void DevOut_Audio(Device *dev, Uint8 port)
 	if (!win->needs_audio) win->needs_audio = 1;
 }
 
+static Uint8 DevIn_File(Device *d, Uint8 port)
+{
+	DWORD result = 0; UxnFiler *f = FilerOfDevice(d);
+	switch (port)
+	{
+	case 0xC: case 0xD:
+		result = FileDevRead(f, (char *)&d->dat[port], 1);
+		DEVPOKE(d, 0x2, result);
+	}
+	return d->dat[port];
+}
+
 static void DevOut_File(Device *d, Uint8 port)
 {
 	DWORD result = 0, /* next inits suppress msvc warning */ out_len = 0; char *out = 0;
@@ -866,7 +878,7 @@ static void DevOut_File(Device *d, Uint8 port)
 	{
 	case 0x5: result = FileDevStat(f, out, out_len); goto result;
 	case 0x6: result = FileDevDelete(f); goto result;
-	case 0x9: result = 0; FileDevPathChange(d); goto result;
+	case 0x9: result = 0; FileDevPathChange(d, f); goto result;
 	case 0xD: result = FileDevRead(f, out, out_len); goto result;
 	case 0xF: result = FileDevWrite(f, out, out_len, d->dat[0x7]); goto result;
 	}
@@ -936,9 +948,9 @@ static void InitEmuWindow(EmuWindow *d, HWND hWnd)
 	/* Unused   */ DEVICE_AT(0x7, DevIn_Dummy,  DevOut_Dummy);
 	/* Control  */ DEVICE_AT(0x8, DevIn_Dummy,  DevOut_Dummy);   d->dev_ctrl = dev;
 	/* Mouse    */ DEVICE_AT(0x9, DevIn_Dummy,  DevOut_Dummy);   d->dev_mouse = dev;
-	/* File     */ DEVICE_AT(0xA, DevIn_Dummy,  DevOut_File);
-	/* Datetime */ DEVICE_AT(0xB, DevIn_Date,   DevOut_Dummy);
-	/* Unused   */ DEVICE_AT(0xC, DevIn_Dummy,  DevOut_Dummy);
+	/* File     */ DEVICE_AT(0xA, DevIn_File,   DevOut_File);
+	/* Datetime */ DEVICE_AT(0xB, DevIn_File,   DevOut_File);
+	/* Unused   */ DEVICE_AT(0xC, DevIn_Date,   DevOut_Dummy);
 	/* Unused   */ DEVICE_AT(0xD, DevIn_Dummy,  DevOut_Dummy);
 	/* Unused   */ DEVICE_AT(0xE, DevIn_Dummy,  DevOut_Dummy);
 	/* Unused   */ DEVICE_AT(0xF, DevIn_Dummy,  DevOut_Dummy);
@@ -948,7 +960,7 @@ static void InitEmuWindow(EmuWindow *d, HWND hWnd)
 	d->hWnd = hWnd; /* TODO cleanup reorder these assignments */
 	d->viewport_scale = 1;
 	SetUxnScreenSize(&d->screen, UXN_DEFAULT_WIDTH, UXN_DEFAULT_HEIGHT);
-	d->filer.hFile = d->filer.hFind = INVALID_HANDLE_VALUE;
+	d->filers[0].hFile = d->filers[0].hFind = d->filers[1].hFile = d->filers[1].hFind = INVALID_HANDLE_VALUE;
 }
 
 static void FreeUxnBox(UxnBox *box)
@@ -1037,7 +1049,7 @@ static void ResetVM(EmuWindow *d)
 	ZeroMemory((char *)(d->box + 1), UXN_RAM_SIZE);
 	ZeroMemory(d->screen.palette, sizeof d->screen.palette); /* optional for quick reload */
 	ZeroMemory(d->screen.bg, d->screen.width * d->screen.height * 2);
-	ResetFiler(&d->filer);
+	ResetFiler(&d->filers[0]); ResetFiler(&d->filers[1]);
 }
 
 static void SynthesizeMouseMoveToCurrent(EmuWindow *d)
@@ -1867,7 +1879,8 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		SetHostCursorVisible(d, TRUE);
 		FreeUxnBox(d->box);
 		FreeUxnScreen(&d->screen);
-		ResetFiler(&d->filer);
+		ResetFiler(&d->filers[0]);
+		ResetFiler(&d->filers[1]);
 		if (d->hBMP) DeleteObject(d->hBMP);
 		if (d->hDibDC) DeleteDC(d->hDibDC);
 		if (d->wave_out)
