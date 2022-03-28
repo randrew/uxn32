@@ -919,7 +919,8 @@ static BOOL LoadROMIntoBox(UxnBox *box, LPCSTR filename)
 	{
 		TCHAR tmp[MAX_PATH]; DWORD res = GetFullPathNameA(filename, MAX_PATH, tmp, NULL);
 		if (res == 0 || res >= MAX_PATH) tmp[0] = 0;
-		FmtBox(0, "ROM File Load Error", MB_OK | MB_ICONWARNING, "Tried and failed to load the ROM file:\n\n%s\n\nDoes it exist?", tmp);
+		/* This error is annoying. Disable it until we think of something better. */
+		/* FmtBox(0, "ROM File Load Error", MB_OK | MB_ICONWARNING, "Tried and failed to load the ROM file:\n\n%s\n\nDoes it exist?", tmp); */
 	}
 	return result;
 }
