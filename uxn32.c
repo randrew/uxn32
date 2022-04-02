@@ -1635,7 +1635,6 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			}
 			break;
 		}
-		break;
 
 		case LVN_MARQUEEBEGIN: return -1; /* Disable. Broken in Win10 1809 w/o manifest, WTF? */
 
