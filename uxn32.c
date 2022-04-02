@@ -2082,7 +2082,6 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		case IDM_RELOAD: ReloadFromROMFile(d); return 0;
 		case IDM_CLOSEWINDOW: PostMessage(hwnd, WM_CLOSE, 0, 0); return 0;
 		case IDM_PAUSE: if (d->running) PauseVM(d); else UnpauseVM(d); return 0;
-			break;
 		case IDM_STEP: case IDM_BIGSTEP:
 			if (!d->running && d->exec_state)
 			{
