@@ -17,11 +17,11 @@ WITH REGARD TO THIS SOFTWARE.
 	pc: program counter. sp: ptr to src stack ptr. kptr: "keep" mode copy of src stack ptr.
 	x,y: macro in params. d: macro in device. j,k,dev: macro temp variables. o: macro out param. */
 
-#define PUSH8(s, x) { if(s->ptr == 0xff) { errcode = 3; goto err; } s->dat[s->ptr++] = (x); }
-#define PUSH16(s, x) { if((j = s->ptr) >= 0xfe) { errcode = 3; goto err; } k = (x); s->dat[j] = k >> 8; s->dat[j + 1] = k; s->ptr = j + 2; }
+#define PUSH8(s, x) { if(s->ptr == 0xff) { goto fault_3; } s->dat[s->ptr++] = (x); }
+#define PUSH16(s, x) { if((j = s->ptr) >= 0xfe) { goto fault_3; } k = (x); s->dat[j] = k >> 8; s->dat[j + 1] = k; s->ptr = j + 2; }
 #define PUSH(s, x) { if(bs) { PUSH16(s, (x)) } else { PUSH8(s, (x)) } }
-#define POP8(o) { if(!(j = *sp)) { errcode = 2; goto err; } o = (Uint16)src->dat[--j]; *sp = j; }
-#define POP16(o) { if((j = *sp) <= 1) { errcode = 2; goto err; } o = src->dat[j - 1]; o += src->dat[j - 2] << 8; *sp = j - 2; }
+#define POP8(o) { if(!(j = *sp)) { goto fault_2; } o = (Uint16)src->dat[--j]; *sp = j; }
+#define POP16(o) { if((j = *sp) <= 1) { goto fault_2; } o = src->dat[j - 1]; o += src->dat[j - 2] << 8; *sp = j - 2; }
 #define POP(o) { if(bs) { POP16(o) } else { POP8(o) } }
 #define POKE(x, y) { if(bs) { u->ram[(x)] = (y) >> 8; u->ram[(x) + 1] = (y); } else { u->ram[(x)] = y; } }
 #define PEEK16(o, x) { o = (u->ram[(x)] << 8) + u->ram[(x) + 1]; }
@@ -34,7 +34,7 @@ WITH REGARD TO THIS SOFTWARE.
 unsigned int
 UxnExec(Uxn *u, unsigned int limit)
 {
-	unsigned int a, b, c, j, k, bs, instr, errcode, pc;
+	unsigned int a, b, c, j, k, bs, instr, pc;
 	Uint8 kptr, *sp;
 	Stack *src, *dst;
 	Device *dev;
@@ -43,7 +43,7 @@ UxnExec(Uxn *u, unsigned int limit)
 		limit--;
 		instr = u->ram[pc];
 		pc = (pc + 1) & 0xFFFFu;
-		if (!instr) { errcode = 1; goto err; }
+		if (!instr) { u->fault_code = 1; goto done; }
 		/* Return Mode */
 		if(instr & 0x40) {
 			src = u->rst; dst = u->wst;
@@ -92,7 +92,7 @@ UxnExec(Uxn *u, unsigned int limit)
 		case 0x18: /* ADD */ POP(a) POP(b) PUSH(src, b + a) break;
 		case 0x19: /* SUB */ POP(a) POP(b) PUSH(src, b - a) break;
 		case 0x1a: /* MUL */ POP(a) POP(b) PUSH(src, (Uint32)b * a) break;
-		case 0x1b: /* DIV */ POP(a) POP(b) if(a == 0) { errcode = 4; goto err; } PUSH(src, b / a) break;
+		case 0x1b: /* DIV */ POP(a) POP(b) if(a == 0) { u->fault_code = 4; goto done; } PUSH(src, b / a) break;
 		case 0x1c: /* AND */ POP(a) POP(b) PUSH(src, b & a) break;
 		case 0x1d: /* ORA */ POP(a) POP(b) PUSH(src, b | a) break;
 		case 0x1e: /* EOR */ POP(a) POP(b) PUSH(src, b ^ a) break;
@@ -102,7 +102,10 @@ UxnExec(Uxn *u, unsigned int limit)
 done:
 	u->pc = pc;
 	return limit;
-err:
-	u->fault_code = errcode;
+fault_2:
+	u->fault_code = 2;
+	goto done;
+fault_3:
+	u->fault_code = 3;
 	goto done;
 }
