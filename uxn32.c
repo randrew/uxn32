@@ -1147,8 +1147,16 @@ static void RunUxn(EmuWindow *d, UINT steps, BOOL initial)
 		if (t_delta > ExecutionTimeLimit || steps) goto residual;
 	}
 	/* TODO add checkbox to enable this if (u->wst->ptr || u->rst->ptr) u->fault_code = 127; */
-	if (u->fault_code != 1)
+	if (u->fault_code != UXN_FAULT_DONE)
 	{
+		/* If there's a division by zero, push 0xFF onto the stack to rebalance it. Then, if the user hits resume, the program has a better chance of not faulting again. */
+		if (u->fault_code == UXN_FAULT_DIVIDE_BY_ZERO)
+		{
+			UINT last_op = u->ram[((UINT)u->pc - 1) % UXN_RAM_SIZE]; /* Get last op executed */
+			Stack *s = last_op & 0x40 ? u->rst : u->wst; /* Which stack to push to */
+			int i = 0, count = (last_op & 0x20) >> 5; /* Push 1 or 2 bytes */
+			for (; i <= count; i++) s->dat[s->ptr++] = 0xFF;
+		}
 		PauseVM(d);
 		InvalidateUxnScreenRect(d);
 		ShowBeetbugInstruction(d, u->pc);

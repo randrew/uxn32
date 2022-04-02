@@ -34,6 +34,11 @@ typedef struct Uxn {
 	Uint16 pc, fault_code;
 } Uxn;
 
+#define UXN_FAULT_DONE 1
+#define UXN_FAULT_STACK_UNDERFLOW 2
+#define UXN_FAULT_STACK_OVERFLOW 3
+#define UXN_FAULT_DIVIDE_BY_ZERO 4
+
 /* Runs up to 'limit' number of Uxn instructions.
    Returns limit - (number of instructions executed).
    Execution starts at address 'u->pc', so set it (or leave it) as needed.
