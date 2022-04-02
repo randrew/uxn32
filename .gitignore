@@ -6,6 +6,9 @@
 # Qt Creator per-user file
 CMakeLists.txt.user
 
+# clangd cache
+/.cache
+
 # VC6 generated stuff
 *.aps
 *.ncb
