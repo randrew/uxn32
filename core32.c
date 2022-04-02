@@ -102,10 +102,6 @@ UxnExec(Uxn *u, unsigned int limit)
 done:
 	u->pc = pc;
 	return limit;
-fault_2:
-	u->fault_code = 2;
-	goto done;
-fault_3:
-	u->fault_code = 3;
-	goto done;
+fault_2: u->fault_code = 2; goto done;
+fault_3: u->fault_code = 3; goto done;
 }
