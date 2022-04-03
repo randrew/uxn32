@@ -152,8 +152,6 @@ static void CutRectForWindow(RECT *prect, int dir, int length, HWND window)
 	MoveWindowRect(window, &r, TRUE);
 }
 
-typedef UINT DeviceID;
-
 typedef struct UxnBox
 {
 	void *user;
@@ -430,7 +428,7 @@ static DWORD PrintDirListRow(char *dst, DWORD dst_len, char *display_name, DWORD
 }
 
 /* TODO now that there's two filers, I'm especially not happy with the arguments and stuff for these file functions. */
-static void FileDevPathChange(EmuWindow *emu, DeviceID device, UxnFiler *f)
+static void FileDevPathChange(EmuWindow *emu, UINT device, UxnFiler *f)
 {
 	DWORD addr, i, avail;
 	char tmp[MAX_PATH + 1], *in_mem;
@@ -683,7 +681,7 @@ static void InitWaveOutAudio(EmuWindow *d)
 	}
 }
 
-static void DevOut_Audio(EmuWindow *emu, DeviceID device, UINT port)
+static void DevOut_Audio(EmuWindow *emu, UINT device, UINT port)
 {
 	Uint8 *imem = emu->box->device_memory + device;
 	UxnVoice *voice = &emu->synth_voices[device - VV_AUDIO0];
@@ -700,7 +698,7 @@ static void DevOut_Audio(EmuWindow *emu, DeviceID device, UINT port)
 	if (!emu->needs_audio) emu->needs_audio = 1;
 }
 
-static void DevOut_File(EmuWindow *emu, DeviceID device, UINT port)
+static void DevOut_File(EmuWindow *emu, UINT device, UINT port)
 {
 	DWORD result = 0, /* next inits suppress msvc warning */ out_len = 0; char *out = 0;
 	UxnBox *box = emu->box; Uint8 *imem = box->device_memory + device;
@@ -839,7 +837,6 @@ __declspec(noinline) static void UxnDeviceWrite_Cold(UxnBox *box, UINT address, 
 		}
 		return;
 	}
-
 	switch (device)
 	{
 	case VV_SYSTEM:
