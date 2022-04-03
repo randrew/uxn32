@@ -685,7 +685,7 @@ static void InitWaveOutAudio(EmuWindow *d)
 
 static void DevOut_Audio(EmuWindow *emu, DeviceID device, UINT port)
 {
-	UxnBox *box = emu->box; Uint8 *imem = box->device_memory + device;
+	Uint8 *imem = emu->box->device_memory + device;
 	UxnVoice *voice = &emu->synth_voices[device - VV_AUDIO0];
 	Uint16 adsr;
 	if (port != 0xF) return;
@@ -724,7 +724,7 @@ static void DevOut_File(EmuWindow *emu, DeviceID device, UINT port)
 	case 0x6: result = FileDevDelete(f); goto result;
 	case 0x9: result = 0; FileDevPathChange(emu, device, f); goto result;
 	case 0xD: result = FileDevRead(f, out, out_len); goto result;
-	case 0xF: result = FileDevWrite(f, out, out_len, box->device_memory[device|0x7]); goto result;
+	case 0xF: result = FileDevWrite(f, out, out_len, imem[0x7]); goto result;
 	}
 	return;
 result:
