@@ -23,13 +23,14 @@ typedef struct {
 typedef struct Device {
 	struct Uxn *u;
 	Uint8 *dat;
-	Uint8 (*dei)(struct Device *d, Uint8);
-	void (*deo)(struct Device *d, Uint8);
 } Device;
 
 typedef struct Uxn {
 	Uint8 *ram;
 	Stack *wst, *rst;
+	unsigned int (*dev_read)(struct Uxn *u, unsigned int address);
+	void (*dev_write)(struct Uxn *u, unsigned int address, unsigned int value);
+	// Uint8 dev_mem[256];
 	Device dev[16];
 	Uint16 pc, fault_code;
 } Uxn;

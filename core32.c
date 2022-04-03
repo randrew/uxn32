@@ -26,9 +26,8 @@ WITH REGARD TO THIS SOFTWARE.
 #define POKE(x, y) { if(bs) { u->ram[(x)] = (y) >> 8; u->ram[(x) + 1] = (y); } else { u->ram[(x)] = y; } }
 #define PEEK16(o, x) { o = (u->ram[(x)] << 8) + u->ram[(x) + 1]; }
 #define PEEK(o, x) { if(bs) { PEEK16(o, x) } else { o = u->ram[(x)]; } }
-#define DEVR(o, d, x) { dev = (d); o = dev->dei(dev, (x) & 0x0f); if(bs) { o = (o << 8) + dev->dei(dev, ((x) + 1) & 0x0f); } }
-#define DEVW8(x, y) { dev->dat[(x) & 0xf] = y; dev->deo(dev, (x) & 0x0f); }
-#define DEVW(d, x, y) { dev = (d); if(bs) { DEVW8((x), (y) >> 8); DEVW8((x) + 1, (y)); } else { DEVW8((x), (y)) } }
+#define DEVR(o, x) { o = u->dev_read(u, x); if (bs) o = (o << 8) + u->dev_read(u, ((x) + 1) & 0xFF); }
+#define DEVW(x, y) { if (bs) { u->dev_write(u, (x), (y) >> 8); u->dev_write(u, ((x) + 1) & 0xFF, (y)); } else { u->dev_write(u, x, (y)); } }
 #define WARP(x) { if(bs) pc = (x); else pc += (Sint8)(x); }
 
 unsigned int
@@ -37,7 +36,6 @@ UxnExec(Uxn *u, unsigned int limit)
 	unsigned int a, b, c, j, k, bs, instr, pc;
 	Uint8 kptr, *sp;
 	Stack *src, *dst;
-	Device *dev;
 	pc = u->pc;
 	while(limit) {
 		limit--;
@@ -86,8 +84,8 @@ UxnExec(Uxn *u, unsigned int limit)
 		case 0x13: /* STR */ POP8(a) POP(b) c = pc + (Sint8)a; POKE(c, b) break;
 		case 0x14: /* LDA */ POP16(a) PEEK(b, a) PUSH(src, b) break;
 		case 0x15: /* STA */ POP16(a) POP(b) POKE(a, b) break;
-		case 0x16: /* DEI */ POP8(a) DEVR(b, &u->dev[a >> 4], a) PUSH(src, b) break;
-		case 0x17: /* DEO */ POP8(a) POP(b) DEVW(&u->dev[a >> 4], a, b) if (u->fault_code) goto done; break;
+		case 0x16: /* DEI */ POP8(a) DEVR(b, a) PUSH(src, b) break;
+		case 0x17: /* DEO */ POP8(a) POP(b) DEVW(a, b) if (u->fault_code) goto done; break;
 		/* Arithmetic */
 		case 0x18: /* ADD */ POP(a) POP(b) PUSH(src, b + a) break;
 		case 0x19: /* SUB */ POP(a) POP(b) PUSH(src, b - a) break;

@@ -423,7 +423,6 @@ static void RefitEmuWindow(EmuWindow *d)
 static void DevOut_Screen(Device *d, Uint8 port)
 {
 	UxnScreen *screen = ScreenOfDevice(d);
-	Uxn *u = d->u; /* TODO */
 	switch (port)
 	{
 	case 0x5:
@@ -441,35 +440,6 @@ static void DevOut_Screen(Device *d, Uint8 port)
 			RefitEmuWindow(EmuOfDevice(d));
 		}
 		break;
-	}
-	case 0xE:
-	{
-		LONG x, y, width = screen->width, layer = d->dat[0xE] & 0x40;
-		Uint8 *pixels = layer ? screen->fg : screen->bg;
-		DEVPEEK2(d, x, y, 0x8);
-		if (x < width && y < screen->height) /* poke pixel */
-			pixels[x + y * width] = d->dat[0xE] & 0x3;
-		if (d->dat[0x6] & 0x01) DEVPOKE(d, 0x8, x + 1); /* auto x+1 */
-		if (d->dat[0x6] & 0x02) DEVPOKE(d, 0xA, y + 1); /* auto y+1 */
-		break;
-	}
-	case 0xF:
-	{
-		UINT x, y, addr, i, tmp, advance = d->dat[0x6], sprite = d->dat[0xF];
-		UINT n = advance >> 4, dx = advance << 3 & 8, dy = advance << 2 & 8;
-		UINT twobpp = !!(sprite & 0x80), daddr = (advance & 0x4) << (twobpp + 1);
-		Uint8 *layer_pixels = (sprite & 0x40) ? screen->fg : screen->bg;
-		DEVPEEK2(d, x, y, 0x8);
-		DEVPEEK(d, addr, 0xC);
-		tmp = x + dx; DEVPOKE(d, 0x8, tmp);
-		tmp = y + dy; DEVPOKE(d, 0xA, tmp);
-		for (i = 0; i <= n; i++, x += dy, y += dx)
-		{
-			if ((tmp = addr, addr += daddr) >= UXN_RAM_SIZE) break;
-			DrawUxnSprite(screen, layer_pixels, x, y, &u->ram[tmp], sprite & 0xF, sprite & 0x10, sprite & 0x20, twobpp);
-		}
-		DEVPOKE(d, 0xC, addr);
-		break; /* TODO some perf warning if drawing same sprite redundantly on top of itself? */
 	}
 	}
 }
@@ -925,8 +895,89 @@ static BOOL LoadROMIntoBox(UxnBox *box, LPCSTR filename)
 	return result;
 }
 
-static Uint8 DevIn_Dummy(Device *d, Uint8 port) { return d->dat[port]; }
-static void  DevOut_Dummy(Device *d, Uint8 port) { (void)d;(void)port; }
+static UINT UxnDeviceRead(Uxn *u, UINT address)
+{
+	UxnBox *box = OUTER_OF(u, UxnBox, core);
+	EmuWindow *w = (EmuWindow *)box->user;
+	Device *d = &u->dev[address >> 4];
+	UINT port = address & 0x0F;
+	switch (address & 0xF0)
+	{
+	/* System   */ case 0x00: return DevIn_System(d, port);
+	/* Screen   */ case 0x20: return DevIn_Screen(d, port);
+	/* Audio0   */ case 0x30: return DevIn_Audio(d, port);
+	/* Audio1   */ case 0x40: return DevIn_Audio(d, port);
+	/* Audio2   */ case 0x50: return DevIn_Audio(d, port);
+	/* Audio3   */ case 0x60: return DevIn_Audio(d, port);
+	/* File     */ case 0xA0: return DevIn_File(d, port);
+	/* Datetime */ case 0xB0: return DevIn_File(d, port);
+	/* Unused   */ case 0xC0: return DevIn_Date(d, port);
+	}
+	return d->dat[port];
+}
+
+static void UxnDeviceWrite(Uxn *u, UINT address, UINT value)
+{
+	UxnBox *box = OUTER_OF(u, UxnBox, core);
+	EmuWindow *w = (EmuWindow *)box->user;
+	Device *d = &u->dev[address >> 4];
+	UINT port = address & 0x0F;
+	u->dev[0].dat[address] = value;
+	switch (address)
+	{
+	case 0x2E:
+	{
+		UxnScreen *screen = &w->screen;
+		LONG x, y, width = screen->width, layer = d->dat[0xE] & 0x40;
+		Uint8 *pixels = layer ? screen->fg : screen->bg;
+		DEVPEEK2(d, x, y, 0x8);
+		if (x < width && y < screen->height) /* poke pixel */
+			pixels[x + y * width] = d->dat[0xE] & 0x3;
+		if (d->dat[0x6] & 0x01) DEVPOKE(d, 0x8, x + 1); /* auto x+1 */
+		if (d->dat[0x6] & 0x02) DEVPOKE(d, 0xA, y + 1); /* auto y+1 */
+		return;
+	}
+	case 0x2F:
+	{
+		UxnScreen *screen = &w->screen;
+		UINT x, y, addr, i, tmp, advance = d->dat[0x6], sprite = d->dat[0xF];
+		UINT n = advance >> 4, dx = advance << 3 & 8, dy = advance << 2 & 8;
+		UINT twobpp = !!(sprite & 0x80), daddr = (advance & 0x4) << (twobpp + 1);
+		Uint8 *layer_pixels = (sprite & 0x40) ? screen->fg : screen->bg;
+		DEVPEEK2(d, x, y, 0x8);
+		DEVPEEK(d, addr, 0xC);
+		tmp = x + dx; DEVPOKE(d, 0x8, tmp);
+		tmp = y + dy; DEVPOKE(d, 0xA, tmp);
+		for (i = 0; i <= n; i++, x += dy, y += dx)
+		{
+			if ((tmp = addr, addr += daddr) >= UXN_RAM_SIZE) break;
+			DrawUxnSprite(screen, layer_pixels, x, y, &u->ram[tmp], sprite & 0xF, sprite & 0x10, sprite & 0x20, twobpp);
+		}
+		DEVPOKE(d, 0xC, addr);
+		return; /* TODO some perf warning if drawing same sprite redundantly on top of itself? */
+	}
+	}
+
+	switch (address & 0xF0)
+	{
+	/* System   */ case 0x00: DevOut_System(d, port); break;
+	/* Console  */ case 0x10: DevOut_Console(d, port); break;
+	/* Screen   */ case 0x20: DevOut_Screen(d, port); break;
+	/* Audio0   */ case 0x30: DevOut_Audio(d, port); break;
+	/* Audio1   */ case 0x40: DevOut_Audio(d, port); break;
+	/* Audio2   */ case 0x50: DevOut_Audio(d, port); break;
+	/* Audio3   */ case 0x60: DevOut_Audio(d, port); break;
+	/* Unused   */ case 0x70: break;
+	/* Control  */ case 0x80: break;
+	/* Mouse    */ case 0x90: break;
+	/* File     */ case 0xA0: DevOut_File(d, port); break;
+	/* Datetime */ case 0xB0: DevOut_File(d, port); break;
+	/* Unused   */ case 0xC0: DevOut_Audio(d, port); break;
+	/* Unused   */ case 0xD0: DevOut_Audio(d, port); break;
+	/* Unused   */ case 0xE0: DevOut_Audio(d, port); break;
+	/* Unused   */ case 0xF0: DevOut_Audio(d, port); break;
+	}
+}
 
 static void InitEmuWindow(EmuWindow *d, HWND hWnd)
 {
@@ -938,23 +989,25 @@ static void InitEmuWindow(EmuWindow *d, HWND hWnd)
 	box->core.ram = (Uint8 *)main_ram;
 	box->core.wst = &box->work_stack;
 	box->core.rst = &box->ret_stack;
-#define DEVICE_AT(portnum, in_fn, out_fn) (dev = box->core.dev + portnum, dev->u = &box->core, dev->dei = in_fn, dev->deo = out_fn, dev->dat = box->device_memory + portnum * 0x10)
-	/* System   */ DEVICE_AT(0x0, DevIn_System, DevOut_System);
-	/* Console  */ DEVICE_AT(0x1, DevIn_Dummy,  DevOut_Console);
-	/* Screen   */ DEVICE_AT(0x2, DevIn_Screen, DevOut_Screen);  d->dev_screen = dev;
-	/* Audio0   */ DEVICE_AT(0x3, DevIn_Audio,  DevOut_Audio);   d->dev_audio0 = dev;
-	/* Audio1   */ DEVICE_AT(0x4, DevIn_Audio,  DevOut_Audio);
-	/* Audio2   */ DEVICE_AT(0x5, DevIn_Audio,  DevOut_Audio);
-	/* Audio3   */ DEVICE_AT(0x6, DevIn_Audio,  DevOut_Audio);
-	/* Unused   */ DEVICE_AT(0x7, DevIn_Dummy,  DevOut_Dummy);
-	/* Control  */ DEVICE_AT(0x8, DevIn_Dummy,  DevOut_Dummy);   d->dev_ctrl = dev;
-	/* Mouse    */ DEVICE_AT(0x9, DevIn_Dummy,  DevOut_Dummy);   d->dev_mouse = dev;
-	/* File     */ DEVICE_AT(0xA, DevIn_File,   DevOut_File);
-	/* Datetime */ DEVICE_AT(0xB, DevIn_File,   DevOut_File);
-	/* Unused   */ DEVICE_AT(0xC, DevIn_Date,   DevOut_Dummy);
-	/* Unused   */ DEVICE_AT(0xD, DevIn_Dummy,  DevOut_Dummy);
-	/* Unused   */ DEVICE_AT(0xE, DevIn_Dummy,  DevOut_Dummy);
-	/* Unused   */ DEVICE_AT(0xF, DevIn_Dummy,  DevOut_Dummy);
+	box->core.dev_read = UxnDeviceRead;
+	box->core.dev_write = UxnDeviceWrite;
+#define DEVICE_AT(portnum) (dev = box->core.dev + portnum, dev->u = &box->core, dev->dat = box->device_memory + portnum * 0x10)
+	/* System   */ DEVICE_AT(0x0);
+	/* Console  */ DEVICE_AT(0x1);
+	/* Screen   */ DEVICE_AT(0x2); d->dev_screen = dev;
+	/* Audio0   */ DEVICE_AT(0x3); d->dev_audio0 = dev;
+	/* Audio1   */ DEVICE_AT(0x4);
+	/* Audio2   */ DEVICE_AT(0x5);
+	/* Audio3   */ DEVICE_AT(0x6);
+	/* Unused   */ DEVICE_AT(0x7);
+	/* Control  */ DEVICE_AT(0x8); d->dev_ctrl = dev;
+	/* Mouse    */ DEVICE_AT(0x9); d->dev_mouse = dev;
+	/* File1    */ DEVICE_AT(0xA);
+	/* File2    */ DEVICE_AT(0xB);
+	/* Unused   */ DEVICE_AT(0xC);
+	/* Unused   */ DEVICE_AT(0xD);
+	/* Unused   */ DEVICE_AT(0xE);
+	/* Unused   */ DEVICE_AT(0xF);
 #undef DEVICE_AT
 	d->box = box;
 	d->host_cursor = TRUE;
@@ -1251,8 +1304,8 @@ static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT
 	ts = TimeStampNow();
 	RunUxn(d, 0, TRUE);
 	time = MicrosSince(ts);
-	if (type == EmuIn_MouseDown)
-		DebugPrint("%d", time);
+	// if (type == EmuIn_MouseDown)
+	// 	DebugPrint("%d", time);
 }
 
 static void SendInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT y)
