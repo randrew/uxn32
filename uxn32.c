@@ -285,7 +285,6 @@ static __declspec(noreturn) void OutOfMemory(void)
 	ExitProcess(ERROR_OUTOFMEMORY);
 }
 
-#ifndef NDEBUG
 static void DebugPrint(char const *fmt, ...)
 {
 	va_list ap; int res; char buffer[1024 + 1];
@@ -297,6 +296,7 @@ static void DebugPrint(char const *fmt, ...)
 	buffer[res + 1] = 0;
 	OutputDebugStringA(buffer);
 }
+#ifndef NDEBUG
 static void PrintLastError(void)
 {
 	DWORD dw = GetLastError();
@@ -1201,6 +1201,7 @@ residual:
 static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT y)
 {
 	Uint16 *pc = &d->box->core.pc;
+	LONGLONG ts; int time;
 	switch ((enum EmuIn)type)
 	{
 	case EmuIn_KeyChar:
@@ -1247,7 +1248,11 @@ static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT
 #ifndef NDEBUG
 	if (type == EmuIn_Start && IsWindowVisible(d->beetbugHWnd)) { PauseVM(d); ShowBeetbugInstruction(d, *pc); return; }
 #endif
+	ts = TimeStampNow();
 	RunUxn(d, 0, TRUE);
+	time = MicrosSince(ts);
+	if (type == EmuIn_MouseDown)
+		DebugPrint("%d", time);
 }
 
 static void SendInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT y)
