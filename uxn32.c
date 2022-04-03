@@ -223,7 +223,6 @@ typedef struct EmuInEvent
 typedef struct EmuWindow
 {
 	UxnBox *box;
-	DeviceID dev_screen, dev_mouse, dev_ctrl, dev_audio0;
 	HWND hWnd, consoleHWnd, beetbugHWnd;
 	HBITMAP hBMP;
 	HDC hDibDC;
