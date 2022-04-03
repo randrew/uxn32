@@ -58,11 +58,24 @@ typedef ULONG_PTR DWORD_PTR, *PDWORD_PTR;
 #define UXN_SAMPLE_RATE 44100
 #define UXN_VOICES 4
 
-#define DEVPEEK(d, o, x) ((o) = ((d)->dat[(x)] << 8) + (d)->dat[(x) + 1])
-#define DEVPOKE(d, a, v) ((d)->dat[(a)] = (v) >> 8, (d)->dat[(a) + 1] = (v))
-#define DEVPEEK2(d, o1, o2, a) (DEVPEEK(d, o1, a), DEVPEEK(d, o2, a + 2))
-#define DEVPOKE2(d, a, v1, v2) (DEVPOKE(d, a, v1), DEVPOKE(d, a + 2, v2))
-#define GETVECTOR(d) ((d)->dat[0] << 8 | (d)->dat[1])
+#define VV_SYSTEM	0x00
+#define VV_CONSOLE	0x10
+#define VV_SCREEN	0x20
+#define VV_AUDIO0	0x30
+#define VV_AUDIO1	0x40
+#define VV_AUDIO2	0x50
+#define VV_AUDIO3	0x60
+#define VV_CONTROL	0x80
+#define VV_MOUSE	0x90
+#define VV_FILE0	0xA0
+#define VV_FILE1	0xB0
+#define VV_DATE	0xC0
+
+#define DEVPEEK(d, o, x) ((o) = ((d)[(x)] << 8) + (d)[(x) + 1])
+#define DEVPOKE(d, a, v) ((d)[(a)] = (v) >> 8, (d)[(a) + 1] = (v))
+#define DEVPEEK2(d, o1, o2, a) (DEVPEEK(d, o1, a), DEVPEEK(d, o2, (a) + 2))
+#define DEVPOKE2(d, a, v1, v2) (DEVPOKE(d, a, v1), DEVPOKE(d, (a) + 2, v2))
+#define GETVECTOR(d) ((d)[0] << 8 | (d)[1])
 
 static LARGE_INTEGER _perfcount_freq;
 static LONGLONG ExecutionTimeLimit;
@@ -139,6 +152,8 @@ static void CutRectForWindow(RECT *prect, int dir, int length, HWND window)
 	MoveWindowRect(window, &r, TRUE);
 }
 
+typedef UINT DeviceID;
+
 typedef struct UxnBox
 {
 	void *user;
@@ -208,7 +223,7 @@ typedef struct EmuInEvent
 typedef struct EmuWindow
 {
 	UxnBox *box;
-	Device *dev_screen, *dev_mouse, *dev_ctrl, *dev_audio0;
+	DeviceID dev_screen, dev_mouse, dev_ctrl, dev_audio0;
 	HWND hWnd, consoleHWnd, beetbugHWnd;
 	HBITMAP hBMP;
 	HDC hDibDC;
@@ -384,31 +399,6 @@ static void FreeUxnScreen(UxnScreen *p)
 	if (p->bg) HeapFree(GetProcessHeap(), 0, p->bg);
 }
 
-static EmuWindow * EmuOfDevice(Device *d) /* TODO these are kinda dumb, clean when making Devices better */
-{
-	UxnBox *box = OUTER_OF(d->u, UxnBox, core);
-	return (EmuWindow *)box->user;
-}
-
-static UxnScreen * ScreenOfDevice(Device *d)
-{
-	UxnBox *box = OUTER_OF(d->u, UxnBox, core);
-	return &((EmuWindow *)box->user)->screen;
-}
-
-static Uint8 DevIn_Screen(Device *d, Uint8 port)
-{
-	UxnScreen *screen = ScreenOfDevice(d);
-	switch (port)
-	{
-	case 0x2: return screen->width >> 8;
-	case 0x3: return screen->width;
-	case 0x4: return screen->height >> 8;
-	case 0x5: return screen->height;
-	default: return d->dat[port];
-	}
-}
-
 static void RefitEmuWindow(EmuWindow *d)
 {
 	RECT c, r;
@@ -420,98 +410,11 @@ static void RefitEmuWindow(EmuWindow *d)
 	/* Seems like the repaint from this is always async. We need the TRUE flag for repainting or the non-client area will be messed up on non-DWM. */
 }
 
-static void DevOut_Screen(Device *d, Uint8 port)
-{
-	UxnScreen *screen = ScreenOfDevice(d);
-	switch (port)
-	{
-	case 0x5:
-	{
-		DWORD w, h;
-		DEVPEEK2(d, w, h, 0x2);
-		if (w > 1024 || h > 1024)
-		{
-			/* If the size is unacceptable, write back the old one */
-			DEVPOKE2(d, 0x2, screen->width, screen->height);
-		}
-		else
-		{
-			SetUxnScreenSize(screen, w, h);
-			RefitEmuWindow(EmuOfDevice(d));
-		}
-		break;
-	}
-	}
-}
-
-static Uint8 DevIn_System(Device *d, Uint8 port)
-{
-	switch (port)
-	{
-	case 0x2: return d->u->wst->ptr;
-	case 0x3: return d->u->rst->ptr;
-	}
-	return d->dat[port];
-}
-
-static void DevOut_System(Device *d, Uint8 port)
-{
-	switch (port)
-	{
-	case 0x2: d->u->wst->ptr = d->dat[port]; return;
-	case 0x3: d->u->rst->ptr = d->dat[port]; return;
-	case 0xE: d->u->fault_code = 0xFF; return;
-	}
-
-	if (port > 0x7 && port < 0xE) /* modify palette */
-	{
-		UxnScreen *p = ScreenOfDevice(d);
-		Uint8* addr = &d->dat[0x8];
-		int i, shift;
-		for (i = 0, shift = 4; i < 4; ++i, shift ^= 4)
-		{
-			Uint8
-				r = (addr[0 + i / 2] >> shift) & 0x0F,
-				g = (addr[2 + i / 2] >> shift) & 0x0F,
-				b = (addr[4 + i / 2] >> shift) & 0x0F;
-			p->palette[i] = 0x0F000000 | r << 16 | g << 8 | b;
-			p->palette[i] |= p->palette[i] << 4;
-		}
-	}
-}
-
-static Uint8 DevIn_Date(Device *d, Uint8 port)
-{
-	SYSTEMTIME t; TIME_ZONE_INFORMATION zone;
-	GetLocalTime(&t);
-	switch (port)
-	{
-	case 0x0: return (t.wYear + 1900) >> 8;
-	case 0x1: return (t.wYear + 1900);
-	case 0x2: return t.wMonth;
-	case 0x3: return t.wDay;
-	case 0x4: return t.wHour;
-	case 0x5: return t.wMinute;
-	case 0x6: return t.wSecond;
-	case 0x7: return t.wDayOfWeek;
-	case 0x8: /* Nth day of year doesn't seem readily available in Win32 */
-	case 0x9: return 0;
-	case 0xA: return GetTimeZoneInformation(&zone) == 2;
-	}
-	return d->dat[port];
-}
-
 static void ResetFiler(UxnFiler *f)
 {
 	if (f->hFile != INVALID_HANDLE_VALUE) { CloseHandle(f->hFile); f->hFile = INVALID_HANDLE_VALUE; }
 	if (f->hFind != INVALID_HANDLE_VALUE) { FindClose(f->hFind); f->hFind = INVALID_HANDLE_VALUE; }
 	f->state = FileDevState_Init;
-}
-
-static UxnFiler * FilerOfDevice(Device *d)
-{
-	UxnBox *box = OUTER_OF(d->u, UxnBox, core);
-	return &((EmuWindow *)box->user)->filers[d == &d->u->dev[0xB]]; /* TODO dumb */
 }
 
 /* Returns 0 on error, including not enough space. Will not write to the dst buffer on error.
@@ -528,15 +431,14 @@ static DWORD PrintDirListRow(char *dst, DWORD dst_len, char *display_name, DWORD
 }
 
 /* TODO now that there's two filers, I'm especially not happy with the arguments and stuff for these file functions. */
-static void FileDevPathChange(Device *d, UxnFiler *f)
+static void FileDevPathChange(EmuWindow *emu, DeviceID device, UxnFiler *f)
 {
 	DWORD addr, i, avail;
 	char tmp[MAX_PATH + 1], *in_mem;
-	Uxn *u = d->u; /* TODO */
 	ResetFiler(f);
-	DEVPEEK(d, addr, 0x8);
+	DEVPEEK(emu->box->device_memory + device, addr, 0x8);
 	avail = UXN_RAM_SIZE - addr;
-	in_mem = (char *)u->ram + addr;
+	in_mem = (char *)emu->box->core.ram + addr;
 	if (avail > MAX_PATH) avail = MAX_PATH;
 	for (i = 0;; i++)
 	{
@@ -782,55 +684,28 @@ static void InitWaveOutAudio(EmuWindow *d)
 	}
 }
 
-static Uint8 DevIn_Audio(Device *dev, Uint8 port)
+static void DevOut_Audio(EmuWindow *emu, DeviceID device, UINT port)
 {
-	UxnBox *box = OUTER_OF(dev->u, UxnBox, core); /* TODO you know this mess */
-	EmuWindow *win = (EmuWindow *)box->user;
-	UxnVoice *voice = &win->synth_voices[dev - win->dev_audio0];
-	if (!win->wave_out || !win->wave_out->hWaveOut) return dev->dat[port];
-	switch (port)
-	{
-	case 0x4: return VoiceCalcVU(voice);
-	case 0x2: DEVPOKE(dev, 0x2, voice->i); break;
-	}
-	return dev->dat[port];
-}
-
-static void DevOut_Audio(Device *dev, Uint8 port)
-{
-	UxnBox *box = OUTER_OF(dev->u, UxnBox, core); /* TODO you know this mess */
-	EmuWindow *win = (EmuWindow *)box->user;
-	UxnVoice *voice = &win->synth_voices[dev - win->dev_audio0];
+	UxnBox *box = emu->box; Uint8 *imem = box->device_memory + device;
+	UxnVoice *voice = &emu->synth_voices[device - VV_AUDIO0];
 	Uint16 adsr;
 	if (port != 0xF) return;
-	DEVPEEK(dev, adsr, 0x8);
-	DEVPEEK(dev, voice->len, 0xA);
-	DEVPEEK(dev, voice->wave_base, 0xC);
-	voice->volume[0] = dev->dat[0xE] >> 4;
-	voice->volume[1] = dev->dat[0xE] & 0xF;
-	voice->repeat = !(dev->dat[0xF] & 0x80);
-	VoiceStart(voice, adsr, dev->dat[0xF] & 0x7F);
+	DEVPEEK(imem, adsr, 0x8);
+	DEVPEEK(imem, voice->len, 0xA);
+	DEVPEEK(imem, voice->wave_base, 0xC);
+	voice->volume[0] = imem[0xE] >> 4;
+	voice->volume[1] = imem[0xE] & 0xF;
+	voice->repeat = !(imem[0xF] & 0x80);
+	VoiceStart(voice, adsr, imem[0xF] & 0x7F);
 	/* Defer initializing audio until after at least one paint event, because the window might not be visible yet, and this can cause a 50ms+ freeze, increasing the delay before the window is shown. */
-	if (!win->needs_audio) win->needs_audio = 1;
+	if (!emu->needs_audio) emu->needs_audio = 1;
 }
 
-static Uint8 DevIn_File(Device *d, Uint8 port)
-{
-	DWORD result = 0; UxnFiler *f = FilerOfDevice(d);
-	switch (port)
-	{
-	case 0xC: case 0xD:
-		result = FileDevRead(f, (char *)&d->dat[port], 1);
-		DEVPOKE(d, 0x2, result);
-	}
-	return d->dat[port];
-}
-
-static void DevOut_File(Device *d, Uint8 port)
+static void DevOut_File(EmuWindow *emu, DeviceID device, UINT port)
 {
 	DWORD result = 0, /* next inits suppress msvc warning */ out_len = 0; char *out = 0;
-	UxnFiler *f = FilerOfDevice(d);
-	Uxn *u = d->u; /* TODO */
+	UxnBox *box = emu->box; Uint8 *imem = box->device_memory + device;
+	UxnFiler *f = &emu->filers[device - VV_FILE0];
 	switch (port) /* These need write location and size */
 	{
 	int peek_at; DWORD dst, avail;
@@ -838,23 +713,23 @@ static void DevOut_File(Device *d, Uint8 port)
 	case 0xD: peek_at = 0xC; goto calc;
 	case 0xF: peek_at = 0xE; goto calc;
 	calc:
-		DEVPEEK(d, dst, peek_at);
-		DEVPEEK(d, out_len, 0xA);
+		DEVPEEK(imem, dst, peek_at);
+		DEVPEEK(imem, out_len, 0xA);
 		avail = UXN_RAM_SIZE - dst;
 		if (out_len > avail) out_len = avail;
-		out = (char *)u->ram + dst;
+		out = (char *)box->core.ram + dst;
 	}
 	switch (port)
 	{
 	case 0x5: result = FileDevStat(f, out, out_len); goto result;
 	case 0x6: result = FileDevDelete(f); goto result;
-	case 0x9: result = 0; FileDevPathChange(d, f); goto result;
+	case 0x9: result = 0; FileDevPathChange(emu, device, f); goto result;
 	case 0xD: result = FileDevRead(f, out, out_len); goto result;
-	case 0xF: result = FileDevWrite(f, out, out_len, d->dat[0x7]); goto result;
+	case 0xF: result = FileDevWrite(f, out, out_len, box->device_memory[device|0x7]); goto result;
 	}
 	return;
 result:
-	DEVPOKE(d, 0x2, result);
+	DEVPOKE(imem, 0x2, result);
 }
 
 static void CreateConsoleWindow(EmuWindow *emu)
@@ -863,22 +738,6 @@ static void CreateConsoleWindow(EmuWindow *emu)
 	RECT rect; rect.left = 0; rect.top = 0; rect.right = 200; rect.bottom = 150;
 	AdjustWindowRectEx(&rect, wStyle, FALSE, exStyle);
 	emu->consoleHWnd = CreateWindowEx(exStyle, ConsoleWinClass, TEXT("Console"), wStyle, CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, emu->hWnd, NULL, MainInstance, (void *)NULL);
-}
-
-static void DevOut_Console(Device *dev, Uint8 port)
-{
-	char c[4]; EmuWindow *emu = EmuOfDevice(dev); ConWindow *con; int i = 0, len;
-	if (port < 0x8) return;
-	if (!emu->consoleHWnd) CreateConsoleWindow(emu);
-	if (!IsWindowVisible(emu->consoleHWnd)) ShowWindow(emu->consoleHWnd, SW_SHOWNOACTIVATE);
-	con = (ConWindow *)GetWindowLongPtr(emu->consoleHWnd, GWLP_USERDATA);
-	if (con->has_newline) c[i++] = '\r', c[i++] = '\n', con->has_newline = 0;
-	if ((c[i] = dev->dat[port]) == '\n') con->has_newline = 1;
-	else i++;
-	c[i] = 0;
-	len = GetWindowTextLength(con->outHWnd);
-	SendMessage(con->outHWnd, EM_SETSEL, len, len);
-	SendMessage(con->outHWnd, EM_REPLACESEL, 0, (LPARAM)c);
 }
 
 static BOOL LoadROMIntoBox(UxnBox *box, LPCSTR filename)
@@ -895,93 +754,186 @@ static BOOL LoadROMIntoBox(UxnBox *box, LPCSTR filename)
 	return result;
 }
 
-static UINT UxnDeviceRead(Uxn *u, UINT address)
+static Uint8 UxnDeviceRead(Uxn *u, UINT address)
 {
 	UxnBox *box = OUTER_OF(u, UxnBox, core);
-	EmuWindow *w = (EmuWindow *)box->user;
-	Device *d = &u->dev[address >> 4];
-	UINT port = address & 0x0F;
-	switch (address & 0xF0)
+	EmuWindow *emu = (EmuWindow *)box->user;
+	UINT device = address & 0xF0, port = address & 0x0F;
+	Uint8 *imem = box->device_memory + device;
+
+	switch (address)
 	{
-	/* System   */ case 0x00: return DevIn_System(d, port);
-	/* Screen   */ case 0x20: return DevIn_Screen(d, port);
-	/* Audio0   */ case 0x30: return DevIn_Audio(d, port);
-	/* Audio1   */ case 0x40: return DevIn_Audio(d, port);
-	/* Audio2   */ case 0x50: return DevIn_Audio(d, port);
-	/* Audio3   */ case 0x60: return DevIn_Audio(d, port);
-	/* File     */ case 0xA0: return DevIn_File(d, port);
-	/* Datetime */ case 0xB0: return DevIn_File(d, port);
-	/* Unused   */ case 0xC0: return DevIn_Date(d, port);
+	case VV_SYSTEM|0x2: return box->work_stack.ptr;
+	case VV_SYSTEM|0x3: return box->ret_stack.ptr;
+
+	case VV_SCREEN|0x2: return emu->screen.width >> 8;
+	case VV_SCREEN|0x3: return emu->screen.width;
+	case VV_SCREEN|0x4: return emu->screen.height >> 8;
+	case VV_SCREEN|0x5: return emu->screen.height;
 	}
-	return d->dat[port];
+
+	switch (device)
+	{
+	case VV_AUDIO0: case VV_AUDIO1: case VV_AUDIO2: case VV_AUDIO3:
+	{
+		UxnVoice *voice = &emu->synth_voices[device - VV_AUDIO0];
+		if (!emu->wave_out || !emu->wave_out->hWaveOut) break;
+		switch (port)
+		{
+		case 0x4: return VoiceCalcVU(voice);
+		case 0x2: DEVPOKE(imem, 0x2, voice->i); break; /* TODO uhh this is weird. */
+		}
+		break;
+	}
+	case VV_FILE0: case VV_FILE1:
+	{
+		DWORD result = 0; UxnFiler *f = &emu->filers[device - VV_FILE0];
+		switch (port)
+		{
+		case 0xC: case 0xD:
+			result = FileDevRead(f, (char *)&box->device_memory[address], 1);
+			DEVPOKE(imem, 0x2, result);
+		}
+		break;
+	}
+	case VV_DATE:
+	{
+		SYSTEMTIME t; TIME_ZONE_INFORMATION zone;
+		GetLocalTime(&t);
+		switch (port)
+		{
+		case 0x0: return (t.wYear + 1900) >> 8;
+		case 0x1: return (t.wYear + 1900);
+		case 0x2: return t.wMonth;
+		case 0x3: return t.wDay;
+		case 0x4: return t.wHour;
+		case 0x5: return t.wMinute;
+		case 0x6: return t.wSecond;
+		case 0x7: return t.wDayOfWeek;
+		case 0x8: /* Nth day of year doesn't seem readily available in Win32 */
+		case 0x9: return 0;
+		case 0xA: return GetTimeZoneInformation(&zone) == 2;
+		}
+	}
+	}
+	return box->device_memory[address];
+}
+
+__declspec(noinline) static void UxnDeviceWrite_Cold(Uxn *u, UINT address, UINT value)
+{
+	UxnBox *box = OUTER_OF(u, UxnBox, core);
+	EmuWindow *emu = (EmuWindow *)box->user;
+	UINT device = address & 0xF0, port = address & 0x0F;
+	Uint8 *devmem = box->device_memory, *imem = devmem + device;
+	if (address == VV_SCREEN + 0x5)
+	{
+		DWORD w, h;
+		DEVPEEK2(imem, w, h, 0x2);
+		if (w > 1024 || h > 1024)
+		{
+			/* If the size is unacceptable, write back the old one */
+			DEVPOKE2(imem, 0x2, emu->screen.width, emu->screen.height);
+		}
+		else
+		{
+			SetUxnScreenSize(&emu->screen, w, h);
+			RefitEmuWindow(emu);
+		}
+		return;
+	}
+
+	switch (device)
+	{
+	case VV_SYSTEM:
+		switch (port)
+		{
+		case 0x2: box->work_stack.ptr = (Uint8)value; break;
+		case 0x3: box->ret_stack.ptr = (Uint8)value; break;
+		case 0xE: u->fault_code = 0xFF; break;
+		default: if (port > 0x7 && port < 0xE)
+		{
+			Uint8* addr = &devmem[device|0x8];
+			UxnScreen *p = &emu->screen;
+			int i, shift;
+			for (i = 0, shift = 4; i < 4; ++i, shift ^= 4)
+			{
+				Uint8
+					r = (addr[0 + i / 2] >> shift) & 0x0F,
+					g = (addr[2 + i / 2] >> shift) & 0x0F,
+					b = (addr[4 + i / 2] >> shift) & 0x0F;
+				p->palette[i] = 0x0F000000 | r << 16 | g << 8 | b;
+				p->palette[i] |= p->palette[i] << 4;
+			}
+		}
+		}
+		break;
+	case VV_CONSOLE:
+	{
+		char c[4]; ConWindow *con; int i = 0, len;
+		if (port < 0x8) break;
+		if (!emu->consoleHWnd) CreateConsoleWindow(emu);
+		if (!IsWindowVisible(emu->consoleHWnd)) ShowWindow(emu->consoleHWnd, SW_SHOWNOACTIVATE);
+		con = (ConWindow *)GetWindowLongPtr(emu->consoleHWnd, GWLP_USERDATA);
+		if (con->has_newline) c[i++] = '\r', c[i++] = '\n', con->has_newline = 0;
+		if ((c[i] = (Uint8)value) == '\n') con->has_newline = 1;
+		else i++;
+		c[i] = 0;
+		len = GetWindowTextLength(con->outHWnd);
+		SendMessage(con->outHWnd, EM_SETSEL, len, len);
+		SendMessage(con->outHWnd, EM_REPLACESEL, 0, (LPARAM)c);
+		break;
+	}
+
+	case VV_AUDIO0: case VV_AUDIO1: case VV_AUDIO2: case VV_AUDIO3:
+		DevOut_Audio(emu, device, port); break;
+
+	case VV_FILE0: case VV_FILE1:
+		DevOut_File(emu, device, port); break;
+	}
 }
 
 static void UxnDeviceWrite(Uxn *u, UINT address, UINT value)
 {
 	UxnBox *box = OUTER_OF(u, UxnBox, core);
-	EmuWindow *w = (EmuWindow *)box->user;
-	Device *d = &u->dev[address >> 4];
-	UINT port = address & 0x0F;
-	u->dev[0].dat[address] = value;
-	switch (address)
+	UxnScreen *screen = &((EmuWindow *)box->user)->screen;
+	UINT device = address & 0xF0;
+	Uint8 *devmem = box->device_memory, *imem = devmem + device;
+	devmem[address] = value;
+	if (address == VV_SCREEN + 0xE)
 	{
-	case 0x2E:
-	{
-		UxnScreen *screen = &w->screen;
-		LONG x, y, width = screen->width, layer = d->dat[0xE] & 0x40;
+		LONG x, y, width = screen->width, layer = imem[0xE] & 0x40;
 		Uint8 *pixels = layer ? screen->fg : screen->bg;
-		DEVPEEK2(d, x, y, 0x8);
+		DEVPEEK2(imem, x, y, 0x8);
 		if (x < width && y < screen->height) /* poke pixel */
-			pixels[x + y * width] = d->dat[0xE] & 0x3;
-		if (d->dat[0x6] & 0x01) DEVPOKE(d, 0x8, x + 1); /* auto x+1 */
-		if (d->dat[0x6] & 0x02) DEVPOKE(d, 0xA, y + 1); /* auto y+1 */
+			pixels[x + y * width] = imem[0xE] & 0x3;
+		if (imem[0x6] & 0x01) DEVPOKE(imem, 0x8, x + 1); /* auto x+1 */
+		if (imem[0x6] & 0x02) DEVPOKE(imem, 0xA, y + 1); /* auto y+1 */
 		return;
 	}
-	case 0x2F:
+	if (address == VV_SCREEN + 0xF)
 	{
-		UxnScreen *screen = &w->screen;
-		UINT x, y, addr, i, tmp, advance = d->dat[0x6], sprite = d->dat[0xF];
+		UINT x, y, addr, i, tmp, advance = imem[0x6], sprite = imem[0xF];
 		UINT n = advance >> 4, dx = advance << 3 & 8, dy = advance << 2 & 8;
 		UINT twobpp = !!(sprite & 0x80), daddr = (advance & 0x4) << (twobpp + 1);
 		Uint8 *layer_pixels = (sprite & 0x40) ? screen->fg : screen->bg;
-		DEVPEEK2(d, x, y, 0x8);
-		DEVPEEK(d, addr, 0xC);
-		tmp = x + dx; DEVPOKE(d, 0x8, tmp);
-		tmp = y + dy; DEVPOKE(d, 0xA, tmp);
+		DEVPEEK2(imem, x, y, 0x8);
+		DEVPEEK(imem, addr, 0xC);
+		tmp = x + dx; DEVPOKE(imem, 0x8, tmp);
+		tmp = y + dy; DEVPOKE(imem, 0xA, tmp);
 		for (i = 0; i <= n; i++, x += dy, y += dx)
 		{
 			if ((tmp = addr, addr += daddr) >= UXN_RAM_SIZE) break;
 			DrawUxnSprite(screen, layer_pixels, x, y, &u->ram[tmp], sprite & 0xF, sprite & 0x10, sprite & 0x20, twobpp);
 		}
-		DEVPOKE(d, 0xC, addr);
+		DEVPOKE(imem, 0xC, addr);
 		return; /* TODO some perf warning if drawing same sprite redundantly on top of itself? */
 	}
-	}
-
-	switch (address & 0xF0)
-	{
-	/* System   */ case 0x00: DevOut_System(d, port); break;
-	/* Console  */ case 0x10: DevOut_Console(d, port); break;
-	/* Screen   */ case 0x20: DevOut_Screen(d, port); break;
-	/* Audio0   */ case 0x30: DevOut_Audio(d, port); break;
-	/* Audio1   */ case 0x40: DevOut_Audio(d, port); break;
-	/* Audio2   */ case 0x50: DevOut_Audio(d, port); break;
-	/* Audio3   */ case 0x60: DevOut_Audio(d, port); break;
-	/* Unused   */ case 0x70: break;
-	/* Control  */ case 0x80: break;
-	/* Mouse    */ case 0x90: break;
-	/* File     */ case 0xA0: DevOut_File(d, port); break;
-	/* Datetime */ case 0xB0: DevOut_File(d, port); break;
-	/* Unused   */ case 0xC0: DevOut_Audio(d, port); break;
-	/* Unused   */ case 0xD0: DevOut_Audio(d, port); break;
-	/* Unused   */ case 0xE0: DevOut_Audio(d, port); break;
-	/* Unused   */ case 0xF0: DevOut_Audio(d, port); break;
-	}
+	UxnDeviceWrite_Cold(u, address, value);
 }
 
 static void InitEmuWindow(EmuWindow *d, HWND hWnd)
 {
-	char *main_ram; Device *dev;
+	char *main_ram;
 	UxnBox *box = (UxnBox *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(UxnBox) + UXN_RAM_SIZE);
 	if (!box) OutOfMemory();
 	main_ram = (char *)(box + 1);
@@ -991,24 +943,6 @@ static void InitEmuWindow(EmuWindow *d, HWND hWnd)
 	box->core.rst = &box->ret_stack;
 	box->core.dev_read = UxnDeviceRead;
 	box->core.dev_write = UxnDeviceWrite;
-#define DEVICE_AT(portnum) (dev = box->core.dev + portnum, dev->u = &box->core, dev->dat = box->device_memory + portnum * 0x10)
-	/* System   */ DEVICE_AT(0x0);
-	/* Console  */ DEVICE_AT(0x1);
-	/* Screen   */ DEVICE_AT(0x2); d->dev_screen = dev;
-	/* Audio0   */ DEVICE_AT(0x3); d->dev_audio0 = dev;
-	/* Audio1   */ DEVICE_AT(0x4);
-	/* Audio2   */ DEVICE_AT(0x5);
-	/* Audio3   */ DEVICE_AT(0x6);
-	/* Unused   */ DEVICE_AT(0x7);
-	/* Control  */ DEVICE_AT(0x8); d->dev_ctrl = dev;
-	/* Mouse    */ DEVICE_AT(0x9); d->dev_mouse = dev;
-	/* File1    */ DEVICE_AT(0xA);
-	/* File2    */ DEVICE_AT(0xB);
-	/* Unused   */ DEVICE_AT(0xC);
-	/* Unused   */ DEVICE_AT(0xD);
-	/* Unused   */ DEVICE_AT(0xE);
-	/* Unused   */ DEVICE_AT(0xF);
-#undef DEVICE_AT
 	d->box = box;
 	d->host_cursor = TRUE;
 	d->hWnd = hWnd; /* TODO cleanup reorder these assignments */
@@ -1099,7 +1033,7 @@ static void ResetVM(EmuWindow *d)
 	d->exec_state = 0;
 	ZeroMemory(&d->box->work_stack, sizeof(Stack) * 2); /* optional for quick reload */
 	ZeroMemory(d->box->device_memory, sizeof d->box->device_memory); /* optional for quick reload */
-	DEVPOKE2(d->dev_screen, 0x2, d->screen.width, d->screen.height); /* Restore this in case ROM reads it */
+	DEVPOKE2(d->box->device_memory, VV_SCREEN + 0x2, d->screen.width, d->screen.height); /* Restore this in case ROM reads it */
 	ZeroMemory((char *)(d->box + 1), UXN_RAM_SIZE);
 	ZeroMemory(d->screen.palette, sizeof d->screen.palette); /* optional for quick reload */
 	ZeroMemory(d->screen.bg, d->screen.width * d->screen.height * 2);
@@ -1231,10 +1165,10 @@ completed:
 		SetTimer(d->hWnd, TimerID_Screen60hz, 16, NULL);
 		break;
 	case EmuIn_KeyChar:
-		d->dev_ctrl->dat[3] = 0;
+		d->box->device_memory[VV_CONTROL + 0x3] = 0;
 		break;
 	case EmuIn_Wheel:
-		DEVPOKE2(d->dev_mouse, 0xA, 0, 0);
+		DEVPOKE2(d->box->device_memory, VV_MOUSE + 0xA, 0, 0);
 		break;
 	}
 	if (d->running) u->fault_code = 0;
@@ -1253,42 +1187,42 @@ residual:
 
 static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT y)
 {
-	Uint16 *pc = &d->box->core.pc;
+	Uint16 *pc = &d->box->core.pc; Uint8 *devmem = d->box->device_memory;
 	LONGLONG ts; int time;
 	switch ((enum EmuIn)type)
 	{
 	case EmuIn_KeyChar:
-		d->dev_ctrl->dat[3] = bits;
-		*pc = GETVECTOR(d->dev_ctrl);
+		devmem[VV_CONTROL + 3] = bits;
+		*pc = GETVECTOR(devmem + VV_CONTROL);
 		break;
-	case EmuIn_CtrlDown: d->dev_ctrl->dat[2] |=  bits; goto run_ctrl;
-	case EmuIn_CtrlUp:   d->dev_ctrl->dat[2] &= ~bits; goto run_ctrl;
+	case EmuIn_CtrlDown: devmem[VV_CONTROL + 2] |=  bits; goto run_ctrl;
+	case EmuIn_CtrlUp:   devmem[VV_CONTROL + 2] &= ~bits; goto run_ctrl;
 	case EmuIn_ResetKeys:
 		/* If the requested keys held down match the existing, there's nothing more to do. */
 		/* Can't skip RunUxn() since we might need to queue more work. TODO could factor out. */
-		if (d->dev_ctrl->dat[2] == bits) { *pc = 0; break; }
-		d->dev_ctrl->dat[2] = bits;
+		if (devmem[VV_CONTROL + 2] == bits) { *pc = 0; break; }
+		devmem[VV_CONTROL + 2] = bits;
 	run_ctrl:
-		*pc = GETVECTOR(d->dev_ctrl);
+		*pc = GETVECTOR(devmem + VV_CONTROL);
 		break;
 	case EmuIn_MouseDown:
-		d->dev_mouse->dat[6] |= bits; goto mouse_xy;
+		devmem[VV_MOUSE + 6] |= bits; goto mouse_xy;
 	case EmuIn_MouseUp:
-		d->dev_mouse->dat[6] &= ~bits;
+		devmem[VV_MOUSE + 6] &= ~bits;
 	mouse_xy:
-		DEVPOKE2(d->dev_mouse, 0x2, x, y);
-		*pc = GETVECTOR(d->dev_mouse);
+		DEVPOKE2(devmem + VV_MOUSE, 0x2, x, y);
+		*pc = GETVECTOR(devmem + VV_MOUSE);
 		break;
 	case EmuIn_Wheel:
-		DEVPOKE2(d->dev_mouse, 0xA, x, y);
-		*pc = GETVECTOR(d->dev_mouse);
+		DEVPOKE2(devmem + VV_MOUSE, 0xA, x, y);
+		*pc = GETVECTOR(devmem + VV_MOUSE);
 		break;
 	case EmuIn_Screen:
-		*pc = GETVECTOR(d->dev_screen);
+		*pc = GETVECTOR(devmem + VV_SCREEN);
 		break;
 	case EmuIn_Console:
-		d->box->core.dev[0x1].dat[0x2] = bits;
-		*pc = GETVECTOR(&d->box->core.dev[0x1]);
+		devmem[VV_CONSOLE + 0x2] = bits;
+		*pc = GETVECTOR(devmem + VV_CONSOLE);
 		break;
 	case EmuIn_DebugJump: break; /* Should not happen -- only set by debugger */
 	case EmuIn_Start:
@@ -1304,8 +1238,8 @@ static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT
 	ts = TimeStampNow();
 	RunUxn(d, 0, TRUE);
 	time = MicrosSince(ts);
-	// if (type == EmuIn_MouseDown)
-	// 	DebugPrint("%d", time);
+	if (type == EmuIn_MouseDown)
+		DebugPrint("%d", time);
 }
 
 static void SendInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT y)
@@ -2047,7 +1981,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	{
 		POINT mouse; BOOL mouse_in_uxn;
 		mouse.x = LOWORD(lparam); mouse.y = HIWORD(lparam);
-		mouse_in_uxn = PtInRect(&d->viewport_rect, mouse) && d->running && GETVECTOR(d->dev_mouse);
+		mouse_in_uxn = PtInRect(&d->viewport_rect, mouse) && d->running && GETVECTOR(d->box->device_memory + VV_MOUSE);
 		/* TODO Vector check is slightly wrong -- it doesn't, but should, check when the mouse vector has been changed in uxn code without the mouse moving. Test repro: launch something with launcher.rom and don't move the mouse. (If you clicked instead of using keyboard, don't release the click button.) */
 		SetHostCursorVisible(d, !mouse_in_uxn);
 		if (!mouse_in_uxn) break;
