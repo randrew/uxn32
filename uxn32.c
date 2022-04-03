@@ -818,12 +818,11 @@ static Uint8 UxnDeviceRead(Uxn *u, UINT address)
 	return box->device_memory[address];
 }
 
-__declspec(noinline) static void UxnDeviceWrite_Cold(Uxn *u, UINT address, UINT value)
+__declspec(noinline) static void UxnDeviceWrite_Cold(UxnBox *box, UINT address, UINT value)
 {
-	UxnBox *box = OUTER_OF(u, UxnBox, core);
 	EmuWindow *emu = (EmuWindow *)box->user;
 	UINT device = address & 0xF0, port = address & 0x0F;
-	Uint8 *devmem = box->device_memory, *imem = devmem + device;
+	Uint8 *imem = box->device_memory + device;
 	if (address == VV_SCREEN + 0x5)
 	{
 		DWORD w, h;
@@ -848,10 +847,10 @@ __declspec(noinline) static void UxnDeviceWrite_Cold(Uxn *u, UINT address, UINT 
 		{
 		case 0x2: box->work_stack.ptr = (Uint8)value; break;
 		case 0x3: box->ret_stack.ptr = (Uint8)value; break;
-		case 0xE: u->fault_code = 0xFF; break;
+		case 0xE: box->core.fault_code = 0xFF; break;
 		default: if (port > 0x7 && port < 0xE)
 		{
-			Uint8* addr = &devmem[device|0x8];
+			Uint8* addr = imem + 0x8;
 			UxnScreen *p = &emu->screen;
 			int i, shift;
 			for (i = 0, shift = 4; i < 4; ++i, shift ^= 4)
@@ -882,10 +881,8 @@ __declspec(noinline) static void UxnDeviceWrite_Cold(Uxn *u, UINT address, UINT 
 		SendMessage(con->outHWnd, EM_REPLACESEL, 0, (LPARAM)c);
 		break;
 	}
-
 	case VV_AUDIO0: case VV_AUDIO1: case VV_AUDIO2: case VV_AUDIO3:
 		DevOut_Audio(emu, device, port); break;
-
 	case VV_FILE0: case VV_FILE1:
 		DevOut_File(emu, device, port); break;
 	}
@@ -927,7 +924,7 @@ static void UxnDeviceWrite(Uxn *u, UINT address, UINT value)
 		DEVPOKE(imem, 0xC, addr);
 		return; /* TODO some perf warning if drawing same sprite redundantly on top of itself? */
 	}
-	UxnDeviceWrite_Cold(u, address, value);
+	UxnDeviceWrite_Cold(box, address, value);
 }
 
 static void InitEmuWindow(EmuWindow *d, HWND hWnd)
