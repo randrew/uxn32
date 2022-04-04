@@ -1116,7 +1116,7 @@ static void RunUxn(EmuWindow *d, UINT steps, BOOL initial)
 {
 	UINT res, use_steps = steps ? steps : 100000;  /* about 1900 usecs on good hardware */
 	Uxn *u = &d->box->core; LONGLONG t_a, t_delta;
-	int instr_interrupts = 0;
+	int instr_interrupts = 0, more_work, force_repaint;
 	if (initial && !u->pc) goto completed;
 	t_a = TimeStampNow();
 	for (;;)
@@ -1169,15 +1169,11 @@ completed:
 	if (d->running) u->fault_code = 0;
 	d->exec_state = 0;
 residual:
-	if (d->running && (d->exec_state || d->queue_count))
-		ListPushBack(&emus_needing_work, d, work_link);
-	InvalidateUxnScreenRect(d);
-	/* If the Uxn CPU is under heavy load, we may end up issuing more invalidations than will be
-	 * fulfilled with WM_PAINT events. We could avoid this by issuing less frequently, but that's
-	 * not always a clear win -- it makes it buffer and process more mouse moves and redraw less
-	 * frequently. In programs like Left that actually makes it less responsive to use input,
-	 * though it "completes" more mouse move vector calls.*/
-	if (TimeStampNow() - d->last_paint > RepaintTimeLimit) UpdateWindow(d->hWnd);
+	more_work = d->exec_state || d->queue_count;
+	force_repaint = TimeStampNow() - d->last_paint > RepaintTimeLimit;
+	if (more_work && d->running) ListPushBack(&emus_needing_work, d, work_link);
+	if (!more_work || force_repaint) InvalidateUxnScreenRect(d);
+	if (force_repaint) UpdateWindow(d->hWnd);
 }
 
 static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT y)
