@@ -23,8 +23,8 @@ typedef struct {
 typedef struct Uxn {
 	Uint8 *ram;
 	Stack *wst, *rst;
-	Uint8 (*dev_read)(struct Uxn *u, unsigned int address);
-	void (*dev_write)(struct Uxn *u, unsigned int address, unsigned int value);
+	Uint8 (*dei)(struct Uxn *u, unsigned int address);
+	void (*deo)(struct Uxn *u, unsigned int address, unsigned int value);
 	Uint16 pc, fault_code;
 } Uxn;
 

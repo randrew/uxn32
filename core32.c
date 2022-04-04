@@ -26,8 +26,8 @@ WITH REGARD TO THIS SOFTWARE.
 #define POKE(x, y) { if(bs) { u->ram[(x)] = (y) >> 8; u->ram[(x) + 1] = (y); } else { u->ram[(x)] = y; } }
 #define PEEK16(o, x) { o = (u->ram[(x)] << 8) + u->ram[(x) + 1]; }
 #define PEEK(o, x) { if(bs) { PEEK16(o, x) } else { o = u->ram[(x)]; } }
-#define DEVR(o, x) { o = u->dev_read(u, x); if (bs) o = (o << 8) + u->dev_read(u, ((x) + 1) & 0xFF); }
-#define DEVW(x, y) { if (bs) { u->dev_write(u, (x), (y) >> 8); u->dev_write(u, ((x) + 1) & 0xFF, (y)); } else { u->dev_write(u, x, (y)); } }
+#define DEVR(o, x) { o = u->dei(u, x); if (bs) o = (o << 8) + u->dei(u, ((x) + 1) & 0xFF); }
+#define DEVW(x, y) { if (bs) { u->deo(u, (x), (y) >> 8); u->deo(u, ((x) + 1) & 0xFF, (y)); } else { u->deo(u, x, (y)); } }
 #define WARP(x) { if(bs) pc = (x); else pc += (Sint8)(x); }
 
 unsigned int

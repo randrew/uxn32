@@ -936,8 +936,8 @@ static void InitEmuWindow(EmuWindow *d, HWND hWnd)
 	box->core.ram = (Uint8 *)main_ram;
 	box->core.wst = &box->work_stack;
 	box->core.rst = &box->ret_stack;
-	box->core.dev_read = UxnDeviceRead;
-	box->core.dev_write = UxnDeviceWrite;
+	box->core.dei = UxnDeviceRead;
+	box->core.deo = UxnDeviceWrite;
 	d->box = box;
 	d->host_cursor = TRUE;
 	d->hWnd = hWnd; /* TODO cleanup reorder these assignments */
