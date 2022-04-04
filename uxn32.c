@@ -817,7 +817,7 @@ static Uint8 UxnDeviceRead(Uxn *u, UINT address)
 	return box->device_memory[address];
 }
 
-__declspec(noinline) static void UxnDeviceWrite_Cold(UxnBox *box, UINT address, UINT value)
+static void UxnDeviceWrite_Cold(UxnBox *box, UINT address, UINT value)
 {
 	EmuWindow *emu = (EmuWindow *)box->user;
 	UINT device = address & 0xF0, port = address & 0x0F;
