@@ -357,15 +357,16 @@ static const Uint8 SpriteBlendingTable[5][16] = {
 	{2, 3, 1, 2, 2, 3, 1, 2, 2, 3, 1, 2, 2, 3, 1, 2},
 	{1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0}};
 
-static void DrawUxnSprite(UxnScreen *p, Uint8 *layer_pixels, Uint16 x, Uint16 y, Uint8 *sprite, Uint8 color, Uint8 flipx, Uint8 flipy, Uint8 twobpp)
+static void DrawUxnSprite(UxnScreen *p, Uint8 *layer_pixels, Uint16 x, Uint16 y, Uint8 *sprite, int color, int flipx, int flipy, int twobpp)
 {
 	int v, h, opaque = SpriteBlendingTable[4][color], width = p->width, height = p->height;
+	int c, ch;
 	for (v = 0; v < 8; v++)
 	{
-		Uint16 c = sprite[v] | (twobpp ? sprite[v + 8] : 0) << 8;
+		c = sprite[v] | (sprite[v + 8] * twobpp) << 8;
 		for (h = 7; h >= 0; --h, c >>= 1)
 		{
-			Uint8 ch = (c & 1) | ((c >> 7) & 2);
+			ch = (c & 1) | ((c >> 7) & 2);
 			if (opaque || ch)
 			{
 				// TODO ok this has gotten pretty bloated... we should probably split this up into specialized subroutines for the different combination of options to speed it up.
@@ -907,7 +908,8 @@ static void UxnDeviceWrite(Uxn *u, UINT address, UINT value)
 	{
 		UINT x, y, addr, i, tmp, advance = imem[0x6], sprite = imem[0xF];
 		UINT n = advance >> 4, dx = advance << 3 & 8, dy = advance << 2 & 8;
-		UINT twobpp = !!(sprite & 0x80), daddr = (advance & 0x4) << (twobpp + 1);
+		UINT twobpp = sprite >> 7 & 1, daddr = (advance & 0x4) << (twobpp + 1);
+		int color = sprite & 0xF, flipx = sprite & 0x10, flipy = sprite & 0x20;
 		Uint8 *layer_pixels = (sprite & 0x40) ? screen->fg : screen->bg;
 		DEVPEEK2(imem, x, y, 0x8);
 		DEVPEEK(imem, addr, 0xC);
@@ -916,7 +918,7 @@ static void UxnDeviceWrite(Uxn *u, UINT address, UINT value)
 		for (i = 0; i <= n; i++, x += dy, y += dx)
 		{
 			if ((tmp = addr, addr += daddr) >= UXN_RAM_SIZE) break;
-			DrawUxnSprite(screen, layer_pixels, x, y, &u->ram[tmp], sprite & 0xF, sprite & 0x10, sprite & 0x20, twobpp);
+			DrawUxnSprite(screen, layer_pixels, x, y, &u->ram[tmp], color, flipx, flipy, twobpp);
 		}
 		DEVPOKE(imem, 0xC, addr);
 		return; /* TODO some perf warning if drawing same sprite redundantly on top of itself? */
