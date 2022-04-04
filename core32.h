@@ -14,7 +14,6 @@ WITH REGARD TO THIS SOFTWARE.
 typedef unsigned char Uint8;
 typedef signed char Sint8;
 typedef unsigned short Uint16;
-typedef unsigned int Uint32;
 
 typedef struct {
 	Uint8 ptr, dat[255];

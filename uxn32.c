@@ -161,7 +161,7 @@ typedef struct UxnBox
 } UxnBox;
 typedef struct UxnVoice
 {
-	Uint32 count, advance, period, age, a, d, s, r;
+	ULONG count, advance, period, age, a, d, s, r;
 	Uint16 wave_base, i, len;
 	Sint8 volume[2];
 	Uint8 repeat;
@@ -175,7 +175,7 @@ typedef struct UxnWaveOut
 } UxnWaveOut;
 typedef struct UxnScreen
 {
-	Uint32 palette[4];
+	ULONG palette[4];
 	LONG width, height;
 	Uint8 *bg, *fg;
 } UxnScreen;
@@ -551,12 +551,12 @@ static DWORD FileDevDelete(UxnFiler *f)
 #define NOTE_PERIOD (UXN_SAMPLE_RATE * 0x4000 / 11025)
 #define ADSR_STEP (UXN_SAMPLE_RATE / 0xF)
 
-static const Uint32 advances[12] = {
+static const ULONG advances[12] = {
 	0x80000, 0x879C8, 0x8FACD, 0x9837F, 0xA1451, 0xAADC1,
 	0xB504F, 0xBFC88, 0xCB2FF, 0xD7450, 0xE411F, 0xF1A1C
 };
 
-static INT VoiceEnvelope(UxnVoice *c, Uint32 age)
+static INT VoiceEnvelope(UxnVoice *c, ULONG age)
 {
 	if (!c->r)      return 0x0888;
 	if (age < c->a) return 0x0888 * age / c->a;

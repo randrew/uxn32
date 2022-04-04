@@ -89,7 +89,7 @@ UxnExec(Uxn *u, unsigned int limit)
 		/* Arithmetic */
 		case 0x18: /* ADD */ POP(a) POP(b) PUSH(src, b + a) break;
 		case 0x19: /* SUB */ POP(a) POP(b) PUSH(src, b - a) break;
-		case 0x1a: /* MUL */ POP(a) POP(b) PUSH(src, (Uint32)b * a) break;
+		case 0x1a: /* MUL */ POP(a) POP(b) PUSH(src, (unsigned int)b * a) break;
 		case 0x1b: /* DIV */ POP(a) POP(b) if(a == 0) { u->fault_code = 4; goto done; } PUSH(src, b / a) break;
 		case 0x1c: /* AND */ POP(a) POP(b) PUSH(src, b & a) break;
 		case 0x1d: /* ORA */ POP(a) POP(b) PUSH(src, b | a) break;
