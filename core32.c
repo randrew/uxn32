@@ -15,7 +15,7 @@ WITH REGARD TO THIS SOFTWARE.
 
 /*	a,b,c: general use.  bs: byte/short bool. src, dst: stack ptrs, swapped in return mode.
 	pc: program counter. sp: ptr to src stack ptr. kptr: "keep" mode copy of src stack ptr.
-	x,y: macro in params. d: macro in device. j,k,dev: macro temp variables. o: macro out param. */
+	x,y: macro in params. j,k: macro temp variables. o: macro out param. */
 
 #define PUSH8(s, x) { if(s->ptr == 0xff) { goto fault_3; } s->dat[s->ptr++] = (x); }
 #define PUSH16(s, x) { if((j = s->ptr) >= 0xfe) { goto fault_3; } k = (x); s->dat[j] = k >> 8; s->dat[j + 1] = k; s->ptr = j + 2; }
