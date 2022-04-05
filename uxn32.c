@@ -76,6 +76,7 @@ typedef ULONG_PTR DWORD_PTR, *PDWORD_PTR;
 #define DEVPEEK2(d, o1, o2, a) (DEVPEEK(d, o1, a), DEVPEEK(d, o2, (a) + 2))
 #define DEVPOKE2(d, a, v1, v2) (DEVPOKE(d, a, v1), DEVPOKE(d, (a) + 2, v2))
 #define GETVECTOR(d) ((d)[0] << 8 | (d)[1])
+#define DEVINDEX(device, base) (((device) - (base)) >> 4)
 
 static LARGE_INTEGER _perfcount_freq;
 static LONGLONG ExecutionTimeLimit;
@@ -685,7 +686,7 @@ static void InitWaveOutAudio(EmuWindow *d)
 static void DevOut_Audio(EmuWindow *emu, UINT device, UINT port)
 {
 	Uint8 *imem = emu->box->device_memory + device;
-	UxnVoice *voice = &emu->synth_voices[device - VV_AUDIO0];
+	UxnVoice *voice = &emu->synth_voices[DEVINDEX(device, VV_AUDIO0)];
 	Uint16 adsr;
 	if (port != 0xF) return;
 	DEVPEEK(imem, adsr, 0x8);
@@ -703,7 +704,7 @@ static void DevOut_File(EmuWindow *emu, UINT device, UINT port)
 {
 	DWORD result = 0, /* next inits suppress msvc warning */ out_len = 0; char *out = 0;
 	UxnBox *box = emu->box; Uint8 *imem = box->device_memory + device;
-	UxnFiler *f = &emu->filers[device - VV_FILE0];
+	UxnFiler *f = &emu->filers[DEVINDEX(device, VV_FILE0)];
 	switch (port) /* These need write location and size */
 	{
 	int peek_at; DWORD dst, avail;
@@ -774,7 +775,7 @@ static Uint8 UxnDeviceRead(Uxn *u, UINT address)
 	{
 	case VV_AUDIO0: case VV_AUDIO1: case VV_AUDIO2: case VV_AUDIO3:
 	{
-		UxnVoice *voice = &emu->synth_voices[device - VV_AUDIO0];
+		UxnVoice *voice = &emu->synth_voices[DEVINDEX(device, VV_AUDIO0)];
 		if (!emu->wave_out || !emu->wave_out->hWaveOut) break;
 		switch (port)
 		{
@@ -785,7 +786,7 @@ static Uint8 UxnDeviceRead(Uxn *u, UINT address)
 	}
 	case VV_FILE0: case VV_FILE1:
 	{
-		DWORD result = 0; UxnFiler *f = &emu->filers[device - VV_FILE0];
+		DWORD result = 0; UxnFiler *f = &emu->filers[DEVINDEX(device, VV_FILE0)];
 		switch (port)
 		{
 		case 0xC: case 0xD:
