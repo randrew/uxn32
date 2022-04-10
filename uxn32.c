@@ -1180,7 +1180,6 @@ residual:
 static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT y)
 {
 	Uint16 *pc = &d->box->core.pc; Uint8 *devmem = d->box->device_memory;
-	LONGLONG ts; int time;
 	switch ((enum EmuIn)type)
 	{
 	case EmuIn_KeyChar:
@@ -1227,11 +1226,7 @@ static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT
 #ifndef NDEBUG
 	if (type == EmuIn_Start && IsWindowVisible(d->beetbugHWnd)) { PauseVM(d); ShowBeetbugInstruction(d, *pc); return; }
 #endif
-	ts = TimeStampNow();
 	RunUxn(d, 0, TRUE);
-	time = MicrosSince(ts);
-	if (type == EmuIn_MouseDown)
-		DebugPrint("%d", time);
 }
 
 static void SendInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT y)
