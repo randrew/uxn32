@@ -17,17 +17,17 @@ WITH REGARD TO THIS SOFTWARE.
 	pc: program counter. sp: ptr to src stack ptr. kptr: "keep" mode copy of src stack ptr.
 	x,y: macro in params. j,k: macro temp variables. o: macro out param. */
 
-#define PUSH8(s, x) { if(s->ptr == 0xff) { goto fault_3; } s->dat[s->ptr++] = (x); }
-#define PUSH16(s, x) { if((j = s->ptr) >= 0xfe) { goto fault_3; } k = (x); s->dat[j] = k >> 8; s->dat[j + 1] = k; s->ptr = j + 2; }
-#define PUSH(s, x) { if(bs) { PUSH16(s, (x)) } else { PUSH8(s, (x)) } }
-#define POP8(o) { if(!(j = *sp)) { goto fault_2; } o = (Uint16)src->dat[--j]; *sp = j; }
-#define POP16(o) { if((j = *sp) <= 1) { goto fault_2; } o = src->dat[j - 1]; o += src->dat[j - 2] << 8; *sp = j - 2; }
-#define POP(o) { if(bs) { POP16(o) } else { POP8(o) } }
-#define POKE(x, y) { if(bs) { u->ram[(x)] = (y) >> 8; u->ram[(x) + 1] = (y); } else { u->ram[(x)] = y; } }
+#define PUSH8(s, x) { if(s->ptr == 0xff) goto fault_3; s->dat[s->ptr++] = (x); }
+#define PUSH16(s, x) { if((j = s->ptr) >= 0xfe) goto fault_3; k = (x); s->dat[j] = k >> 8; s->dat[j + 1] = k; s->ptr = j + 2; }
+#define PUSH(s, x) { if(bs) PUSH16(s, (x)) else PUSH8(s, (x)) }
+#define POP8(o) { if(!(j = *sp)) goto fault_2; o = (Uint16)src->dat[--j]; *sp = j; }
+#define POP16(o) { if((j = *sp) <= 1) goto fault_2; o = src->dat[j - 1]; o += src->dat[j - 2] << 8; *sp = j - 2; }
+#define POP(o) { if(bs) POP16(o) else POP8(o) }
+#define POKE(x, y) { if(bs) { u->ram[(x)] = (y) >> 8; u->ram[(x) + 1] = (y); } else u->ram[(x)] = y; }
 #define PEEK16(o, x) { o = (u->ram[(x)] << 8) + u->ram[(x) + 1]; }
-#define PEEK(o, x) { if(bs) { PEEK16(o, x) } else { o = u->ram[(x)]; } }
+#define PEEK(o, x) { if(bs) PEEK16(o, x) else o = u->ram[(x)]; }
 #define DEVR(o, x) { o = u->dei(u, x); if (bs) o = (o << 8) + u->dei(u, ((x) + 1) & 0xFF); }
-#define DEVW(x, y) { if (bs) { u->deo(u, (x), (y) >> 8); u->deo(u, ((x) + 1) & 0xFF, (y)); } else { u->deo(u, x, (y)); } }
+#define DEVW(x, y) { if (bs) { u->deo(u, (x), (y) >> 8); u->deo(u, ((x) + 1) & 0xFF, (y)); } else u->deo(u, x, (y)); }
 #define WARP(x) { if(bs) pc = (x); else pc += (Sint8)(x); }
 
 unsigned int
