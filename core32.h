@@ -15,7 +15,7 @@ typedef unsigned char Uint8;
 typedef signed char Sint8;
 typedef unsigned short Uint16;
 
-typedef struct {
+typedef struct Stack {
 	Uint8 ptr, dat[255];
 } Stack;
 
