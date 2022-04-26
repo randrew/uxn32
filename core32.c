@@ -63,11 +63,11 @@ UxnExec(Uxn *u, unsigned int limit)
 		                     else   { a = u->ram[pc]; PUSH8(src, a) pc++; } break;
 		case 0x01: /* INC */ POP(a) PUSH(src, a + 1) break;
 		case 0x02: /* POP */ POP(a) break;
-		case 0x03: /* DUP */ POP(a) PUSH(src, a) PUSH(src, a) break;
-		case 0x04: /* NIP */ POP(a) POP(b) PUSH(src, a) break;
-		case 0x05: /* SWP */ POP(a) POP(b) PUSH(src, a) PUSH(src, b) break;
-		case 0x06: /* OVR */ POP(a) POP(b) PUSH(src, b) PUSH(src, a) PUSH(src, b) break;
-		case 0x07: /* ROT */ POP(a) POP(b) POP(c) PUSH(src, b) PUSH(src, a) PUSH(src, c) break;
+		case 0x03: /* NIP */ POP(a) POP(b) PUSH(src, a) break;
+		case 0x04: /* SWP */ POP(a) POP(b) PUSH(src, a) PUSH(src, b) break;
+		case 0x05: /* ROT */ POP(a) POP(b) POP(c) PUSH(src, b) PUSH(src, a) PUSH(src, c) break;
+		case 0x06: /* DUP */ POP(a) PUSH(src, a) PUSH(src, a) break;
+		case 0x07: /* OVR */ POP(a) POP(b) PUSH(src, b) PUSH(src, a) PUSH(src, b) break;
 		/* Logic */
 		case 0x08: /* EQU */ POP(a) POP(b) PUSH8(src, b == a) break;
 		case 0x09: /* NEQ */ POP(a) POP(b) PUSH8(src, b != a) break;
