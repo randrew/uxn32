@@ -23,8 +23,8 @@ WITH REGARD TO THIS SOFTWARE.
 #define POP8(o) { if(!(j = *sp)) goto fault_2; o = (Uint16)src->dat[--j]; *sp = j; }
 #define POP16(o) { if((j = *sp) <= 1) goto fault_2; o = src->dat[j - 1]; o += src->dat[j - 2] << 8; *sp = j - 2; }
 #define POP(o) { if(bs) POP16(o) else POP8(o) }
-#define POKE(x, y) { if(bs) { u->ram[(x)] = (y) >> 8; u->ram[(x) + 1] = (y); } else u->ram[(x)] = y; }
-#define PEEK16(o, x) { o = (u->ram[(x)] << 8) + u->ram[(x) + 1]; }
+#define POKE(x, y) { if(bs) { u->ram[(x)] = (y) >> 8; u->ram[(x) + 1 & 0xFFFF] = (y); } else u->ram[(x)] = y; }
+#define PEEK16(o, x) { o = (u->ram[(x)] << 8) + u->ram[(x) + 1 & 0xFFFF]; }
 #define PEEK(o, x) { if(bs) PEEK16(o, x) else o = u->ram[(x)]; }
 #define DEVR(o, x) { o = u->dei(u, x); if (bs) o = (o << 8) + u->dei(u, ((x) + 1) & 0xFF); }
 #define DEVW(x, y) { if (bs) { u->deo(u, (x), (y) >> 8); u->deo(u, ((x) + 1) & 0xFF, (y)); } else u->deo(u, x, (y)); }
