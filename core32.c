@@ -17,14 +17,14 @@ WITH REGARD TO THIS SOFTWARE.
 	pc: program counter. sp: ptr to src stack ptr. kptr: "keep" mode copy of src stack ptr.
 	x,y: macro in params. j,k: macro temp variables. o: macro out param. */
 
-#define PUSH8(s, x) { if(s->ptr == 0xff) goto fault_3; s->dat[s->ptr++] = (x); }
-#define PUSH16(s, x) { if((j = s->ptr) >= 0xfe) goto fault_3; k = (x); s->dat[j] = k >> 8; s->dat[j + 1] = k; s->ptr = j + 2; }
+#define PUSH8(s, x) { if(s->ptr == 0xFF) goto fault_3; s->dat[s->ptr++] = (x); }
+#define PUSH16(s, x) { if((j = s->ptr) >= 0xFE) goto fault_3; k = (x); s->dat[j] = k >> 8; s->dat[j + 1] = k; s->ptr = j + 2; }
 #define PUSH(s, x) { if(bs) PUSH16(s, (x)) else PUSH8(s, (x)) }
 #define POP8(o) { if(!(j = *sp)) goto fault_2; o = (Uint16)src->dat[--j]; *sp = j; }
 #define POP16(o) { if((j = *sp) <= 1) goto fault_2; o = src->dat[j - 1]; o += src->dat[j - 2] << 8; *sp = j - 2; }
 #define POP(o) { if(bs) POP16(o) else POP8(o) }
-#define POKE(x, y) { if(bs) { u->ram[(x)] = (y) >> 8; u->ram[(x) + 1 & 0xFFFF] = (y); } else u->ram[(x)] = y; }
-#define PEEK16(o, x) { o = (u->ram[(x)] << 8) + u->ram[(x) + 1 & 0xFFFF]; }
+#define POKE(x, y) { if(bs) { u->ram[(x)] = (y) >> 8; u->ram[(x) + 1 & 0xFFFFu] = (y); } else u->ram[(x)] = y; }
+#define PEEK16(o, x) { o = (u->ram[(x)] << 8) + u->ram[(x) + 1 & 0xFFFFu]; }
 #define PEEK(o, x) { if(bs) PEEK16(o, x) else o = u->ram[(x)]; }
 #define DEVR(o, x) { o = u->dei(u, x); if (bs) o = (o << 8) + u->dei(u, ((x) + 1) & 0xFF); }
 #define DEVW(x, y) { if (bs) { u->deo(u, (x), (y) >> 8); u->deo(u, ((x) + 1) & 0xFF, (y)); } else u->deo(u, x, (y)); }
@@ -57,7 +57,7 @@ UxnExec(Uxn *u, unsigned int limit)
 		}
 		/* Short Mode */
 		bs = instr & 0x20 ? 1 : 0;
-		switch(instr & 0x1f) {
+		switch(instr & 0x1F) {
 		/* Stack */
 		case 0x00: /* LIT */ if(bs) { PEEK16(a, pc) PUSH16(src, a) pc += 2; }
 		                     else   { a = u->ram[pc]; PUSH8(src, a) pc++; } break;
@@ -71,12 +71,12 @@ UxnExec(Uxn *u, unsigned int limit)
 		/* Logic */
 		case 0x08: /* EQU */ POP(a) POP(b) PUSH8(src, b == a) break;
 		case 0x09: /* NEQ */ POP(a) POP(b) PUSH8(src, b != a) break;
-		case 0x0a: /* GTH */ POP(a) POP(b) PUSH8(src, b > a) break;
-		case 0x0b: /* LTH */ POP(a) POP(b) PUSH8(src, b < a) break;
-		case 0x0c: /* JMP */ POP(a) WARP(a) break;
-		case 0x0d: /* JCN */ POP(a) POP8(b) if(b) WARP(a) break;
-		case 0x0e: /* JSR */ POP(a) PUSH16(dst, pc) WARP(a) break;
-		case 0x0f: /* STH */ POP(a) PUSH(dst, a) break;
+		case 0x0A: /* GTH */ POP(a) POP(b) PUSH8(src, b > a) break;
+		case 0x0B: /* LTH */ POP(a) POP(b) PUSH8(src, b < a) break;
+		case 0x0C: /* JMP */ POP(a) WARP(a) break;
+		case 0x0D: /* JCN */ POP(a) POP8(b) if(b) WARP(a) break;
+		case 0x0E: /* JSR */ POP(a) PUSH16(dst, pc) WARP(a) break;
+		case 0x0F: /* STH */ POP(a) PUSH(dst, a) break;
 		/* Memory */
 		case 0x10: /* LDZ */ POP8(a) PEEK(b, a) PUSH(src, b) break;
 		case 0x11: /* STZ */ POP8(a) POP(b) POKE(a, b) break;
@@ -89,12 +89,12 @@ UxnExec(Uxn *u, unsigned int limit)
 		/* Arithmetic */
 		case 0x18: /* ADD */ POP(a) POP(b) PUSH(src, b + a) break;
 		case 0x19: /* SUB */ POP(a) POP(b) PUSH(src, b - a) break;
-		case 0x1a: /* MUL */ POP(a) POP(b) PUSH(src, (unsigned int)b * a) break;
-		case 0x1b: /* DIV */ POP(a) POP(b) if(a == 0) { u->fault_code = 4; goto done; } PUSH(src, b / a) break;
-		case 0x1c: /* AND */ POP(a) POP(b) PUSH(src, b & a) break;
-		case 0x1d: /* ORA */ POP(a) POP(b) PUSH(src, b | a) break;
-		case 0x1e: /* EOR */ POP(a) POP(b) PUSH(src, b ^ a) break;
-		case 0x1f: /* SFT */ POP8(a) POP(b) c = b >> (a & 0x0f) << ((a & 0xf0) >> 4); PUSH(src, c) break;
+		case 0x1A: /* MUL */ POP(a) POP(b) PUSH(src, (unsigned int)b * a) break;
+		case 0x1B: /* DIV */ POP(a) POP(b) if(a == 0) { u->fault_code = 4; goto done; } PUSH(src, b / a) break;
+		case 0x1C: /* AND */ POP(a) POP(b) PUSH(src, b & a) break;
+		case 0x1D: /* ORA */ POP(a) POP(b) PUSH(src, b | a) break;
+		case 0x1E: /* EOR */ POP(a) POP(b) PUSH(src, b ^ a) break;
+		case 0x1F: /* SFT */ POP8(a) POP(b) c = b >> (a & 0x0F) << ((a & 0xF0) >> 4); PUSH(src, c) break;
 		}
 	}
 done:
