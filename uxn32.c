@@ -3,6 +3,7 @@
 #include "resource.h"
 #include "core32.h"
 #include <windows.h>
+#include <windowsx.h>
 #include <shellapi.h>
 #include <shlwapi.h>
 #include <commdlg.h>
@@ -1967,7 +1968,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	act_mouse:
 	{
 		POINT mouse; BOOL mouse_in_uxn;
-		mouse.x = LOWORD(lparam); mouse.y = HIWORD(lparam);
+		mouse.x = GET_X_LPARAM(lparam); mouse.y = GET_Y_LPARAM(lparam);
 		mouse_in_uxn = PtInRect(&d->viewport_rect, mouse) && d->running && GETVECTOR(d->box->device_memory + VV_MOUSE);
 		/* TODO Vector check is slightly wrong -- it doesn't, but should, check when the mouse vector has been changed in uxn code without the mouse moving. Test repro: launch something with launcher.rom and don't move the mouse. (If you clicked instead of using keyboard, don't release the click button.) */
 		SetHostCursorVisible(d, !mouse_in_uxn);
@@ -1979,7 +1980,8 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	case WM_MOUSEWHEEL:
 	{
 		POINT mouse; short zDelta = (short)HIWORD(wparam);
-		mouse.x = LOWORD(lparam); mouse.y = HIWORD(lparam);
+		mouse.x = GET_X_LPARAM(lparam); mouse.y = GET_Y_LPARAM(lparam);
+		ScreenToClient(hwnd, &mouse);
 		if (!PtInRect(&d->viewport_rect, mouse)) break;
 		/* could set mouse x,y pos here if we wanted to */
 		/* TODO no x axis scrolling yet */
