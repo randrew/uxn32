@@ -157,8 +157,8 @@ static void CutRectForWindow(RECT *prect, int dir, int length, HWND window)
 typedef struct UxnBox
 {
 	void *user;
-	Uxn core;
-	Stack work_stack, ret_stack;
+	UxnCore core;
+	UxnStack work_stack, ret_stack;
 	Uint8 device_memory[256];
 } UxnBox;
 typedef struct UxnVoice
@@ -754,7 +754,7 @@ static BOOL LoadROMIntoBox(UxnBox *box, LPCSTR filename)
 	return result;
 }
 
-static Uint8 UxnDeviceRead(Uxn *u, UINT address)
+static Uint8 UxnDeviceRead(UxnCore *u, UINT address)
 {
 	UxnBox *box = OUTER_OF(u, UxnBox, core);
 	EmuWindow *emu = (EmuWindow *)box->user;
@@ -888,7 +888,7 @@ static void UxnDeviceWrite_Cold(UxnBox *box, UINT address, UINT value)
 	}
 }
 
-static void UxnDeviceWrite(Uxn *u, UINT address, UINT value)
+static void UxnDeviceWrite(UxnCore *u, UINT address, UINT value)
 {
 	UxnBox *box = OUTER_OF(u, UxnBox, core);
 	UxnScreen *screen = &((EmuWindow *)box->user)->screen;
@@ -1028,7 +1028,7 @@ static void ResetVM(EmuWindow *d)
 {
 	d->box->core.fault_code = 0;
 	d->exec_state = 0;
-	ZeroMemory(&d->box->work_stack, sizeof(Stack) * 2); /* optional for quick reload */
+	ZeroMemory(&d->box->work_stack, sizeof(UxnStack) * 2); /* optional for quick reload */
 	ZeroMemory(d->box->device_memory, sizeof d->box->device_memory); /* optional for quick reload */
 	DEVPOKE2(d->box->device_memory, VV_SCREEN + 0x2, d->screen.width, d->screen.height); /* Restore this in case ROM reads it */
 	ZeroMemory((char *)(d->box + 1), UXN_RAM_SIZE);
@@ -1117,7 +1117,7 @@ static void ShowBeetbugInstruction(EmuWindow *emu, USHORT address)
 static void RunUxn(EmuWindow *d, UINT steps, BOOL initial)
 {
 	UINT res, use_steps = steps ? steps : 100000;  /* about 1900 usecs on good hardware */
-	Uxn *u = &d->box->core; LONGLONG t_a, t_delta;
+	UxnCore *u = &d->box->core; LONGLONG t_a, t_delta;
 	int instr_interrupts = 0, more_work, force_repaint;
 	if (initial && !u->pc) goto completed;
 	t_a = TimeStampNow();
@@ -1137,7 +1137,7 @@ static void RunUxn(EmuWindow *d, UINT steps, BOOL initial)
 		if (u->fault_code == UXN_FAULT_DIVIDE_BY_ZERO)
 		{
 			UINT last_op = u->ram[((UINT)u->pc - 1) % UXN_RAM_SIZE]; /* Get last op executed */
-			Stack *s = last_op & 0x40 ? u->rst : u->wst; /* Which stack to push to */
+			UxnStack *s = last_op & 0x40 ? u->rst : u->wst; /* Which stack to push to */
 			int i = 0, count = (last_op & 0x20) >> 5; /* Push 1 or 2 bytes */
 			for (; i <= count; i++) s->dat[s->ptr++] = 0xFF;
 		}
@@ -1597,7 +1597,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		{
 		case NM_CUSTOMDRAW:
 		{
-			NMLVCUSTOMDRAW *cdraw = (NMLVCUSTOMDRAW *)lParam; RECT r; Stack *stack;
+			NMLVCUSTOMDRAW *cdraw = (NMLVCUSTOMDRAW *)lParam; RECT r; UxnStack *stack;
 			if (wParam != BB_WrkStack && wParam != BB_RetStack) break;
 			stack = (&d->emu->box->core.wst)[wParam - BB_WrkStack];
 			switch (cdraw->nmcd.dwDrawStage)
@@ -1659,8 +1659,8 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		}
 		case LVN_GETDISPINFO:
 		{
-			TCHAR buff[256]; Uxn *core = &d->emu->box->core; LV_DISPINFO *di = (LV_DISPINFO *)lParam;
-			UINT iItem = di->item.iItem, addr = iItem; BYTE *mem; Stack *stack;
+			TCHAR buff[256]; UxnCore *core = &d->emu->box->core; LV_DISPINFO *di = (LV_DISPINFO *)lParam;
+			UINT iItem = di->item.iItem, addr = iItem; BYTE *mem; UxnStack *stack;
 			if (!(di->item.mask & LVIF_TEXT)) return 0;
 			buff[0] = 0;
 			switch (wParam)
@@ -1731,7 +1731,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			{
 				enum {Flags = LVIS_SELECTED | LVIS_FOCUSED}; int i;
 				int push = idm <= BB_PushStackBtn1, iList = idm - (push ? BB_PushStackBtn0 : BB_PopStackBtn0);
-				HWND hList = d->ctrls[BB_WrkStack + iList]; Stack *stack = (&d->emu->box->core.wst)[iList];
+				HWND hList = d->ctrls[BB_WrkStack + iList]; UxnStack *stack = (&d->emu->box->core.wst)[iList];
 				if (stack->ptr == (push ? 255 : 0)) break;
 				i = push ? stack->ptr++ : --stack->ptr - 1; if (i < 0) i = 0;
 				ListView_SetItemState(hList, i, Flags, Flags);
@@ -2105,7 +2105,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		EmuWindow *b = (EmuWindow *)wparam;
 		d->box->core.fault_code = b->box->core.fault_code;
 		d->exec_state = b->exec_state;
-		CopyMemory(&d->box->work_stack, &b->box->work_stack, sizeof(Stack) * 2);
+		CopyMemory(&d->box->work_stack, &b->box->work_stack, sizeof(UxnStack) * 2);
 		CopyMemory(d->box->device_memory, b->box->device_memory, sizeof d->box->device_memory);
 		CopyMemory((char *)(d->box + 1), (char *)(b->box + 1), UXN_RAM_SIZE);
 		CopyMemory(d->screen.palette, b->screen.palette, sizeof d->screen.palette);

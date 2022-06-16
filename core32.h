@@ -15,17 +15,17 @@ typedef unsigned char Uint8;
 typedef signed char Sint8;
 typedef unsigned short Uint16;
 
-typedef struct Stack {
+typedef struct UxnStack {
 	Uint8 ptr, dat[255];
-} Stack;
+} UxnStack;
 
-typedef struct Uxn {
+typedef struct UxnCore {
 	Uint8 *ram;
-	Stack *wst, *rst;
-	Uint8 (*dei)(struct Uxn *u, unsigned int address);
-	void (*deo)(struct Uxn *u, unsigned int address, unsigned int value);
+	UxnStack *wst, *rst;
+	Uint8 (*dei)(struct UxnCore *u, unsigned int address);
+	void (*deo)(struct UxnCore *u, unsigned int address, unsigned int value);
 	Uint16 pc, fault_code;
-} Uxn;
+} UxnCore;
 
 #define UXN_FAULT_DONE 1
 #define UXN_FAULT_STACK_UNDERFLOW 2
@@ -42,6 +42,6 @@ typedef struct Uxn {
         The program needs to execute more before it finishes.
      1: The program halted normally after executing a halt instruction.
      x: The program halted after an error was encountered. */
-unsigned int UxnExec(Uxn *u, unsigned int limit);
+unsigned int UxnExec(UxnCore *u, unsigned int limit);
 
 #endif

@@ -31,11 +31,11 @@ WITH REGARD TO THIS SOFTWARE.
 #define WARP(x) { if(bs) pc = (x); else pc += (Sint8)(x); }
 
 unsigned int
-UxnExec(Uxn *u, unsigned int limit)
+UxnExec(UxnCore *u, unsigned int limit)
 {
 	unsigned int a, b, c, j, k, bs, instr, pc;
 	Uint8 kptr, *sp;
-	Stack *src, *dst;
+	UxnStack *src, *dst;
 	pc = u->pc;
 	while(limit) {
 		limit--;
