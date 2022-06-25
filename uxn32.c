@@ -402,12 +402,25 @@ static void FreeUxnScreen(UxnScreen *p)
 static void RefitEmuWindow(EmuWindow *d)
 {
 	RECT c, r;
-	c.left = 0; c.top = 0;
+	c.left = c.top = 0;
 	c.right = d->screen.width * d->viewport_scale; c.bottom = d->screen.height * d->viewport_scale;
 	AdjustWindowRect(&c, GetWindowLong(d->hWnd, GWL_STYLE), TRUE); /* note: no spam protection from Uxn program yet */
 	GetWindowRect(d->hWnd, &r);
 	MoveWindow(d->hWnd, r.left, r.top, c.right - c.left, c.bottom - c.top, TRUE);
 	/* Seems like the repaint from this is always async. We need the TRUE flag for repainting or the non-client area will be messed up on non-DWM. */
+}
+
+static void CalcUxnViewport(EmuWindow *d)
+{
+	RECT crect, *vprect = &d->viewport_rect; LONG width, height, scale;
+	GetClientRect(d->hWnd, &crect);
+	width = crect.right / d->screen.width, height = crect.bottom / d->screen.height;
+	scale = width < height ? width : height;
+	if (scale < 1) scale = 1;
+	d->viewport_scale = scale;
+	width = scale * d->screen.width, height = scale * d->screen.height;
+	vprect->left = (crect.right - width) / 2, vprect->top = (crect.bottom - height) / 2;
+	vprect->right = vprect->left + width; vprect->bottom = vprect->top + height;
 }
 
 static void ResetFiler(UxnFiler *f)
@@ -836,7 +849,14 @@ static void UxnDeviceWrite_Cold(UxnBox *box, UINT address, UINT value)
 		else
 		{
 			SetUxnScreenSize(&emu->screen, w, h);
-			RefitEmuWindow(emu);
+			if (IsZoomed(emu->hWnd)) /* When maximized, adjust the viewport, not the window size. */
+			{
+				RECT old = emu->viewport_rect;
+				CalcUxnViewport(emu);
+				/* If the viewport has changed, invalidate to paint over the potential junk pixels once. */
+				if (!EqualRect(&old, &emu->viewport_rect)) InvalidateRect(emu->hWnd, &old, FALSE);
+			}
+			else RefitEmuWindow(emu);
 		}
 		return;
 	}
@@ -964,21 +984,6 @@ static void SetUpBitmapInfo(BITMAPINFO *bmi, int width, int height)
 	bmi->bmiHeader.biCompression = BI_RGB;
 }
 
-static void CalcUxnViewport(EmuWindow *d)
-{
-	RECT crect, *vprect = &d->viewport_rect; LONG s_width, s_height;
-	GetClientRect(d->hWnd, &crect);
-	s_width = d->screen.width * 2, s_height = d->screen.height * 2;
-	if (s_width <= crect.right && s_height <= crect.bottom) d->viewport_scale = 2;
-	else
-	{
-		d->viewport_scale = 1;
-		s_width = d->screen.width, s_height = d->screen.height;
-	}
-	vprect->left = (crect.right - s_width) / 2, vprect->top = (crect.bottom - s_height) / 2;
-	vprect->right = vprect->left + s_width; vprect->bottom = vprect->top + s_height;
-}
-
 /* If in_rect is 0 size or smaller in a dimension, the point will rest against the left or top, so that bounding a point to a 0,0,0,0 rectangle puts the point at 0,0 */
 static void BoundPointInRect(POINT *point, RECT *rect)
 {
@@ -992,7 +997,7 @@ static void BindPointToLocalUxnScreen(RECT *in_screenrect, LONG scale, POINT *in
 {
 	BoundPointInRect(in_out_mousepoint, in_screenrect);
 	in_out_mousepoint->x -= in_screenrect->left; in_out_mousepoint->y -= in_screenrect->top;
-	if (scale == 2) { in_out_mousepoint->x /= 2;in_out_mousepoint->y /= 2; }
+	if (scale > 1) { in_out_mousepoint->x /= scale; in_out_mousepoint->y /= scale; }
 }
 
 static void SetHostCursorVisible(EmuWindow *d, BOOL visible)
@@ -1945,10 +1950,15 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	}
 	case WM_GETMINMAXINFO:
 	{
-		MINMAXINFO *info = (MINMAXINFO *)lparam;
-		/* Prevent window from becoming so narrow that the menu bar wraps. */
-		/* Could make this dynamically smaller when we add menu bar hiding. */
-		info->ptMinTrackSize.x = info->ptMinTrackSize.y = 185;
+		MINMAXINFO *info = (MINMAXINFO *)lparam; RECT c;
+		/* Use minimum width of 185 to prevent menu bar wrapping. */
+		c.left = c.top = c.bottom = 0; c.right = 185;
+		/* Note: WM_GETMINMAXINFO may be sent before WM_CREATE! */
+		/* Use 1x Uxn screen scale when calculating minimum window size. */
+		if (d) { c.right = MAX(c.right, d->screen.width); c.bottom = d->screen.height; }
+		AdjustWindowRect(&c, GetWindowLong(hwnd, GWL_STYLE), TRUE);
+		info->ptMinTrackSize.x = c.right - c.left;
+		info->ptMinTrackSize.y = c.bottom - c.top;
 		return 0;
 	}
 	case WM_SIZE:
@@ -2067,7 +2077,11 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		case IDM_EXIT: PostQuitMessage(0); return 0;
 		case IDM_OPENROM: OpenROMDialog(d); return 0;
 		case IDM_CLONEWINDOW: CloneWindow(d); return 0;
-		case IDM_TOGGLEZOOM: d->viewport_scale = d->viewport_scale == 1 ? 2 : 1; RefitEmuWindow(d); return 0;
+		case IDM_TOGGLEZOOM:
+			if (IsZoomed(d->hWnd)) return 0;
+			d->viewport_scale = d->viewport_scale == 1 ? 2 : 1;
+			RefitEmuWindow(d);
+			return 0;
 		case IDM_RELOAD: ReloadFromROMFile(d); return 0;
 		case IDM_CLOSEWINDOW: PostMessage(hwnd, WM_CLOSE, 0, 0); return 0;
 		case IDM_PAUSE: if (d->running) PauseVM(d); else UnpauseVM(d); return 0;
