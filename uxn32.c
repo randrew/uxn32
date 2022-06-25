@@ -2117,6 +2117,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	case UXNMSG_BecomeClone:
 	{
 		EmuWindow *b = (EmuWindow *)wparam;
+		d->box->core.pc = b->box->core.pc;
 		d->box->core.fault_code = b->box->core.fault_code;
 		d->exec_state = b->exec_state;
 		CopyMemory(&d->box->work_stack, &b->box->work_stack, sizeof(UxnStack) * 2);
