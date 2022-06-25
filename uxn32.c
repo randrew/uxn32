@@ -850,7 +850,7 @@ static void UxnDeviceWrite_Cold(UxnBox *box, UINT address, UINT value)
 		case 0xE: box->core.fault_code = 0xFF; break;
 		default: if (port > 0x7 && port < 0xE)
 		{
-			Uint8* addr = imem + 0x8;
+			Uint8 *addr = imem + 0x8;
 			UxnScreen *p = &emu->screen;
 			int i, shift;
 			for (i = 0, shift = 4; i < 4; ++i, shift ^= 4)
