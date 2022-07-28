@@ -1541,7 +1541,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		CutRect(&tmp, FromBottom, 15, &tmp2);
 		CutRectForWindow(&tmp2, FromLeft, 50, d->ctrls[BB_JumpEdit]);
 		MoveWindowRect(d->ctrls[BB_JumpBtn], &tmp2, TRUE);
-		CutRectForWindow(&tmp, FromBottom, 125, d->ctrls[BB_HexList]);
+		CutRectForWindow(&tmp, FromBottom, (tmp.bottom - tmp.top) * 10 / 25, d->ctrls[BB_HexList]);
 		MoveWindowRect(d->ctrls[BB_AsmList], &tmp, TRUE);
 		d->rcBlank = r;
 		r.top += 5;
