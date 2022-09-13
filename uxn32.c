@@ -1322,14 +1322,16 @@ static void CloneWindow(EmuWindow *a)
 }
 
 static LPCSTR const uxn_op_names =
-TEXT("LITINCPOPNIPSWPROTDUPOVREQUNEQGTHLTHJMPJCNJSRSTHLDZSTZLDRSTRLDASTADEIDEOADDSUBMULDIVANDORAEORSFT");
+TEXT("LITINCPOPNIPSWPROTDUPOVREQUNEQGTHLTHJMPJCNJSRSTHLDZSTZLDRSTRLDASTADEIDEOADDSUBMULDIVANDORAEORSFTBRK");
+/* Note: BRK is appended to the end for special-case code when encoding/decoding mnemonics. */
 
 static int DecodeUxnOpcode(TCHAR *out, BYTE instr)
 {
-	int n = 3;
-	CopyMemory(out, uxn_op_names + (instr & 0x1F) * 3, 3 * sizeof(TCHAR));
+	/* Special case BRK (0x00) mnemonic when the instruction is all zeroes. */
+	int n = 3, base_op = instr & 0x1F, name_offset = (instr ? base_op : 32) * 3;
+	CopyMemory(out, uxn_op_names + name_offset, 3 * sizeof(TCHAR));
 	if (instr & 0x20) out[n++] = '2';
-	if (instr & 0x80) out[n++] = 'k';
+	if (instr & 0x80 && base_op) out[n++] = 'k'; /* Don't show 'k' on LIT */
 	if (instr & 0x40) out[n++] = 'r';
 	out[n] = 0;
 	return n;
@@ -1383,6 +1385,8 @@ static BOOL EncodeUxnOpcode(LPCSTR in, BYTE *out)
 			goto found;
 	return FALSE;
 found:
+	/* For 'LIT', add an implicit 'k' modifier. Or, if it's BRK, the 33rd item in the array, give it the numeric value 0x00 (by chopping off the 6th bit.) */
+	a = a ? a & 0x1F : 0x80;
 	for (i = 3; i < len; i++)
 		if      (tmp[i] == '2') a |= 0x20;
 		else if (tmp[i] == 'K') a |= 0x80;
