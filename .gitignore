@@ -15,3 +15,8 @@ CMakeLists.txt.user
 *.opt
 *.plg
 *.dsw
+
+# Current Visual Studio generated stuff
+out
+.vs
+CMakeSettings.json

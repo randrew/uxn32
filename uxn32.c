@@ -2170,8 +2170,44 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	RegisterClassEx(&wc);
 	hAccel = LoadAccelerators(instance, (LPCSTR)IDC_UXN32);
 	InitCommonControls();
-
-	hWin = CreateUxnWindow(instance, TEXT("launcher.rom"));
+	char* path;
+	// unquote path
+	if (command_line[0] == 34) {
+		command_line++;
+		command_line[lstrlen(command_line) - 1] = 0;
+	}
+	DWORD dwAttrib = GetFileAttributes(command_line);
+	if (lstrlen(command_line) != 0 && (dwAttrib != INVALID_FILE_ATTRIBUTES && !(dwAttrib & FILE_ATTRIBUTE_DIRECTORY))) {
+		path = command_line;
+	} else {
+		TCHAR launcher_path[MAX_PATH + 14] = {0};
+		GetModuleFileNameA(NULL, launcher_path, MAX_PATH);
+		size_t len = lstrlen(launcher_path);
+		size_t i;
+		char c;
+		for (i = len; i > 0; i--) {
+			c = launcher_path[i];
+			if (c == 92) {
+				// rewrite the string to point to the launcher, relative to the exe
+				launcher_path[i + 1] = 108;
+				launcher_path[i + 2] = 97;
+				launcher_path[i + 3] = 117;
+				launcher_path[i + 4] = 110;
+				launcher_path[i + 5] = 99;
+				launcher_path[i + 6] = 104;
+				launcher_path[i + 7] = 101;
+				launcher_path[i + 8] = 114;
+				launcher_path[i + 9] = 46;
+				launcher_path[i + 10] = 114;
+				launcher_path[i + 11] = 111;
+				launcher_path[i + 12] = 109;
+				launcher_path[i + 13] = 0;
+				break;
+			}
+		}
+		path = launcher_path;
+	}
+	hWin = CreateUxnWindow(instance, TEXT(path));
 	ShowWindow(hWin, show_code);
 
 	for (;;)
