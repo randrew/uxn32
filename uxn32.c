@@ -2186,10 +2186,8 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 			launcher_path[0] = 0;
 		}
 		size_t i;
-		char c;
 		for (i = len; i > 0; i--) {
-			c = launcher_path[i];
-			if (c == 92) {
+			if (launcher_path[i] == 92) {
 				// rewrite the string to point to the launcher, relative to the exe
 				launcher_path[i + 1] = 108;
 				launcher_path[i + 2] = 97;
