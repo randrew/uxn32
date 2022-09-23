@@ -2170,7 +2170,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	RegisterClassEx(&wc);
 	hAccel = LoadAccelerators(instance, (LPCSTR)IDC_UXN32);
 	InitCommonControls();
-	char* path;
+	TCHAR *path;
 	// unquote path
 	if (command_line[0] == 34) {
 		command_line++;
@@ -2180,29 +2180,30 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	if (lstrlen(command_line) != 0 && (attrib != INVALID_FILE_ATTRIBUTES && !(attrib & FILE_ATTRIBUTE_DIRECTORY))) {
 		path = command_line;
 	} else {
-		TCHAR launcher_path[MAX_PATH + 14] = {0};
+		TCHAR *launcher_path = AllocZeroedOrFail(MAX_PATH + 14);
 		DWORD len = GetModuleFileNameA(NULL, launcher_path, MAX_PATH);
 		if (len == 0) {
 			launcher_path[0] = 0;
-		}
-		size_t i;
-		for (i = len; i > 0; i--) {
-			if (launcher_path[i] == 92) {
-				// rewrite the string to point to the launcher, relative to the exe
-				launcher_path[i + 1] = 108;
-				launcher_path[i + 2] = 97;
-				launcher_path[i + 3] = 117;
-				launcher_path[i + 4] = 110;
-				launcher_path[i + 5] = 99;
-				launcher_path[i + 6] = 104;
-				launcher_path[i + 7] = 101;
-				launcher_path[i + 8] = 114;
-				launcher_path[i + 9] = 46;
-				launcher_path[i + 10] = 114;
-				launcher_path[i + 11] = 111;
-				launcher_path[i + 12] = 109;
-				launcher_path[i + 13] = 0;
-				break;
+		} else {
+			size_t i;
+			for (i = len; i > 0; i--) {
+				if (launcher_path[i] == 92) {
+					// rewrite the string to point to the launcher, relative to the exe
+					launcher_path[i + 1] = 108;
+					launcher_path[i + 2] = 97;
+					launcher_path[i + 3] = 117;
+					launcher_path[i + 4] = 110;
+					launcher_path[i + 5] = 99;
+					launcher_path[i + 6] = 104;
+					launcher_path[i + 7] = 101;
+					launcher_path[i + 8] = 114;
+					launcher_path[i + 9] = 46;
+					launcher_path[i + 10] = 114;
+					launcher_path[i + 11] = 111;
+					launcher_path[i + 12] = 109;
+					launcher_path[i + 13] = 0;
+					break;
+				}
 			}
 		}
 		path = launcher_path;
