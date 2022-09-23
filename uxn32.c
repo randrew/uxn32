@@ -343,11 +343,11 @@ static BOOL LoadFileInto(LPCSTR path, char *dest, DWORD max_bytes, DWORD *bytes_
 	return TRUE;
 }
 
-static HFONT GetSmallFixedFont(void)
+static HFONT GetSmallFixedFont(float scale)
 {
 	static HFONT hFont;
 	if (!hFont) hFont = CreateFont(
-		8, 6, 0, 0, 0, 0, 0, 0, OEM_CHARSET, OUT_RASTER_PRECIS,
+		8*scale, 6*scale, 0, 0, 0, 0, 0, 0, OEM_CHARSET, OUT_RASTER_PRECIS,
 		CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, FIXED_PITCH, TEXT("Terminal"));
 	return hFont;
 }
@@ -1474,11 +1474,15 @@ static LRESULT CALLBACK BeetbugJumpEditProc(HWND hWnd, UINT msg, WPARAM wParam, 
 static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	BeetbugWin *d = (BeetbugWin *)GetWindowLongPtr(hWnd, GWLP_USERDATA);
+	float fScale = 1;
 	switch (msg)
 	{
 	case WM_CREATE:
 	{
-		LONG_PTR i, j; HWND list; LV_COLUMN col; HFONT hFont = GetSmallFixedFont();
+		HDC hdc = GetDC(hWnd);
+		fScale = GetDeviceCaps(hdc, LOGPIXELSX) / 96.0f;
+		ReleaseDC(hWnd, hdc);
+		LONG_PTR i, j; HWND list; LV_COLUMN col; HFONT hFont = GetSmallFixedFont(fScale);
 		static const int
 			columns[] = { /* Instr list */ 45 + 25 + 50, /* Hex list */ 40 + 130,
 			              /* Stacks */ 25, 25, /* Device mem */ 20 + 130},
@@ -1579,7 +1583,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		if (IntersectRect(&rTmp, &ps.rcPaint, &d->rcBlank))
 			FillRect(hDC, &rTmp, (HBRUSH)(COLOR_3DFACE + 1));
 		old_bkmode = SetBkMode(hDC, TRANSPARENT);
-		old_font = SelectObject(hDC, GetSmallFixedFont());
+		old_font = SelectObject(hDC, GetSmallFixedFont(fScale));
 		for (i = 0; i < 3; i++)
 		{
 			RECT *rc = &d->rcWstLabel + i;
@@ -1788,11 +1792,15 @@ static LRESULT CALLBACK ConEditWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 static LRESULT CALLBACK ConsoleWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	ConWindow *d = (ConWindow *)GetWindowLongPtr(hWnd, GWLP_USERDATA);
+	float fScale = 1;
 	switch (msg)
 	{
 	case WM_CREATE:
 	{
-		HWND hwTmp; int i; HFONT hFont = GetSmallFixedFont();
+		HDC hdc = GetDC(hWnd);
+		fScale = GetDeviceCaps(hdc, LOGPIXELSX) / 96.0f;
+		ReleaseDC(hWnd, hdc);
+		HWND hwTmp; int i; HFONT hFont = GetSmallFixedFont(fScale);
 		d = AllocZeroedOrFail(sizeof *d);
 		SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)d);
 		d->outHWnd = CreateWindowEx(
@@ -2147,6 +2155,13 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	WNDCLASSEX wc; HWND hWin, hParent;
 	MSG msg; HACCEL hAccel;
 	(void)command_line; (void)prev_instance;
+	HMODULE hUser32 = LoadLibrary("user32.dll");
+	typedef BOOL(*SetProcessDPIAwareFunc)();
+	SetProcessDPIAwareFunc setDPIAware = (SetProcessDPIAwareFunc)GetProcAddress(hUser32, "SetProcessDPIAware");
+	if (setDPIAware) {
+		setDPIAware();
+	}
+	FreeLibrary(hUser32);
 	QueryPerformanceFrequency(&_perfcount_freq);
 	ExecutionTimeLimit = _perfcount_freq.QuadPart / 20;
 	MainInstance = instance;
