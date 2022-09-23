@@ -2181,7 +2181,10 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 		path = command_line;
 	} else {
 		TCHAR launcher_path[MAX_PATH + 14] = {0};
-		GetModuleFileNameA(NULL, launcher_path, MAX_PATH);
+		DWORD launcher_err = GetModuleFileNameA(NULL, launcher_path, MAX_PATH);
+		if (launcher_err == 0) {
+			launcher_path[0] = 0; // this isn't actually needed, but just in case...
+		}
 		size_t len = lstrlen(launcher_path);
 		size_t i;
 		char c;
