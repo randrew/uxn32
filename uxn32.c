@@ -2170,7 +2170,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	RegisterClassEx(&wc);
 	hAccel = LoadAccelerators(instance, (LPCSTR)IDC_UXN32);
 	InitCommonControls();
-	TCHAR *path;
+	LPSTR path;
 	// unquote path
 	if (command_line[0] == 34) {
 		command_line++;
@@ -2180,7 +2180,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	if (lstrlen(command_line) != 0 && (attrib != INVALID_FILE_ATTRIBUTES && !(attrib & FILE_ATTRIBUTE_DIRECTORY))) {
 		path = command_line;
 	} else {
-		TCHAR *launcher_path = AllocZeroedOrFail(MAX_PATH + 14);
+		LPSTR launcher_path = AllocZeroedOrFail(MAX_PATH + 14);
 		DWORD len = GetModuleFileNameA(NULL, launcher_path, MAX_PATH);
 		if (len == 0) {
 			launcher_path[0] = 0;
