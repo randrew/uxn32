@@ -2176,8 +2176,8 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 		command_line++;
 		command_line[lstrlen(command_line) - 1] = 0;
 	}
-	DWORD dwAttrib = GetFileAttributes(command_line);
-	if (lstrlen(command_line) != 0 && (dwAttrib != INVALID_FILE_ATTRIBUTES && !(dwAttrib & FILE_ATTRIBUTE_DIRECTORY))) {
+	DWORD attrib = GetFileAttributes(command_line);
+	if (lstrlen(command_line) != 0 && (attrib != INVALID_FILE_ATTRIBUTES && !(attrib & FILE_ATTRIBUTE_DIRECTORY))) {
 		path = command_line;
 	} else {
 		TCHAR launcher_path[MAX_PATH + 14] = {0};
