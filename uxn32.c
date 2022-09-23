@@ -1,8 +1,5 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
-#pragma comment(linker,"\"/manifestdependency:type='win32' \
-name='Microsoft.Windows.Common-Controls' version='6.0.0.0' \
-processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
 #include "resource.h"
 #include "core32.h"
 #include <windows.h>
@@ -1482,15 +1479,16 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	{
 	case WM_CREATE:
 	{
-		HDC hdc = GetDC(hWnd);
-		fScale = GetDeviceCaps(hdc, LOGPIXELSX) / 96.0f;
-		ReleaseDC(hWnd, hdc);
-		LONG_PTR i, j; HWND list; LV_COLUMN col; HFONT hFont = GetSmallFixedFont(fScale);
+		LONG_PTR i, j; HWND list; LV_COLUMN col; HFONT hFont; HDC hdc;
 		static const int
 			columns[] = { /* Instr list */ 45 + 25 + 50, /* Hex list */ 40 + 130,
 			              /* Stacks */ 25, 25, /* Device mem */ 20 + 130},
 			rows[] = {UXN_RAM_SIZE, UXN_RAM_SIZE / 8, 255, 255, 256 / 8},
 			status_parts[] = {70, 140, 200, 300, -1};
+		hdc = GetDC(hWnd);
+		fScale = GetDeviceCaps(hdc, LOGPIXELSX) / 96.0f;
+		ReleaseDC(hWnd, hdc);
+		hFont = GetSmallFixedFont(fScale);
 		d = AllocZeroedOrFail(sizeof *d);
 		SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)d);
 		d->emu = ((CREATESTRUCT *)lParam)->lpCreateParams;
@@ -1800,11 +1798,12 @@ static LRESULT CALLBACK ConsoleWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	{
 	case WM_CREATE:
 	{
-		HDC hdc = GetDC(hWnd);
+		HWND hwTmp; int i; HFONT hFont; HDC hdc;
+		d = AllocZeroedOrFail(sizeof *d);
+		hdc = GetDC(hWnd);
 		fScale = GetDeviceCaps(hdc, LOGPIXELSX) / 96.0f;
 		ReleaseDC(hWnd, hdc);
-		HWND hwTmp; int i; HFONT hFont = GetSmallFixedFont(fScale);
-		d = AllocZeroedOrFail(sizeof *d);
+		hFont = GetSmallFixedFont(fScale);
 		SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)d);
 		d->outHWnd = CreateWindowEx(
 			WS_EX_STATICEDGE, EditWinClass, NULL,
@@ -2157,10 +2156,11 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 {
 	WNDCLASSEX wc; HWND hWin, hParent;
 	MSG msg; HACCEL hAccel;
-	(void)command_line; (void)prev_instance;
-	HMODULE hUser32 = LoadLibrary("user32.dll");
 	typedef BOOL(*SetProcessDPIAwareFunc)();
-	SetProcessDPIAwareFunc setDPIAware = (SetProcessDPIAwareFunc)GetProcAddress(hUser32, "SetProcessDPIAware");
+	LPSTR path; DWORD attrib; HMODULE hUser32; SetProcessDPIAwareFunc setDPIAware;
+	(void)command_line; (void)prev_instance;
+	hUser32 = LoadLibrary("user32.dll");
+	setDPIAware = (SetProcessDPIAwareFunc)GetProcAddress(hUser32, "SetProcessDPIAware");
 	if (setDPIAware) {
 		setDPIAware();
 	}
@@ -2188,13 +2188,12 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	RegisterClassEx(&wc);
 	hAccel = LoadAccelerators(instance, (LPCSTR)IDC_UXN32);
 	InitCommonControls();
-	LPSTR path;
 	// unquote path
 	if (command_line[0] == 34) {
 		command_line++;
 		command_line[lstrlen(command_line) - 1] = 0;
 	}
-	DWORD attrib = GetFileAttributes(command_line);
+	attrib = GetFileAttributes(command_line);
 	if (lstrlen(command_line) != 0 && (attrib != INVALID_FILE_ATTRIBUTES && !(attrib & FILE_ATTRIBUTE_DIRECTORY))) {
 		path = command_line;
 	} else {
