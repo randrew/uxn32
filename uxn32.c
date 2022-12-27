@@ -871,7 +871,8 @@ static void UxnDeviceWrite_Cold(UxnBox *box, UINT address, UINT value)
 		{
 		case 0x2: box->work_stack.ptr = (Uint8)value; break;
 		case 0x3: box->ret_stack.ptr = (Uint8)value; break;
-		case 0xE: box->core.fault_code = 0xFF; break;
+		case 0xE: box->core.fault_code = 254; break;
+		case 0xF: box->core.fault_code = 255; break;
 		default: if (port > 0x7 && port < 0xE)
 		{
 			Uint8 *addr = imem + 0x8;
@@ -1446,7 +1447,8 @@ static void UpdateBeetbugStuff(HWND hWnd, BeetbugWin *d)
 		case 3:   text = TEXT("Stack overflow"); break;
 		case 4:   text = TEXT("Division by zero"); break;
 		case 127: text = TEXT("Stack debris"); break;
-		case 255: text = TEXT("Debug device break"); break;
+		case 254: text = TEXT("Debug device break"); break;
+		case 255: text = TEXT("Program requested exit"); break;
 		}
 		SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 4, (LPARAM)text);
 	}
