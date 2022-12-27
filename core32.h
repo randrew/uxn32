@@ -41,7 +41,11 @@ typedef struct UxnCore {
      0: Instruction limit was reached before executing a halt instruction.
         The program needs to execute more before it finishes.
      1: The program halted normally after executing a halt instruction.
-     x: The program halted after an error was encountered. */
+     x: The program halted after an error was encountered.
+
+   `u->ram` should point to a buffer 0x100001 bytes in size. The extra byte
+   prevents 16-bit POKE and PEEK instructions with address 0xFFFF going out
+   of bounds. Uxn does not wrap those high byte accesses to 0x0. */
 unsigned int UxnExec(UxnCore *u, unsigned int limit);
 
 #endif

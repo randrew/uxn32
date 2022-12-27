@@ -55,7 +55,11 @@ typedef ULONG_PTR DWORD_PTR, *PDWORD_PTR;
 #define UXN_DEFAULT_WIDTH (64 * 8)
 #define UXN_DEFAULT_HEIGHT (40 * 8)
 #define UXN_RAM_SIZE 0x10000u
+/* ^ Memory normally usable to the Uxn VM and programs. */
+#define UXN_RAM_PAD_SIZE 0x1u
+/* ^ Extra byte of RAM that stops a Uxn 16-bit POKE/PEEK op at 0xFFFF doing evil things. */
 #define UXN_ROM_OFFSET 0x0100u
+/* ^ Start location in Uxn RAM where a loaded 'ROM' file is copied to. */
 #define UXN_SAMPLE_RATE 44100
 #define UXN_VOICES 4
 
@@ -951,7 +955,7 @@ static void UxnDeviceWrite(UxnCore *u, UINT address, UINT value)
 static void InitEmuWindow(EmuWindow *d, HWND hWnd)
 {
 	char *main_ram;
-	UxnBox *box = (UxnBox *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(UxnBox) + UXN_RAM_SIZE);
+	UxnBox *box = (UxnBox *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(UxnBox) + UXN_RAM_SIZE + UXN_RAM_PAD_SIZE);
 	if (!box) OutOfMemory();
 	main_ram = (char *)(box + 1);
 	box->user = d;
@@ -1036,7 +1040,7 @@ static void ResetVM(EmuWindow *d)
 	ZeroMemory(&d->box->work_stack, sizeof(UxnStack) * 2); /* optional for quick reload */
 	ZeroMemory(d->box->device_memory, sizeof d->box->device_memory); /* optional for quick reload */
 	DEVPOKE2(d->box->device_memory, VV_SCREEN + 0x2, d->screen.width, d->screen.height); /* Restore this in case ROM reads it */
-	ZeroMemory((char *)(d->box + 1), UXN_RAM_SIZE);
+	ZeroMemory((char *)(d->box + 1), UXN_RAM_SIZE + UXN_RAM_PAD_SIZE); /* zero RAM and the padding byte */
 	ZeroMemory(d->screen.palette, sizeof d->screen.palette); /* optional for quick reload */
 	ZeroMemory(d->screen.bg, d->screen.width * d->screen.height * 2);
 	ResetFiler(&d->filers[0]); ResetFiler(&d->filers[1]);
@@ -2126,7 +2130,8 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		d->exec_state = b->exec_state;
 		CopyMemory(&d->box->work_stack, &b->box->work_stack, sizeof(UxnStack) * 2);
 		CopyMemory(d->box->device_memory, b->box->device_memory, sizeof d->box->device_memory);
-		CopyMemory((char *)(d->box + 1), (char *)(b->box + 1), UXN_RAM_SIZE);
+		CopyMemory((char *)(d->box + 1), (char *)(b->box + 1), UXN_RAM_SIZE + UXN_RAM_PAD_SIZE);
+		/* ^ We also copy that weird padding byte. It might be important to the Uxn program. Who knows! */
 		CopyMemory(d->screen.palette, b->screen.palette, sizeof d->screen.palette);
 		SetUxnScreenSize(&d->screen, b->screen.width, b->screen.height);
 		d->viewport_scale = b->viewport_scale;
