@@ -1310,18 +1310,19 @@ static INT_PTR CALLBACK AboutBoxProc(HWND hDlg, UINT message, WPARAM wParam, LPA
 	return FALSE;
 }
 
-static HWND CreateUxnWindow(HINSTANCE hInst, LPCSTR file)
+static HWND CreateWindowForEmu(HINSTANCE hInst, EmuWindow *emu)
 {
 	RECT rect;
 	rect.left = rect.top = 0;
 	rect.right = UXN_DEFAULT_WIDTH; rect.bottom = UXN_DEFAULT_HEIGHT;
 	AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, TRUE);
-	return CreateWindowEx(WS_EX_APPWINDOW, EmuWinClass, TEXT("Uxn"), WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, NULL, NULL, hInst, (void *)file);
+	return CreateWindowEx(WS_EX_APPWINDOW, EmuWinClass, TEXT("Uxn"), WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, NULL, NULL, hInst, (void *)emu);
 }
 
 static void CloneWindow(EmuWindow *a)
 {
-	HWND hWnd = CreateUxnWindow(MainInstance, NULL);
+	EmuWindow *emu = AllocZeroedOrFail(sizeof(EmuWindow));
+	HWND hWnd = CreateWindowForEmu(MainInstance, emu);
 	ShowWindow(hWnd, SW_SHOW);
 	PostMessage(hWnd, UXNMSG_BecomeClone, (WPARAM)a, 0);
 }
@@ -1859,19 +1860,12 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	{
 	case WM_CREATE:
 	{
-		LPCSTR filename = ((CREATESTRUCT *)lparam)->lpCreateParams; int filelen;
+		d = ((CREATESTRUCT *)lparam)->lpCreateParams;
 		emu_window_count++;
-		d = AllocZeroedOrFail(sizeof(EmuWindow));
 		SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)d);
 		DragAcceptFiles(hwnd, TRUE);
 		InitEmuWindow(d, hwnd);
-		filelen = filename ? lstrlen(filename) : 0;
-		if (filelen >= MAX_PATH) OutOfMemory(); /* wrong, better msg */
-		if (filelen)
-		{
-			CopyMemory(d->rom_path, filename, (filelen + 1) * sizeof(TCHAR));
-			StartVM(d);
-		}
+		if (lstrlen(d->rom_path)) StartVM(d);
 		return 0;
 	}
 	case WM_CLOSE:
@@ -2153,10 +2147,24 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 {
 	WNDCLASSEX wc; HWND hWin, hParent;
 	MSG msg; HACCEL hAccel;
+	int arg_count; LPWSTR *args;
+	LPCSTR default_rom_path = TEXT("launcher.rom");
+	EmuWindow *emu = AllocZeroedOrFail(sizeof(EmuWindow));
 	(void)command_line; (void)prev_instance;
+	CopyMemory(emu->rom_path, default_rom_path, (lstrlen(default_rom_path) + 1) * sizeof(TCHAR));
 	QueryPerformanceFrequency(&_perfcount_freq);
 	ExecutionTimeLimit = _perfcount_freq.QuadPart / 20;
 	MainInstance = instance;
+
+#ifdef _WIN32_WINNT
+	/* CommandLineToArgvW only available in NT shell32.dll and shellapi.h */
+	if ((args = CommandLineToArgvW(GetCommandLineW(), &arg_count)) && arg_count > 1)
+	{
+		if (!WideCharToMultiByte(CP_ACP, 0, args[1], -1, emu->rom_path, sizeof emu->rom_path, NULL, NULL))
+			FatalBox("The command line argument for the file path was too long, or contained characters that couldn't be handled by this program.");
+	}
+#endif
+
 	ZeroMemory(&wc, sizeof wc);
 	wc.hInstance = instance;
 	wc.cbSize = sizeof wc;
@@ -2178,7 +2186,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	hAccel = LoadAccelerators(instance, (LPCSTR)IDC_UXN32);
 	InitCommonControls();
 
-	hWin = CreateUxnWindow(instance, TEXT("launcher.rom"));
+	hWin = CreateWindowForEmu(instance, emu);
 	ShowWindow(hWin, show_code);
 
 	for (;;)
