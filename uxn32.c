@@ -2151,9 +2151,9 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 {
 	WNDCLASSEX wc; HWND hWin, hParent;
 	MSG msg; HACCEL hAccel;
-	int arg_count; LPWSTR *args;
 	Type_CommandLineToArgvW *Ptr_CommandLineToArgvW;
 	Type_GetCommandLineW *Ptr_GetCommandLineW;
+	int arg_count = 0; LPWSTR *args = NULL;
 	EmuWindow *emu = AllocZeroedOrFail(sizeof(EmuWindow));
 	(void)command_line; (void)prev_instance;
 	CopyMemory(emu->rom_path, DefaultROMPath, (lstrlen(DefaultROMPath) + 1) * sizeof(TCHAR));
@@ -2194,6 +2194,19 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 
 	hWin = CreateWindowForEmu(instance, emu);
 	ShowWindow(hWin, show_code);
+
+	if (args)
+	{
+		int arg, i, n; CHAR buff[256];
+		for (arg = 2; arg < arg_count; arg++)
+		{
+			if ((n = WideCharToMultiByte(CP_ACP, 0, args[arg], -1, buff, sizeof buff, NULL, NULL)))
+			{
+				buff[n - 1] = '\n';
+				for (i = 0; i < n; i++) SendInputEvent(emu, EmuIn_Console, buff[i], 0, 0);
+			}
+		}
+	}
 
 	for (;;)
 	{
