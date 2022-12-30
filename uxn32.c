@@ -83,6 +83,9 @@ typedef ULONG_PTR DWORD_PTR, *PDWORD_PTR;
 #define GETVECTOR(d) ((d)[0] << 8 | (d)[1])
 #define DEVINDEX(device, base) (((device) - (base)) >> 4)
 
+typedef LPWSTR * WINAPI Type_CommandLineToArgvW(LPCWSTR lpCmdLine, int* pNumArgs);
+typedef LPWSTR WINAPI Type_GetCommandLineW(void);
+
 static LARGE_INTEGER _perfcount_freq;
 static LONGLONG ExecutionTimeLimit;
 #define RepaintTimeLimit ExecutionTimeLimit
@@ -2149,6 +2152,8 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	WNDCLASSEX wc; HWND hWin, hParent;
 	MSG msg; HACCEL hAccel;
 	int arg_count; LPWSTR *args;
+	Type_CommandLineToArgvW *Ptr_CommandLineToArgvW;
+	Type_GetCommandLineW *Ptr_GetCommandLineW;
 	EmuWindow *emu = AllocZeroedOrFail(sizeof(EmuWindow));
 	(void)command_line; (void)prev_instance;
 	CopyMemory(emu->rom_path, DefaultROMPath, (lstrlen(DefaultROMPath) + 1) * sizeof(TCHAR));
@@ -2156,14 +2161,15 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	ExecutionTimeLimit = _perfcount_freq.QuadPart / 20;
 	MainInstance = instance;
 
-#ifdef _WIN32_WINNT
-	/* CommandLineToArgvW only available in NT shell32.dll and shellapi.h */
-	if ((args = CommandLineToArgvW(GetCommandLineW(), &arg_count)) && arg_count > 1)
+	if ((Ptr_GetCommandLineW = (Type_GetCommandLineW *)GetProcAddress(GetModuleHandle(TEXT("kernel32.dll")), "GetCommandLineW")) &&
+		(Ptr_CommandLineToArgvW = (Type_CommandLineToArgvW *)GetProcAddress(GetModuleHandle(TEXT("shell32.dll")), "CommandLineToArgvW")))
 	{
-		if (!WideCharToMultiByte(CP_ACP, 0, args[1], -1, emu->rom_path, sizeof emu->rom_path, NULL, NULL))
-			FatalBox("The command line argument for the file path was too long, or contained characters that couldn't be handled by this program.");
+		if ((args = Ptr_CommandLineToArgvW(Ptr_GetCommandLineW(), &arg_count)) && arg_count > 1)
+		{
+			if (!WideCharToMultiByte(CP_ACP, 0, args[1], -1, emu->rom_path, sizeof emu->rom_path, NULL, NULL))
+				FatalBox("The command line argument for the file path was too long, or contained characters that couldn't be handled by this program.");
+		}
 	}
-#endif
 
 	ZeroMemory(&wc, sizeof wc);
 	wc.hInstance = instance;
