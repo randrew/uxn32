@@ -89,6 +89,7 @@ static LONGLONG ExecutionTimeLimit;
 static HINSTANCE MainInstance;
 static LPCSTR EmuWinClass = TEXT("uxn_emu_win"), ConsoleWinClass = TEXT("uxn_console_win"), EditWinClass = TEXT("EDIT");
 static LPCSTR BeetbugWinClass = TEXT("uxn_beetbug_win");
+static LPCSTR DefaultROMPath = TEXT("launcher.rom");
 
 static LONGLONG LongLongMulDiv(LONGLONG value, LONGLONG numer, LONGLONG denom)
 {
@@ -2148,10 +2149,9 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	WNDCLASSEX wc; HWND hWin, hParent;
 	MSG msg; HACCEL hAccel;
 	int arg_count; LPWSTR *args;
-	LPCSTR default_rom_path = TEXT("launcher.rom");
 	EmuWindow *emu = AllocZeroedOrFail(sizeof(EmuWindow));
 	(void)command_line; (void)prev_instance;
-	CopyMemory(emu->rom_path, default_rom_path, (lstrlen(default_rom_path) + 1) * sizeof(TCHAR));
+	CopyMemory(emu->rom_path, DefaultROMPath, (lstrlen(DefaultROMPath) + 1) * sizeof(TCHAR));
 	QueryPerformanceFrequency(&_perfcount_freq);
 	ExecutionTimeLimit = _perfcount_freq.QuadPart / 20;
 	MainInstance = instance;
