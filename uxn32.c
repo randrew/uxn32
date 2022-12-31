@@ -2161,6 +2161,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	ExecutionTimeLimit = _perfcount_freq.QuadPart / 20;
 	MainInstance = instance;
 
+	/* Windows 95 won't have the procedures for commandline args, so we'll load them only optionally, at runtime. */
 	if ((Ptr_GetCommandLineW = (Type_GetCommandLineW *)GetProcAddress(GetModuleHandle(TEXT("kernel32.dll")), "GetCommandLineW")) &&
 		(Ptr_CommandLineToArgvW = (Type_CommandLineToArgvW *)GetProcAddress(GetModuleHandle(TEXT("shell32.dll")), "CommandLineToArgvW")))
 	{
@@ -2195,7 +2196,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	hWin = CreateWindowForEmu(instance, emu);
 	ShowWindow(hWin, show_code);
 
-	if (args)
+	if (args) /* Send any additional arguments as virtual console input */
 	{
 		int arg, i, n; CHAR buff[256];
 		for (arg = 2; arg < arg_count; arg++)
