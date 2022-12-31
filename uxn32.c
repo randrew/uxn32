@@ -203,7 +203,7 @@ typedef struct UxnFiler
 	} state;
 } UxnFiler;
 
-enum { TimerID_Screen60hz = 1, TimerID_InitAudio };
+enum { TimerID_Screen60hz = 1, TimerID_InitAudio, TimerID_FlushConsole };
 enum { UXNMSG_ContinueExec = WM_USER, UXNMSG_BecomeClone };
 enum EmuIn
 {
@@ -257,6 +257,8 @@ typedef struct EmuWindow
 typedef struct ConWindow
 {
 	HWND outHWnd, inHWnd;
+	DWORD count;
+	CHAR buffer[256];
 	BYTE has_newline;
 } ConWindow;
 
@@ -761,6 +763,16 @@ static void CreateConsoleWindow(EmuWindow *emu)
 	emu->consoleHWnd = CreateWindowEx(exStyle, ConsoleWinClass, TEXT("Console"), wStyle, CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, emu->hWnd, NULL, MainInstance, (void *)NULL);
 }
 
+static void FlushUxnConsole(ConWindow *con, HWND hWnd)
+{
+	int len = GetWindowTextLength(con->outHWnd);
+	KillTimer(hWnd, TimerID_FlushConsole);
+	con->buffer[con->count] = 0;
+	SendMessage(con->outHWnd, EM_SETSEL, len, len);
+	SendMessage(con->outHWnd, EM_REPLACESEL, 0, (LPARAM)con->buffer);
+	con->count = 0;
+}
+
 static BOOL LoadROMIntoBox(UxnBox *box, LPCSTR filename)
 {
 	DWORD bytes_read;
@@ -896,18 +908,19 @@ static void UxnDeviceWrite_Cold(UxnBox *box, UINT address, UINT value)
 		break;
 	case VV_CONSOLE:
 	{
-		char c[4]; ConWindow *con; int i = 0, len;
+		ConWindow *con; DWORD i; CHAR *buf;
 		if (port < 0x8) break;
 		if (!emu->consoleHWnd) CreateConsoleWindow(emu);
 		if (!IsWindowVisible(emu->consoleHWnd)) ShowWindow(emu->consoleHWnd, SW_SHOWNOACTIVATE);
 		con = (ConWindow *)GetWindowLongPtr(emu->consoleHWnd, GWLP_USERDATA);
-		if (con->has_newline) c[i++] = '\r', c[i++] = '\n', con->has_newline = 0;
-		if ((c[i] = (Uint8)value) == '\n') con->has_newline = 1;
+		buf = con->buffer;
+		if (con->count >= sizeof con->buffer - 3) /* Need room for up to 2 chars and a terminator */
+			FlushUxnConsole(con, emu->consoleHWnd);
+		if (!(i = con->count)) SetTimer(emu->consoleHWnd, TimerID_FlushConsole, 1, NULL);
+		if (con->has_newline) buf[i++] = '\r', buf[i++] = '\n', con->has_newline = 0;
+		if ((buf[i] = (Uint8)value) == '\n') con->has_newline = 1;
 		else i++;
-		c[i] = 0;
-		len = GetWindowTextLength(con->outHWnd);
-		SendMessage(con->outHWnd, EM_SETSEL, len, len);
-		SendMessage(con->outHWnd, EM_REPLACESEL, 0, (LPARAM)c);
+		con->count = i;
 		break;
 	}
 	case VV_AUDIO0: case VV_AUDIO1: case VV_AUDIO2: case VV_AUDIO3:
@@ -1826,6 +1839,7 @@ static LRESULT CALLBACK ConsoleWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		ShowWindow(hWnd, SW_HIDE);
 		return 0;
 	case WM_DESTROY:
+		KillTimer(hWnd, TimerID_FlushConsole);
 		HeapFree(GetProcessHeap(), 0, d);
 		return 0;
 	case WM_SIZE:
@@ -1853,6 +1867,14 @@ static LRESULT CALLBACK ConsoleWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	case WM_CTLCOLORSTATIC:
 		if ((HWND)lParam != d->outHWnd) break;
 		return (LRESULT)GetSysColorBrush(COLOR_WINDOW);
+	case WM_TIMER:
+		switch (wParam)
+		{
+		case TimerID_FlushConsole:
+			FlushUxnConsole(d, hWnd);
+			return 0;
+		}
+		break;
 	}
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
