@@ -167,14 +167,14 @@ typedef struct UxnBox
 	void *user;
 	UxnCore core;
 	UxnStack work_stack, ret_stack;
-	Uint8 device_memory[256];
+	UxnU8 device_memory[256];
 } UxnBox;
 typedef struct UxnVoice
 {
 	ULONG count, advance, period, age, a, d, s, r;
-	Uint16 wave_base, i, len;
-	Sint8 volume[2];
-	Uint8 repeat;
+	UxnU16 wave_base, i, len;
+	UxnI8 volume[2];
+	UxnU8 repeat;
 } UxnVoice;
 typedef struct UxnWaveOut
 {
@@ -187,7 +187,7 @@ typedef struct UxnScreen
 {
 	ULONG palette[4];
 	LONG width, height;
-	Uint8 *bg, *fg;
+	UxnU8 *bg, *fg;
 } UxnScreen;
 typedef struct UxnFiler
 {
@@ -362,14 +362,14 @@ static HFONT GetSmallFixedFont(void)
 	return hFont;
 }
 
-static const Uint8 SpriteBlendingTable[5][16] = {
+static const UxnU8 SpriteBlendingTable[5][16] = {
 	{0, 0, 0, 0, 1, 0, 1, 1, 2, 2, 0, 2, 3, 3, 3, 0},
 	{0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3},
 	{1, 2, 3, 1, 1, 2, 3, 1, 1, 2, 3, 1, 1, 2, 3, 1},
 	{2, 3, 1, 2, 2, 3, 1, 2, 2, 3, 1, 2, 2, 3, 1, 2},
 	{1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0}};
 
-static void DrawUxnSprite(UxnScreen *p, Uint8 *layer_pixels, Uint16 x, Uint16 y, Uint8 *sprite, int color, int flipx, int flipy, int twobpp)
+static void DrawUxnSprite(UxnScreen *p, UxnU8 *layer_pixels, UxnU16 x, UxnU16 y, UxnU8 *sprite, int color, int flipx, int flipy, int twobpp)
 {
 	int v, h, opaque = SpriteBlendingTable[4][color], width = p->width, height = p->height;
 	int c, ch;
@@ -395,7 +395,7 @@ static void SetUxnScreenSize(UxnScreen *p, DWORD width, DWORD height)
 	DWORD one_size = width * height, two_size = one_size * 2;
 	HANDLE hHeap = GetProcessHeap(); BOOL reallocing = p->bg != NULL;
 	/* TODO pad for simd */
-	Uint8 *buff = reallocing ? HeapReAlloc(hHeap, 0, p->bg, two_size) : HeapAlloc(hHeap, HEAP_ZERO_MEMORY, two_size);
+	UxnU8 *buff = reallocing ? HeapReAlloc(hHeap, 0, p->bg, two_size) : HeapAlloc(hHeap, HEAP_ZERO_MEMORY, two_size);
 	if (!buff) OutOfMemory();
 	if (reallocing) ZeroMemory(buff, two_size);
 	p->bg = buff;
@@ -592,7 +592,7 @@ static INT VoiceEnvelope(UxnVoice *c, ULONG age)
 	return 0x0000;
 }
 
-static int VoiceRender(UxnVoice *c, Uint8 *uxn_ram, SHORT *out, SHORT *end)
+static int VoiceRender(UxnVoice *c, UxnU8 *uxn_ram, SHORT *out, SHORT *end)
 {
 	INT s;
 	if (!c->advance || !c->period) return 0;
@@ -606,7 +606,7 @@ static int VoiceRender(UxnVoice *c, Uint8 *uxn_ram, SHORT *out, SHORT *end)
 			if (!c->repeat) { c->advance = 0; break; }
 			c->i %= c->len;
 		}
-		s = (Sint8)(uxn_ram[(c->wave_base + c->i) % UXN_RAM_SIZE] + 0x80) * VoiceEnvelope(c, c->age++);
+		s = (UxnI8)(uxn_ram[(c->wave_base + c->i) % UXN_RAM_SIZE] + 0x80) * VoiceEnvelope(c, c->age++);
 		*out++ += s * c->volume[0] / (0x180 * 2); /* Original: / (0x180 * 1) */
 		*out++ += s * c->volume[1] / (0x180 * 2); /* Temporarily make this quieter until we add volume slider */
 	}
@@ -614,7 +614,7 @@ static int VoiceRender(UxnVoice *c, Uint8 *uxn_ram, SHORT *out, SHORT *end)
 	return 1;
 }
 
-static void VoiceStart(UxnVoice *c, Uint16 adsr, Uint8 pitch)
+static void VoiceStart(UxnVoice *c, UxnU16 adsr, UxnU8 pitch)
 {
 	if (!(pitch < 108 && c->len))
 	{
@@ -634,7 +634,7 @@ static void VoiceStart(UxnVoice *c, Uint16 adsr, Uint8 pitch)
 		c->period = NOTE_PERIOD;
 }
 
-static Uint8 VoiceCalcVU(UxnVoice *c)
+static UxnU8 VoiceCalcVU(UxnVoice *c)
 {
 	INT sum[2] = {0, 0}, i;
 	if (!c->advance || !c->period) return 0;
@@ -709,9 +709,9 @@ static void InitWaveOutAudio(EmuWindow *d)
 
 static void DevOut_Audio(EmuWindow *emu, UINT device, UINT port)
 {
-	Uint8 *imem = emu->box->device_memory + device;
+	UxnU8 *imem = emu->box->device_memory + device;
 	UxnVoice *voice = &emu->synth_voices[DEVINDEX(device, VV_AUDIO0)];
-	Uint16 adsr;
+	UxnU16 adsr;
 	if (port != 0xF) return;
 	DEVPEEK(imem, adsr, 0x8);
 	DEVPEEK(imem, voice->len, 0xA);
@@ -727,7 +727,7 @@ static void DevOut_Audio(EmuWindow *emu, UINT device, UINT port)
 static void DevOut_File(EmuWindow *emu, UINT device, UINT port)
 {
 	DWORD result = 0, /* next inits suppress msvc warning */ out_len = 0; char *out = 0;
-	UxnBox *box = emu->box; Uint8 *imem = box->device_memory + device;
+	UxnBox *box = emu->box; UxnU8 *imem = box->device_memory + device;
 	UxnFiler *f = &emu->filers[DEVINDEX(device, VV_FILE0)];
 	switch (port) /* These need write location and size */
 	{
@@ -787,12 +787,12 @@ static BOOL LoadROMIntoBox(UxnBox *box, LPCSTR filename)
 	return result;
 }
 
-static Uint8 UxnDeviceRead(UxnCore *u, UINT address)
+static UxnU8 UxnDeviceRead(UxnCore *u, UINT address)
 {
 	UxnBox *box = OUTER_OF(u, UxnBox, core);
 	EmuWindow *emu = (EmuWindow *)box->user;
 	UINT device = address & 0xF0, port = address & 0x0F;
-	Uint8 *imem = box->device_memory + device;
+	UxnU8 *imem = box->device_memory + device;
 
 	switch (address)
 	{
@@ -856,7 +856,7 @@ static void UxnDeviceWrite_Cold(UxnBox *box, UINT address, UINT value)
 {
 	EmuWindow *emu = (EmuWindow *)box->user;
 	UINT device = address & 0xF0, port = address & 0x0F;
-	Uint8 *imem = box->device_memory + device;
+	UxnU8 *imem = box->device_memory + device;
 	if (address == VV_SCREEN + 0x5)
 	{
 		DWORD w, h;
@@ -885,18 +885,18 @@ static void UxnDeviceWrite_Cold(UxnBox *box, UINT address, UINT value)
 	case VV_SYSTEM:
 		switch (port)
 		{
-		case 0x2: box->work_stack.ptr = (Uint8)value; break;
-		case 0x3: box->ret_stack.ptr = (Uint8)value; break;
+		case 0x2: box->work_stack.ptr = (UxnU8)value; break;
+		case 0x3: box->ret_stack.ptr = (UxnU8)value; break;
 		case 0xE: box->core.fault_code = 254; break;
 		case 0xF: box->core.fault_code = 255; break;
 		default: if (port > 0x7 && port < 0xE)
 		{
-			Uint8 *addr = imem + 0x8;
+			UxnU8 *addr = imem + 0x8;
 			UxnScreen *p = &emu->screen;
 			int i, shift;
 			for (i = 0, shift = 4; i < 4; ++i, shift ^= 4)
 			{
-				Uint8
+				UxnU8
 					r = (addr[0 + i / 2] >> shift) & 0x0F,
 					g = (addr[2 + i / 2] >> shift) & 0x0F,
 					b = (addr[4 + i / 2] >> shift) & 0x0F;
@@ -918,7 +918,7 @@ static void UxnDeviceWrite_Cold(UxnBox *box, UINT address, UINT value)
 			FlushUxnConsole(con, emu->consoleHWnd);
 		if (!(i = con->count)) SetTimer(emu->consoleHWnd, TimerID_FlushConsole, 1, NULL);
 		if (con->has_newline) buf[i++] = '\r', buf[i++] = '\n', con->has_newline = 0;
-		if ((buf[i] = (Uint8)value) == '\n') con->has_newline = 1;
+		if ((buf[i] = (UxnU8)value) == '\n') con->has_newline = 1;
 		else i++;
 		con->count = i;
 		break;
@@ -935,12 +935,12 @@ static void UxnDeviceWrite(UxnCore *u, UINT address, UINT value)
 	UxnBox *box = OUTER_OF(u, UxnBox, core);
 	UxnScreen *screen = &((EmuWindow *)box->user)->screen;
 	UINT device = address & 0xF0;
-	Uint8 *devmem = box->device_memory, *imem = devmem + device;
+	UxnU8 *devmem = box->device_memory, *imem = devmem + device;
 	devmem[address] = value;
 	if (address == VV_SCREEN + 0xE)
 	{
 		LONG x, y, width = screen->width, layer = imem[0xE] & 0x40;
-		Uint8 *pixels = layer ? screen->fg : screen->bg;
+		UxnU8 *pixels = layer ? screen->fg : screen->bg;
 		DEVPEEK2(imem, x, y, 0x8);
 		if (x < width && y < screen->height) /* poke pixel */
 			pixels[x + y * width] = imem[0xE] & 0x3;
@@ -954,7 +954,7 @@ static void UxnDeviceWrite(UxnCore *u, UINT address, UINT value)
 		UINT n = advance >> 4, dx = advance << 3 & 8, dy = advance << 2 & 8;
 		UINT twobpp = sprite >> 7 & 1, daddr = (advance & 0x4) << (twobpp + 1);
 		int color = sprite & 0xF, flipx = sprite & 0x10, flipy = sprite & 0x20;
-		Uint8 *layer_pixels = (sprite & 0x40) ? screen->fg : screen->bg;
+		UxnU8 *layer_pixels = (sprite & 0x40) ? screen->fg : screen->bg;
 		DEVPEEK2(imem, x, y, 0x8);
 		DEVPEEK(imem, addr, 0xC);
 		tmp = x + dx; DEVPOKE(imem, 0x8, tmp);
@@ -977,7 +977,7 @@ static void InitEmuWindow(EmuWindow *d, HWND hWnd)
 	if (!box) OutOfMemory();
 	main_ram = (char *)(box + 1);
 	box->user = d;
-	box->core.ram = (Uint8 *)main_ram;
+	box->core.ram = (UxnU8 *)main_ram;
 	box->core.wst = &box->work_stack;
 	box->core.rst = &box->ret_stack;
 	box->core.dei = UxnDeviceRead;
@@ -1207,7 +1207,7 @@ residual:
 
 static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT y)
 {
-	Uint16 *pc = &d->box->core.pc; Uint8 *devmem = d->box->device_memory;
+	UxnU16 *pc = &d->box->core.pc; UxnU8 *devmem = d->box->device_memory;
 	switch ((enum EmuIn)type)
 	{
 	case EmuIn_KeyChar:
@@ -2026,7 +2026,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		/* could set mouse x,y pos here if we wanted to */
 		/* TODO no x axis scrolling yet */
 		/* TODO accumulate error from division */
-		SendInputEvent(d, EmuIn_Wheel, 0, 0, (Uint16)(-zDelta / 120));
+		SendInputEvent(d, EmuIn_Wheel, 0, 0, (UxnU16)(-zDelta / 120));
 		return 0;
 	}
 	}

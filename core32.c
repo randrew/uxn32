@@ -20,7 +20,7 @@ WITH REGARD TO THIS SOFTWARE.
 #define PUSH8(s, x) { if(s->ptr == 0xFF) goto fault_3; s->dat[s->ptr++] = (x); }
 #define PUSH16(s, x) { if((j = s->ptr) >= 0xFE) goto fault_3; k = (x); s->dat[j] = k >> 8; s->dat[j + 1] = k; s->ptr = j + 2; }
 #define PUSH(s, x) { if(bs) PUSH16(s, (x)) else PUSH8(s, (x)) }
-#define POP8(o) { if(!(j = *sp)) goto fault_2; o = (Uint16)src->dat[--j]; *sp = j; }
+#define POP8(o) { if(!(j = *sp)) goto fault_2; o = (UxnU16)src->dat[--j]; *sp = j; }
 #define POP16(o) { if((j = *sp) <= 1) goto fault_2; o = src->dat[j - 1]; o += src->dat[j - 2] << 8; *sp = j - 2; }
 #define POP(o) { if(bs) POP16(o) else POP8(o) }
 #define POKE(x, y) { if(bs) { u->ram[(x)] = (y) >> 8; u->ram[(x) + 1] = (y); } else u->ram[(x)] = y; }
@@ -28,13 +28,13 @@ WITH REGARD TO THIS SOFTWARE.
 #define PEEK(o, x) { if(bs) PEEK16(o, x) else o = u->ram[(x)]; }
 #define DEVR(o, x) { o = u->dei(u, x); if (bs) o = (o << 8) + u->dei(u, ((x) + 1) & 0xFF); }
 #define DEVW(x, y) { if(bs) { u->deo(u, (x), (y) >> 8); u->deo(u, ((x) + 1) & 0xFF, (y)); } else u->deo(u, x, (y)); }
-#define WARP(x) { if(bs) pc = (x); else pc += (Sint8)(x); }
+#define WARP(x) { if(bs) pc = (x); else pc += (UxnI8)(x); }
 
 unsigned int
 UxnExec(UxnCore *u, unsigned int limit)
 {
 	unsigned int a, b, c, j, k, bs, instr, pc;
-	Uint8 kptr, *sp;
+	UxnU8 kptr, *sp;
 	UxnStack *src, *dst;
 	pc = u->pc;
 	while(limit) {
@@ -80,8 +80,8 @@ UxnExec(UxnCore *u, unsigned int limit)
 		/* Memory */
 		case 0x10: /* LDZ */ POP8(a) PEEK(b, a) PUSH(src, b) break;
 		case 0x11: /* STZ */ POP8(a) POP(b) POKE(a, b) break;
-		case 0x12: /* LDR */ POP8(a) PEEK(b, pc + (Sint8)a) PUSH(src, b) break;
-		case 0x13: /* STR */ POP8(a) POP(b) c = pc + (Sint8)a; POKE(c, b) break;
+		case 0x12: /* LDR */ POP8(a) PEEK(b, pc + (UxnI8)a) PUSH(src, b) break;
+		case 0x13: /* STR */ POP8(a) POP(b) c = pc + (UxnI8)a; POKE(c, b) break;
 		case 0x14: /* LDA */ POP16(a) PEEK(b, a) PUSH(src, b) break;
 		case 0x15: /* STA */ POP16(a) POP(b) POKE(a, b) break;
 		case 0x16: /* DEI */ POP8(a) DEVR(b, a) PUSH(src, b) break;

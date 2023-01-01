@@ -11,20 +11,20 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
 WITH REGARD TO THIS SOFTWARE.
 */
 #pragma warning(disable:4244) /* Noisy VC6 warning. Can't disable with flag */
-typedef unsigned char Uint8;
-typedef signed char Sint8;
-typedef unsigned short Uint16;
+typedef unsigned char UxnU8;
+typedef signed char UxnI8;
+typedef unsigned short UxnU16;
 
 typedef struct UxnStack {
-	Uint8 ptr, dat[255];
+	UxnU8 ptr, dat[255];
 } UxnStack;
 
 typedef struct UxnCore {
-	Uint8 *ram;
+	UxnU8 *ram;
 	UxnStack *wst, *rst;
-	Uint8 (*dei)(struct UxnCore *u, unsigned int address);
+	UxnU8 (*dei)(struct UxnCore *u, unsigned int address);
 	void (*deo)(struct UxnCore *u, unsigned int address, unsigned int value);
-	Uint16 pc, fault_code;
+	UxnU16 pc, fault_code;
 } UxnCore;
 
 #define UXN_FAULT_DONE 1
