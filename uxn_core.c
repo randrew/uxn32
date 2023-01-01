@@ -1,4 +1,4 @@
-#include "core32.h"
+#include "uxn_core.h"
 
 /*
 Copyright (u) 2022 Devine Lu Linvega, Andrew Alderwick, Andrew Richards

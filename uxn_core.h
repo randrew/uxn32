@@ -1,5 +1,5 @@
-#ifndef __UXN_CORE32_H__
-#define __UXN_CORE32_H__
+#ifndef __UXN_CORE_H__
+#define __UXN_CORE_H__
 /*
 Copyright (c) 2022 Devine Lu Linvega, Andrew Richards
 

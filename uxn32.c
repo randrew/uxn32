@@ -1,7 +1,7 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include "resource.h"
-#include "core32.h"
+#include "uxn_core.h"
 #include <windows.h>
 #include <windowsx.h>
 #include <shellapi.h>
