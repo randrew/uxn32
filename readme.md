@@ -76,7 +76,7 @@ If you want to use MinGW on a Linux host to produce an executable for Windows, y
 
 ### Other
 
-Building with some other system or by hand is easy. There's only one resource file, `uxn32.rc`, and two source files, `uxn32.c` and `core32.c`. You don't need any special compiler flags or preprocessor definitions. But you will need to link these libraries: `user32.lib gdi32.lib shell32.lib shlwapi.lib comdlg32.lib comctl32.lib winmm.lib`
+Building with some other system or by hand is easy. There's only one resource file, `uxn32.rc`, and two source files, `uxn32.c` and `uxn_core.c`. You don't need any special compiler flags or preprocessor definitions. But you will need to link these libraries: `user32.lib gdi32.lib shell32.lib shlwapi.lib comdlg32.lib comctl32.lib winmm.lib`
 
 Uxn32 TODO
 ----------
