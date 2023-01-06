@@ -63,6 +63,9 @@ typedef ULONG_PTR DWORD_PTR, *PDWORD_PTR;
 #define UXN_SAMPLE_RATE 44100
 #define UXN_VOICES 4
 
+#define UXN_FAULT_DEBUG 254
+#define UXN_FAULT_QUIT 255
+
 #define VV_SYSTEM	0x00
 #define VV_CONSOLE	0x10
 #define VV_SCREEN	0x20
@@ -887,8 +890,8 @@ static void UxnDeviceWrite_Cold(UxnBox *box, UINT address, UINT value)
 		{
 		case 0x2: box->work_stack.ptr = (UxnU8)value; break;
 		case 0x3: box->ret_stack.ptr = (UxnU8)value; break;
-		case 0xE: box->core.fault_code = 254; break;
-		case 0xF: box->core.fault_code = 255; break;
+		case 0xE: box->core.fault_code = UXN_FAULT_DEBUG; break;
+		case 0xF: box->core.fault_code = UXN_FAULT_QUIT; break;
 		default: if (port > 0x7 && port < 0xE)
 		{
 			UxnU8 *addr = imem + 0x8;
@@ -1157,7 +1160,7 @@ static void RunUxn(EmuWindow *d, UINT steps, BOOL initial)
 		if (u->fault_code) break;
 		if (t_delta > ExecutionTimeLimit || steps) goto residual;
 	}
-	/* TODO add checkbox to enable this if (u->wst->ptr || u->rst->ptr) u->fault_code = 127; */
+	/* TODO add checkbox to enable this debris check if (u->wst->ptr || u->rst->ptr) u->fault_code = 127; */
 	if (u->fault_code != UXN_FAULT_DONE)
 	{
 		/* If there's a division by zero, push 0xFF onto the stack to rebalance it. Then, if the user hits resume, the program has a better chance of not faulting again. */
@@ -1169,6 +1172,14 @@ static void RunUxn(EmuWindow *d, UINT steps, BOOL initial)
 			for (; i <= count; i++) s->dat[s->ptr++] = 0xFF;
 		}
 		PauseVM(d);
+		/* This particular fault code means ROM program requested to 'quit'. What should we do?
+		 * If Beetbug isn't open, then close the emulator window.
+		 * If Beetbug is open, then let Beetbug show that the ROM wanted to quit. */
+		if (u->fault_code == UXN_FAULT_QUIT && !IsWindowVisible(d->beetbugHWnd))
+		{
+			PostMessage(d->hWnd, WM_CLOSE, 0, 0);
+			return;
+		}
 		InvalidateUxnScreenRect(d);
 		ShowBeetbugInstruction(d, u->pc);
 		return;
@@ -1460,13 +1471,13 @@ static void UpdateBeetbugStuff(HWND hWnd, BeetbugWin *d)
 		LPCSTR text = NULL;
 		switch (d->sbar_fault = d->emu->box->core.fault_code)
 		{
-		case 1:   text = TEXT("Break"); break;
-		case 2:   text = TEXT("Stack underflow"); break;
-		case 3:   text = TEXT("Stack overflow"); break;
-		case 4:   text = TEXT("Division by zero"); break;
-		case 127: text = TEXT("Stack debris"); break;
-		case 254: text = TEXT("Debug device break"); break;
-		case 255: text = TEXT("Program requested exit"); break;
+		case UXN_FAULT_DONE: text = TEXT("Break"); break;
+		case UXN_FAULT_STACK_UNDERFLOW: text = TEXT("Stack underflow"); break;
+		case UXN_FAULT_STACK_OVERFLOW: text = TEXT("Stack overflow"); break;
+		case UXN_FAULT_DIVIDE_BY_ZERO: text = TEXT("Division by zero"); break;
+		/* case 127: text = TEXT("Stack debris"); break; */ /* TODO search debris */
+		case UXN_FAULT_DEBUG: text = TEXT("Debug device break"); break;
+		case UXN_FAULT_QUIT: text = TEXT("Program requested exit"); break;
 		}
 		SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 4, (LPARAM)text);
 	}
