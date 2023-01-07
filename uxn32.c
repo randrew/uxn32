@@ -247,7 +247,7 @@ typedef struct EmuWindow
 	LONGLONG last_paint, instr_count;
 
 	RECT viewport_rect;
-	LONG viewport_scale; /* really only need 1 bit for this... */
+	LONG viewport_scale;
 	UxnScreen screen;
 	UxnFiler filers[2];
 	UxnVoice synth_voices[UXN_VOICES];
