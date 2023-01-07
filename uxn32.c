@@ -277,7 +277,7 @@ enum
 typedef struct BeetbugWin {
 	EmuWindow *emu;
 	HWND ctrls[BB_MAX];
-	USHORT sbar_pc, sbar_fault;
+	USHORT sbar_pc, sbar_fault, sbar_flashing;
 	LONGLONG sbar_instrcount;
 	RECT rcBlank, rcWstLabel, rcRstLabel, rcDevMemLabel;
 	BYTE sbar_play_mode, sbar_input_event;
@@ -1441,7 +1441,8 @@ static void UpdateBeetbugStuff(HWND hWnd, BeetbugWin *d)
 	for (i = 0; i < 2; i++) InvalidateRect(hWnd, &d->rcWstLabel + i, FALSE);
 	if (d->sbar_play_mode != new_play)
 	{
-		SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 0, (LPARAM)(play_texts[d->sbar_play_mode = new_play]));
+		if (d->sbar_play_mode) d->sbar_flashing |= 1 << 0, SetTimer(hWnd, BB_Status + 0, 250, NULL);
+		SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 0 | SBT_OWNERDRAW, (LPARAM)(play_texts[d->sbar_play_mode = new_play]));
 		SetWindowText(d->ctrls[BB_PauseBtn], new_play == 1 ? TEXT("Pause (F9)") : TEXT("Resume (F9)"));
 	}
 	if (d->sbar_input_event != d->emu->last_event)
@@ -1479,7 +1480,8 @@ static void UpdateBeetbugStuff(HWND hWnd, BeetbugWin *d)
 		case UXN_FAULT_DEBUG: text = TEXT("Debug device break"); break;
 		case UXN_FAULT_QUIT: text = TEXT("Program requested exit"); break;
 		}
-		SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 4, (LPARAM)text);
+		if (d->sbar_fault) d->sbar_flashing |= 1 << 4, SetTimer(hWnd, BB_Status + 4, 250, NULL);
+		SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 4 | SBT_OWNERDRAW, (LPARAM)text);
 	}
 	if (IsWindowEnabled(d->ctrls[BB_BigStepBtn]) != step_ctrls)
 	{
@@ -1633,6 +1635,15 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		EndPaint(hWnd, &ps);
 		break;
 	}
+	case WM_DRAWITEM:
+		if (wParam == BB_Status) /* Sometimes, some status bar parts flash by drawing inverted */
+		{
+			DRAWITEMSTRUCT *dis = (DRAWITEMSTRUCT *)lParam;
+			DrawStatusText(dis->hDC, &dis->rcItem, (LPCSTR)dis->itemData, SBT_NOBORDERS);
+			if (d->sbar_flashing & (1 << dis->itemID)) InvertRect(dis->hDC, &dis->rcItem);
+			return 0;
+		}
+		break;
 	case WM_ACTIVATE:
 		if (wParam != WA_INACTIVE) SetFocus(d->ctrls[BB_AsmList]);
 		return 0;
@@ -1797,7 +1808,17 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		break;
 	}
 	case WM_TIMER:
-		if (wParam == 1) { UpdateBeetbugStuff(hWnd, d); return 0; }
+		switch (wParam)
+		{
+		RECT rc;
+		case 1: UpdateBeetbugStuff(hWnd, d); return 0;
+		case BB_Status + 0: case BB_Status + 4: /* Timers for unflashing status bar parts */
+			KillTimer(hWnd, wParam);
+			d->sbar_flashing &= ~(1 << (wParam - BB_Status)); /* Clear flashing flag bit for this item */
+			SendMessage(d->ctrls[BB_Status], SB_GETRECT, wParam - BB_Status, (LPARAM)&rc);
+			InvalidateRect(d->ctrls[BB_Status], &rc, FALSE);
+			return 0;
+		}
 		break;
 	}
 	return DefWindowProc(hWnd, msg, wParam, lParam);
