@@ -206,6 +206,16 @@ typedef struct UxnFiler
 	} state;
 } UxnFiler;
 
+#define UXN_METADATA_ID_DEVMASK 0x41
+#define UXN_METADATA_ID_ICON 0x83
+
+typedef struct UxnMetadata
+{
+	BYTE is_valid, uxn_version, fields;
+	CHAR text[252 * 2 + 1]; /* Longest expected string */
+	USHORT devmask, icon_offset; /* Icon offset not guaranteed to be valid or in bounds */
+} UxnMetadata;
+
 enum { TimerID_Screen60hz = 1, TimerID_InitAudio, TimerID_FlushConsole };
 enum { UXNMSG_ContinueExec = WM_USER, UXNMSG_BecomeClone };
 enum EmuIn
@@ -255,6 +265,7 @@ typedef struct EmuWindow
 
 	BYTE needs_audio; /* 3 states, 0: not needed, 1: plz init, 2: init started */
 	TCHAR rom_path[MAX_PATH];
+	UxnMetadata meta;
 } EmuWindow;
 
 typedef struct ConWindow
@@ -779,7 +790,49 @@ static void FlushUxnConsole(ConWindow *con, HWND hWnd)
 	con->count = 0;
 }
 
-static BOOL LoadROMIntoBox(UxnBox *box, LPCSTR filename)
+enum MetaError { MetaError_WrongStart = 1, MetaError_OutOfData, MetaError_StringTooLarge };
+enum { MetaField_Text = 1 << 0, MetaField_DevMask = 1 << 1 };
+
+/* TODO do we want to split this stuff into like: read address of static metadata, then ingest metadata? that's one way to share code between ROM file reading to get metadata, and emulator DEI handling to update metadata. and use flags to determine what to read? (the MetaField flags, is what i'm thinking with them) */
+static int ReadUxnMetadata(BYTE *rom_data, DWORD data_size, UxnMetadata* meta)
+{
+	DWORD offset, i, num_fields, field_id, field_value;
+	CHAR c;
+	if (data_size < 6 || rom_data[0] != 0xA0 || rom_data[3] != 0x80 || rom_data[4] != 0x06 || rom_data[5] != 0x37) return MetaError_WrongStart;
+	offset = (rom_data[1] << 8) + rom_data[2];
+	offset -= UXN_ROM_OFFSET; /* uxnasm is still outputting the wrong address, hack to find it */
+	if (offset >= data_size) return MetaError_OutOfData;
+	meta->uxn_version = rom_data[offset++];
+	for (i = 0;;) /* string */
+	{
+		if (offset >= data_size) return MetaError_OutOfData;
+		if (i >= sizeof meta->text - 2) return MetaError_StringTooLarge;
+		if ((c = (CHAR)rom_data[offset++]) == '\n') meta->text[i++] = '\r';
+		if (!(meta->text[i++] = c)) break;
+	}
+	if (offset >= data_size) return MetaError_OutOfData;
+	num_fields = rom_data[offset++];
+	while (num_fields--) /* id + value pair fields */
+	{
+		if (offset + 3 >= data_size) return MetaError_OutOfData;
+		field_id = rom_data[offset];
+		field_value = (rom_data[offset + 1] << 8) + rom_data[offset + 2];
+		switch (field_id)
+		{
+		case UXN_METADATA_ID_DEVMASK: meta->devmask = field_value; break;
+		case UXN_METADATA_ID_ICON: meta->icon_offset = field_value; break;
+		}
+		offset += 3;
+	}
+	meta->is_valid = TRUE;
+	return 0;
+}
+
+// static BOOL ReadStaticUxnVersionFromMetadata(BYTE *rom_data, DWORD data_size, DWORD *out_version)
+// {
+// }
+
+static BOOL LoadROMIntoBox(UxnBox *box, LPCSTR filename, UxnMetadata *meta /* Optional */)
 {
 	DWORD bytes_read;
 	BOOL result = LoadFileInto(filename, (char *)(box + 1) + UXN_ROM_OFFSET, UXN_RAM_SIZE - UXN_ROM_OFFSET, &bytes_read);
@@ -789,6 +842,11 @@ static BOOL LoadROMIntoBox(UxnBox *box, LPCSTR filename)
 		if (res == 0 || res >= MAX_PATH) tmp[0] = 0;
 		/* This error is annoying. Disable it until we think of something better. */
 		/* FmtBox(0, "ROM File Load Error", MB_OK | MB_ICONWARNING, "Tried and failed to load the ROM file:\n\n%s\n\nDoes it exist?", tmp); */
+	}
+	if (meta) /* kinda weird... dunno if i like passing this through like this */
+	{
+		ZeroMemory(meta, sizeof *meta); /* meta->is_valid = FALSE; hmm */
+		if (result) ReadUxnMetadata((BYTE *)(box + 1) + UXN_ROM_OFFSET, bytes_read, meta);
 	}
 	return result;
 }
@@ -893,6 +951,14 @@ static void UxnDeviceWrite_Cold(UxnBox *box, UINT address, UINT value)
 		{
 		case 0x2: box->work_stack.ptr = (UxnU8)value; break;
 		case 0x3: box->ret_stack.ptr = (UxnU8)value; break;
+		case 0x7:
+		{
+			DWORD offset;
+			DEVPEEK(imem, offset, 0x6);
+			offset -= 0x100;
+			DebugPrint("incoming metadata at %#x", offset);
+			break;
+		}
 		case 0xE: box->core.fault_code = UXN_FAULT_DEBUG; break;
 		case 0xF: box->core.fault_code = UXN_FAULT_QUIT; break;
 		default: if (port > 0x7 && port < 0xE)
@@ -1287,8 +1353,18 @@ static void SendInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT 
 
 static void StartVM(EmuWindow *d)
 {
-	if (LoadROMIntoBox(d->box, d->rom_path))
+	if (LoadROMIntoBox(d->box, d->rom_path, &d->meta))
 	{
+		if (d->meta.is_valid && d->meta.uxn_version > 0)
+		{
+			if (FmtBox(d->hWnd, TEXT("Uxn ROM Version Mismatch"), MB_YESNO | MB_ICONWARNING,
+				"The ROM file has the version tag %d, which this version of Uxn32 might not be compatible with.\n"
+				"Do you want to try running this ROM anyway?", (int)d->meta.uxn_version) != IDYES) return;
+		}
+		if (d->meta.is_valid)
+			DebugPrint("metadata: %s", d->meta.text);
+		else
+			DebugPrint("not valid metadata");
 		d->running = 1;
 		SendInputEvent(d, EmuIn_Start, 0, 0, 0);
 	}
