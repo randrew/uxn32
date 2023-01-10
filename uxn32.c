@@ -893,6 +893,13 @@ static void UxnDeviceWrite_Cold(UxnBox *box, UINT address, UINT value)
 		{
 		case 0x2: box->work_stack.ptr = (UxnU8)value; break;
 		case 0x3: box->ret_stack.ptr = (UxnU8)value; break;
+		case 0x5: /* Set window title. Limit to 256 chars. */
+		{
+			BYTE *ram = box->core.ram; DWORD offset, i, n;
+			for (DEVPEEK(imem, offset, 0x4), i = offset, n = 0; i < UXN_RAM_SIZE && n++ < 256;)
+				if (!ram[i++]) { SetWindowTextA(emu->hWnd, (CHAR *)ram + offset); break; }
+			break;
+		}
 		case 0xE: box->core.fault_code = UXN_FAULT_DEBUG; break;
 		case 0xF: box->core.fault_code = UXN_FAULT_QUIT; break;
 		default: if (port > 0x7 && port < 0xE)
