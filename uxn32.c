@@ -1440,6 +1440,59 @@ found:
 	return TRUE;
 }
 
+typedef struct UxnDebugSymbols {
+	UINT count;
+	USHORT *addresses;
+	CHAR **strings;
+	void *buffer;
+} UxnDebugSymbols;
+
+static BOOL LoadUxnDebugSymbols(LPCTSTR path, UxnDebugSymbols *out)
+{
+	DWORD bytes_read, file_size;
+	UINT entry_count, addrs_size, i, e;
+	char *buff = NULL; USHORT *addresses; CHAR **strings;
+	BOOL result = FALSE;
+	HANDLE hFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (hFile == INVALID_HANDLE_VALUE) return FALSE;
+	if ((file_size = GetFileSize(hFile, NULL)) == 0xFFFFFFFF) goto fail;
+	buff = AllocZeroedOrFail(file_size);
+	if (!ReadFile(hFile, buff, file_size, &bytes_read, NULL) || bytes_read != file_size) goto fail;
+	for (entry_count = i = 0; i < file_size; entry_count++) /* Find number of entries */
+	{
+		for (i += 2;;) /* Advance past a 16-bit value, then check for a null terminated string */
+		{
+			if (i >= file_size) goto fail; /* Bad: ragged file or not null terminated string */
+			if (!buff[i++]) break; /* If we find the string's null terminator, move to the next entry. */
+		}
+	}
+	if (entry_count > (UINT)-1 / (sizeof(CHAR *) * 2)) goto fail; /* Some reasonable upper limit */
+	addrs_size = entry_count * sizeof(USHORT) + sizeof(CHAR *) - 1 & ~(sizeof(CHAR *) - 1);
+	/* ^ Size needed to hold array of 16-bit addresses, plus pointer-aligning padding. */
+	addresses = entry_count ? AllocZeroedOrFail(addrs_size + entry_count * sizeof(CHAR *)) : NULL;
+	/* ^ Buffer for: array of 16-bit addresses + pad to pointer + array of char pointers */
+	strings = (CHAR **)((BYTE *)addresses + addrs_size); /* The char pointers array */
+	for (i = e = 0; e < entry_count; e++) /* Set the values in the addresses and char pointers arrays */
+	{
+		addresses[e] = (buff[i] << 8) + buff[i + 1];
+		for (strings[e] = buff + (i += 2); buff[i++];);
+	}
+	out->count = entry_count; out->addresses = addresses; out->strings = strings; out->buffer = buff;
+	result = TRUE;
+done:
+	CloseHandle(hFile);
+	return result;
+fail:
+	HeapFree(GetProcessHeap(), 0, buff);
+	goto done;
+}
+
+static void FreeUxnDebugSymbols(UxnDebugSymbols *a)
+{
+	HeapFree(GetProcessHeap(), 0, a->buffer);
+	HeapFree(GetProcessHeap(), 0, a->addresses);
+}
+
 static void UpdateBeetbugStuff(HWND hWnd, BeetbugWin *d)
 {
 	static const LPCSTR play_texts[] = {0, TEXT("Running"), TEXT("Suspended"), TEXT("Paused")};
@@ -1570,6 +1623,23 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		SetWindowLongPtr(d->ctrls[BB_JumpEdit], GWLP_WNDPROC,  (LONG_PTR)BeetbugJumpEditProc);
 		SendMessage(d->ctrls[BB_JumpEdit], EM_SETLIMITTEXT, 4, 0);
 		SendMessage(d->ctrls[BB_JumpEdit], WM_SETFONT, (WPARAM)hFont, 0);
+		{
+			TCHAR tmp[MAX_PATH]; int pathlen = lstrlen(d->emu->rom_path);
+			UxnDebugSymbols syms; UINT e;
+			if (pathlen < MAX_PATH - 4)
+			{
+				CopyMemory(tmp, d->emu->rom_path, pathlen * sizeof(TCHAR));
+				CopyMemory(tmp + pathlen, TEXT(".sym"), 5 * sizeof(TCHAR));
+				if (LoadUxnDebugSymbols(tmp, &syms))
+				{
+					for (e = 0; e < syms.count; e++)
+					{
+						DebugPrint("#%u - Symbol at %#X: %s", e, (UINT)syms.addresses[e], syms.strings[e]);
+					}
+					FreeUxnDebugSymbols(&syms);
+				}
+			}
+		}
 		UpdateBeetbugStuff(hWnd, d);
 		SetTimer(hWnd, 1, 50, NULL);
 		break;
