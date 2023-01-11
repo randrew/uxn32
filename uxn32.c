@@ -1477,6 +1477,15 @@ static BOOL LoadUxnDebugSymbols(LPCTSTR path, UxnDebugSymbols *out)
 		addresses[e] = (buff[i] << 8) + buff[i + 1];
 		for (strings[e] = buff + (i += 2); buff[i++];);
 	}
+	for (i = 1; i < entry_count; i++) /* Insertion sort, to make it binary searchable */
+	{
+		USHORT t = addresses[i]; CHAR *u = strings[i]; /* tmp vars */
+		for (e = i; e > 0 && addresses[e - 1] > t; e--)
+		{
+			addresses[e] = addresses[e - 1], addresses[e - 1] = t;
+			strings[e] = strings[e - 1], strings[e - 1] = u;
+		}
+	}
 	out->count = entry_count; out->addresses = addresses; out->strings = strings; out->buffer = buff;
 	result = TRUE;
 done:
@@ -1487,10 +1496,26 @@ fail:
 	goto done;
 }
 
-static void FreeUxnDebugSymbols(UxnDebugSymbols *a)
+static void FreeUxnDebugSymbols(UxnDebugSymbols *s)
 {
-	HeapFree(GetProcessHeap(), 0, a->buffer);
-	HeapFree(GetProcessHeap(), 0, a->addresses);
+	HeapFree(GetProcessHeap(), 0, s->buffer);
+	HeapFree(GetProcessHeap(), 0, s->addresses);
+}
+
+/* Returns the index (0 through UINT_MAX-1) for the symbol whose address that's equal to or earlier than 'address'.
+ * Returns (UINT)-1 if no symbol was found. */
+static UINT FindSymbolForAddress(UxnDebugSymbols *s, USHORT address)
+{
+	USHORT *addrs = s->addresses;
+	UINT count = s->count, first = 0, i, step;
+	while (count > 0) /* Binary search */
+	{
+		step = count / 2;
+		i = first + step;
+		if (addrs[i] <= address) { first = ++i; count -= step + 1; }
+		else count = step;
+	}
+	return first - 1;
 }
 
 static void UpdateBeetbugStuff(HWND hWnd, BeetbugWin *d)
@@ -1636,6 +1661,8 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					{
 						DebugPrint("#%u - Symbol at %#X: %s", e, (UINT)syms.addresses[e], syms.strings[e]);
 					}
+					UINT idx = FindSymbolForAddress(&syms, 0x162C);
+					DebugPrint("found index %u with address %#X", idx, syms.addresses[idx]);
 					FreeUxnDebugSymbols(&syms);
 				}
 			}
