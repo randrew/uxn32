@@ -96,8 +96,7 @@ static HINSTANCE MainInstance;
 static LPCSTR EmuWinClass = TEXT("uxn_emu_win"), ConsoleWinClass = TEXT("uxn_console_win"), EditWinClass = TEXT("EDIT");
 static LPCSTR BeetbugWinClass = TEXT("uxn_beetbug_win");
 static LPCSTR DefaultROMPath = TEXT("launcher.rom");
-static LPWSTR *cmdline_args;
-static int cmdline_arg_count;
+static LPWSTR *CmdLineArgs; static int CmdLineArgCount;
 
 static LONGLONG LongLongMulDiv(LONGLONG value, LONGLONG numer, LONGLONG denom)
 {
@@ -2309,12 +2308,12 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		UpdateWindow(d->hWnd);
 		return 0;
 	}
-	case UXNMSG_SendArgs: if (!cmdline_args) break;
+	case UXNMSG_SendArgs: if (!CmdLineArgs) break;
 	/* Send any additional arguments as virtual console input */
 	{
 		int arg, i, n; CHAR buff[256];
-		for (arg = 2; arg < cmdline_arg_count; arg++)
-			if ((n = WideCharToMultiByte(CP_ACP, 0, cmdline_args[arg], -1, buff, sizeof buff, NULL, NULL)))
+		for (arg = 2; arg < CmdLineArgCount; arg++)
+			if ((n = WideCharToMultiByte(CP_ACP, 0, CmdLineArgs[arg], -1, buff, sizeof buff, NULL, NULL)))
 			{
 				buff[n - 1] = '\n';
 				for (i = 0; i < n; i++) SendInputEvent(d, EmuIn_Console, buff[i], 0, 0);
@@ -2342,9 +2341,9 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	if ((Ptr_GetCommandLineW = (Type_GetCommandLineW *)GetProcAddress(GetModuleHandle(TEXT("kernel32.dll")), "GetCommandLineW")) &&
 		(Ptr_CommandLineToArgvW = (Type_CommandLineToArgvW *)GetProcAddress(GetModuleHandle(TEXT("shell32.dll")), "CommandLineToArgvW")))
 	{
-		if ((cmdline_args = Ptr_CommandLineToArgvW(Ptr_GetCommandLineW(), &cmdline_arg_count)) && cmdline_arg_count > 1)
+		if ((CmdLineArgs = Ptr_CommandLineToArgvW(Ptr_GetCommandLineW(), &CmdLineArgCount)) && CmdLineArgCount > 1)
 		{
-			if (!WideCharToMultiByte(CP_ACP, 0, cmdline_args[1], -1, emu->rom_path, sizeof emu->rom_path, NULL, NULL))
+			if (!WideCharToMultiByte(CP_ACP, 0, CmdLineArgs[1], -1, emu->rom_path, sizeof emu->rom_path, NULL, NULL))
 				FatalBox("The command line argument for the file path was too long, or contained characters that couldn't be handled by this program.");
 		}
 	}
