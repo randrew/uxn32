@@ -30,7 +30,7 @@ WITH REGARD TO THIS SOFTWARE.
 #define DEVW(x, y) { if(bs) { u->deo(u, (x), (y) >> 8); u->deo(u, ((x) + 1) & 0xFF, (y)); } else u->deo(u, x, (y)); }
 #define WARP(x) { if(bs) pc = (x); else pc += (UxnI8)(x); }
 
-#define DISPATCH(opcode, body) \
+#define MODAL(opcode, body) \
 	case opcode|0x80|0x40|0x20: {enum{bs=1}; src = u->rst, dst = u->wst; kptr = src->ptr, sp = &kptr; body break;}\
 	case opcode|0x80|0x40|0x00: {enum{bs=0}; src = u->rst, dst = u->wst; kptr = src->ptr, sp = &kptr; body break;}\
 	case opcode|0x80|0x00|0x20: {enum{bs=1}; src = u->wst, dst = u->rst; kptr = src->ptr, sp = &kptr; body break;}\
@@ -54,43 +54,50 @@ UxnExec(UxnCore *u, unsigned int limit)
 		pc = (pc + 1) & 0xFFFFu;
 		if (!instr) { u->fault_code = 1; goto done; } // TODO
 		switch(instr) {
-		// /* BRK */ case 0x00: u->fault_code = 1; goto done;
-		DISPATCH(0x00, if(bs) { PEEK16(a, pc) PUSH16(src, a) pc += 2; } else { a = u->ram[pc]; PUSH8(src, a) pc++; } )
+	/* Literal & Call */
+		/* BRK */ case 0x00: u->fault_code = 1; goto done;
+		/* JCI */ case 0x20: sp = &u->wst->ptr, src = u->wst; POP8(b) if(b) goto JMI; pc += 2; break;
+		/* JMI */ case 0x40: JMI: PEEK16(a, pc) pc += a + 2; break;
+		/* JSI */ case 0x60: PUSH16(u->rst, pc + 2) goto JMI;
+		/* LIT */ case 0x80: a = u->ram[pc++]; PUSH8(u->wst, a); break;
+		          case 0xA0: PEEK16(a, pc) PUSH16(u->wst, a) pc += 2; break;
+			      case 0xC0: a = u->ram[pc++]; PUSH8(u->rst, a); break;
+			      case 0xE0: PEEK16(a, pc) PUSH16(u->rst, a) pc += 2; break;
 	/* Stack */
-		/* INC */ DISPATCH(0x01, POP(a) PUSH(src, a + 1) )
-		/* POP */ DISPATCH(0x02, POP(a) )
-		/* NIP */ DISPATCH(0x03, POP(a) POP(b) PUSH(src, a) )
-		/* SWP */ DISPATCH(0x04, POP(a) POP(b) PUSH(src, a) PUSH(src, b) )
-		/* ROT */ DISPATCH(0x05, POP(a) POP(b) POP(c) PUSH(src, b) PUSH(src, a) PUSH(src, c) )
-		/* DUP */ DISPATCH(0x06, POP(a) PUSH(src, a) PUSH(src, a) )
-		/* OVR */ DISPATCH(0x07, POP(a) POP(b) PUSH(src, b) PUSH(src, a) PUSH(src, b) )
+		/* INC */ MODAL(0x01, POP(a) PUSH(src, a + 1) )
+		/* POP */ MODAL(0x02, POP(a) )
+		/* NIP */ MODAL(0x03, POP(a) POP(b) PUSH(src, a) )
+		/* SWP */ MODAL(0x04, POP(a) POP(b) PUSH(src, a) PUSH(src, b) )
+		/* ROT */ MODAL(0x05, POP(a) POP(b) POP(c) PUSH(src, b) PUSH(src, a) PUSH(src, c) )
+		/* DUP */ MODAL(0x06, POP(a) PUSH(src, a) PUSH(src, a) )
+		/* OVR */ MODAL(0x07, POP(a) POP(b) PUSH(src, b) PUSH(src, a) PUSH(src, b) )
 	/* Logic */
-		/* EQU */ DISPATCH(0x08, POP(a) POP(b) PUSH8(src, b == a) )
-		/* NEQ */ DISPATCH(0x09, POP(a) POP(b) PUSH8(src, b != a) )
-		/* GTH */ DISPATCH(0x0A, POP(a) POP(b) PUSH8(src, b > a) )
-		/* LTH */ DISPATCH(0x0B, POP(a) POP(b) PUSH8(src, b < a) )
-		/* JMP */ DISPATCH(0x0C, POP(a) WARP(a) )
-		/* JCN */ DISPATCH(0x0D, POP(a) POP8(b) if(b) WARP(a) )
-		/* JSR */ DISPATCH(0x0E, POP(a) PUSH16(dst, pc) WARP(a) )
-		/* STH */ DISPATCH(0x0F, POP(a) PUSH(dst, a) )
+		/* EQU */ MODAL(0x08, POP(a) POP(b) PUSH8(src, b == a) )
+		/* NEQ */ MODAL(0x09, POP(a) POP(b) PUSH8(src, b != a) )
+		/* GTH */ MODAL(0x0A, POP(a) POP(b) PUSH8(src, b > a) )
+		/* LTH */ MODAL(0x0B, POP(a) POP(b) PUSH8(src, b < a) )
+		/* JMP */ MODAL(0x0C, POP(a) WARP(a) )
+		/* JCN */ MODAL(0x0D, POP(a) POP8(b) if(b) WARP(a) )
+		/* JSR */ MODAL(0x0E, POP(a) PUSH16(dst, pc) WARP(a) )
+		/* STH */ MODAL(0x0F, POP(a) PUSH(dst, a) )
 	/* Memory */
-		/* LDZ */ DISPATCH(0x10, POP8(a) PEEK(b, a) PUSH(src, b) )
-		/* STZ */ DISPATCH(0x11, POP8(a) POP(b) POKE(a, b) )
-		/* LDR */ DISPATCH(0x12, POP8(a) PEEK(b, pc + (UxnI8)a) PUSH(src, b) )
-		/* STR */ DISPATCH(0x13, POP8(a) POP(b) c = pc + (UxnI8)a; POKE(c, b) )
-		/* LDA */ DISPATCH(0x14, POP16(a) PEEK(b, a) PUSH(src, b) )
-		/* STA */ DISPATCH(0x15, POP16(a) POP(b) POKE(a, b) )
-		/* DEI */ DISPATCH(0x16, POP8(a) DEVR(b, a) PUSH(src, b) )
-		/* DEO */ DISPATCH(0x17, POP8(a) POP(b) DEVW(a, b) if (u->fault_code) goto done; )
+		/* LDZ */ MODAL(0x10, POP8(a) PEEK(b, a) PUSH(src, b) )
+		/* STZ */ MODAL(0x11, POP8(a) POP(b) POKE(a, b) )
+		/* LDR */ MODAL(0x12, POP8(a) PEEK(b, pc + (UxnI8)a) PUSH(src, b) )
+		/* STR */ MODAL(0x13, POP8(a) POP(b) c = pc + (UxnI8)a; POKE(c, b) )
+		/* LDA */ MODAL(0x14, POP16(a) PEEK(b, a) PUSH(src, b) )
+		/* STA */ MODAL(0x15, POP16(a) POP(b) POKE(a, b) )
+		/* DEI */ MODAL(0x16, POP8(a) DEVR(b, a) PUSH(src, b) )
+		/* DEO */ MODAL(0x17, POP8(a) POP(b) DEVW(a, b) if (u->fault_code) goto done; )
 	/* Arithmetic */
-		/* ADD */ DISPATCH(0x18, POP(a) POP(b) PUSH(src, b + a) )
-		/* SUB */ DISPATCH(0x19, POP(a) POP(b) PUSH(src, b - a) )
-		/* MUL */ DISPATCH(0x1A, POP(a) POP(b) PUSH(src, (unsigned int)b * a) )
-		/* DIV */ DISPATCH(0x1B, POP(a) POP(b) if(a == 0) { u->fault_code = 4; goto done; } PUSH(src, b / a) )
-		/* AND */ DISPATCH(0x1C, POP(a) POP(b) PUSH(src, b & a) )
-		/* ORA */ DISPATCH(0x1D, POP(a) POP(b) PUSH(src, b | a) )
-		/* EOR */ DISPATCH(0x1E, POP(a) POP(b) PUSH(src, b ^ a) )
-		/* SFT */ DISPATCH(0x1F, POP8(a) POP(b) c = b >> (a & 0x0F) << ((a & 0xF0) >> 4); PUSH(src, c) )
+		/* ADD */ MODAL(0x18, POP(a) POP(b) PUSH(src, b + a) )
+		/* SUB */ MODAL(0x19, POP(a) POP(b) PUSH(src, b - a) )
+		/* MUL */ MODAL(0x1A, POP(a) POP(b) PUSH(src, (unsigned int)b * a) )
+		/* DIV */ MODAL(0x1B, POP(a) POP(b) if(a == 0) { u->fault_code = 4; goto done; } PUSH(src, b / a) )
+		/* AND */ MODAL(0x1C, POP(a) POP(b) PUSH(src, b & a) )
+		/* ORA */ MODAL(0x1D, POP(a) POP(b) PUSH(src, b | a) )
+		/* EOR */ MODAL(0x1E, POP(a) POP(b) PUSH(src, b ^ a) )
+		/* SFT */ MODAL(0x1F, POP8(a) POP(b) c = b >> (a & 0x0F) << ((a & 0xF0) >> 4); PUSH(src, c) )
 		}
 	}
 done:
