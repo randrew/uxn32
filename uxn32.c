@@ -206,6 +206,13 @@ typedef struct UxnFiler
 	} state;
 } UxnFiler;
 
+typedef struct UxnDebugSymbols {
+	UINT count;
+	USHORT *addresses;
+	CHAR **strings;
+	void *buffer;
+} UxnDebugSymbols;
+
 enum { TimerID_Screen60hz = 1, TimerID_InitAudio, TimerID_FlushConsole };
 enum { UXNMSG_ContinueExec = WM_USER, UXNMSG_BecomeClone };
 enum EmuIn
@@ -280,6 +287,7 @@ typedef struct BeetbugWin {
 	USHORT sbar_pc, sbar_fault, sbar_flashing;
 	LONGLONG sbar_instrcount;
 	RECT rcBlank, rcWstLabel, rcRstLabel, rcDevMemLabel;
+	UxnDebugSymbols symbols;
 	BYTE sbar_play_mode, sbar_input_event;
 } BeetbugWin;
 
@@ -1115,7 +1123,7 @@ static void OpenBeetbugWindow(EmuWindow *emu, BOOL force)
 	{
 		emu->beetbugHWnd = CreateWindowEx(
 			0, BeetbugWinClass, TEXT("Beetbug"), WS_OVERLAPPEDWINDOW,
-			CW_USEDEFAULT, CW_USEDEFAULT, 480, 395,
+			CW_USEDEFAULT, CW_USEDEFAULT, 530, 395,
 			emu->hWnd, NULL, MainInstance, emu);
 	}
 	if (!IsWindowVisible(emu->beetbugHWnd)) ShowWindow(emu->beetbugHWnd, SW_SHOW);
@@ -1440,13 +1448,6 @@ found:
 	return TRUE;
 }
 
-typedef struct UxnDebugSymbols {
-	UINT count;
-	USHORT *addresses;
-	CHAR **strings;
-	void *buffer;
-} UxnDebugSymbols;
-
 static BOOL LoadUxnDebugSymbols(LPCTSTR path, UxnDebugSymbols *out)
 {
 	DWORD bytes_read, file_size;
@@ -1605,7 +1606,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	{
 		LONG_PTR i, j; HWND list; LV_COLUMN col; HFONT hFont = GetSmallFixedFont();
 		static const int
-			columns[] = { /* Instr list */ 45 + 25 + 50, /* Hex list */ 40 + 130,
+			columns[] = { /* Instr list */ 45 + 25 + 50 + 90, /* Hex list */ 40 + 130,
 			              /* Stacks */ 25, 25, /* Device mem */ 20 + 130},
 			rows[] = {UXN_RAM_SIZE, UXN_RAM_SIZE / 8, 255, 255, 256 / 8},
 			status_parts[] = {70, 140, 200, 300, -1};
@@ -1650,21 +1651,11 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		SendMessage(d->ctrls[BB_JumpEdit], WM_SETFONT, (WPARAM)hFont, 0);
 		{
 			TCHAR tmp[MAX_PATH]; int pathlen = lstrlen(d->emu->rom_path);
-			UxnDebugSymbols syms; UINT e;
-			if (pathlen < MAX_PATH - 4)
+			if (pathlen < MAX_PATH - 5)
 			{
 				CopyMemory(tmp, d->emu->rom_path, pathlen * sizeof(TCHAR));
 				CopyMemory(tmp + pathlen, TEXT(".sym"), 5 * sizeof(TCHAR));
-				if (LoadUxnDebugSymbols(tmp, &syms))
-				{
-					for (e = 0; e < syms.count; e++)
-					{
-						DebugPrint("#%u - Symbol at %#X: %s", e, (UINT)syms.addresses[e], syms.strings[e]);
-					}
-					UINT idx = FindSymbolForAddress(&syms, 0x162C);
-					DebugPrint("found index %u with address %#X", idx, syms.addresses[idx]);
-					FreeUxnDebugSymbols(&syms);
-				}
+				LoadUxnDebugSymbols(tmp, &d->symbols);
 			}
 		}
 		UpdateBeetbugStuff(hWnd, d);
@@ -1675,6 +1666,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		ShowWindow(hWnd, SW_HIDE);
 		return 0;
 	case WM_DESTROY:
+		FreeUxnDebugSymbols(&d->symbols);
 		HeapFree(GetProcessHeap(), 0, d);
 		break;
 	case WM_SIZE:
@@ -1685,7 +1677,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		GetClientRect(d->ctrls[BB_Status], &tmp);
 		MapWindowPoints(d->ctrls[BB_Status], hWnd, (LPPOINT)&tmp, 2); /* must violate strict aliasing */
 		r.bottom = tmp.top;
-		CutRect(&r, FromLeft, 200, &tmp);
+		CutRect(&r, FromLeft, 250, &tmp);
 		CutRect(&tmp, FromBottom, 15, &tmp2);
 		CutRectForWindow(&tmp2, FromLeft, 50, d->ctrls[BB_JumpEdit]);
 		MoveWindowRect(d->ctrls[BB_JumpBtn], &tmp2, TRUE);
@@ -1797,8 +1789,8 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			hEdit = ListView_EditLabel(d->ctrls[wParam], ((NMITEMACTIVATE *)lParam)->iItem);
 		custom_edit:
 			if (!hEdit || wParam != BB_AsmList) return 0;
-			GetWindowText(hEdit, buff, 256);
 			for (i = 0; i < 10; i++) buff[i] = ' ';
+			DecodeUxnOpcode(buff + i, d->emu->box->core.ram[((NMITEMACTIVATE *)lParam)->iItem]);
 			SetWindowText(hEdit, buff);
 			SendMessage(hEdit, EM_SETSEL, 10, -1);
 			return 0;
@@ -1822,14 +1814,19 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		case LVN_GETDISPINFO:
 		{
 			TCHAR buff[256]; UxnCore *core = &d->emu->box->core; LV_DISPINFO *di = (LV_DISPINFO *)lParam;
-			UINT iItem = di->item.iItem, addr = iItem; BYTE *mem; UxnStack *stack;
+			UINT iItem = di->item.iItem, addr = iItem, sym; BYTE *mem; UxnStack *stack;
 			if (!(di->item.mask & LVIF_TEXT)) return 0;
 			buff[0] = 0;
 			switch (wParam)
 			{
 			case BB_AsmList:
 				iItem = wsprintf(buff, "%c %04X %02X ", core->pc == addr ? '>' : ' ', (UINT)addr, (UINT)core->ram[addr]);
-				DecodeUxnOpcode(buff + iItem, (BYTE)core->ram[addr]);
+				iItem += DecodeUxnOpcode(buff + iItem, (BYTE)core->ram[addr]);
+				if ((sym = FindSymbolForAddress(&d->symbols, addr)) < d->symbols.count && d->symbols.addresses[sym] == addr)
+				{
+					while (iItem < 17) buff[iItem++] = ' ';
+					lstrcpynA(buff + iItem, d->symbols.strings[sym], 256 - iItem);
+				}
 				break;
 			case BB_HexList:
 				addr *= 8; mem = core->ram + addr;
