@@ -38,8 +38,7 @@ WITH REGARD TO THIS SOFTWARE.
 	case opcode|0x00|0x40|0x20: {enum{bs=1}; src = u->rst, dst = u->wst; sp = &src->ptr; body break;}\
 	case opcode|0x00|0x40|0x00: {enum{bs=0}; src = u->rst, dst = u->wst; sp = &src->ptr; body break;}\
 	case opcode|0x00|0x00|0x20: {enum{bs=1}; src = u->wst, dst = u->rst; sp = &src->ptr; body break;}\
-	case opcode|0x00|0x00|0x00: {enum{bs=0}; src = u->wst, dst = u->rst; sp = &src->ptr; body break;}\
-
+	case opcode|0x00|0x00|0x00: {enum{bs=0}; src = u->wst, dst = u->rst; sp = &src->ptr; body break;}
 
 unsigned int
 UxnExec(UxnCore *u, unsigned int limit)
@@ -58,8 +57,8 @@ UxnExec(UxnCore *u, unsigned int limit)
 		/* JSI */ case 0x60: PUSH16(u->rst, pc + 2) goto JMI;
 		/* LIT */ case 0x80: a = u->ram[pc++]; PUSH8(u->wst, a); break;
 		          case 0xA0: PEEK16(a, pc) PUSH16(u->wst, a) pc += 2; break;
-			      case 0xC0: a = u->ram[pc++]; PUSH8(u->rst, a); break;
-			      case 0xE0: PEEK16(a, pc) PUSH16(u->rst, a) pc += 2; break;
+		          case 0xC0: a = u->ram[pc++]; PUSH8(u->rst, a); break;
+		          case 0xE0: PEEK16(a, pc) PUSH16(u->rst, a) pc += 2; break;
 		/* INC */ MODE(0x01, POP(a) PUSH(src, a + 1) )
 		/* POP */ MODE(0x02, POP(a) )
 		/* NIP */ MODE(0x03, POP(a) POP(b) PUSH(src, a) )
@@ -86,7 +85,7 @@ UxnExec(UxnCore *u, unsigned int limit)
 		/* ADD */ MODE(0x18, POP(a) POP(b) PUSH(src, b + a) )
 		/* SUB */ MODE(0x19, POP(a) POP(b) PUSH(src, b - a) )
 		/* MUL */ MODE(0x1A, POP(a) POP(b) PUSH(src, (unsigned int)b * a) )
-		/* DIV */ MODE(0x1B, POP(a) POP(b) if(a == 0) { u->fault_code = 4; goto done; } PUSH(src, b / a) )
+		/* DIV */ MODE(0x1B, POP(a) POP(b) if(!a) { u->fault_code = 4; goto done; } PUSH(src, b / a) )
 		/* AND */ MODE(0x1C, POP(a) POP(b) PUSH(src, b & a) )
 		/* ORA */ MODE(0x1D, POP(a) POP(b) PUSH(src, b | a) )
 		/* EOR */ MODE(0x1E, POP(a) POP(b) PUSH(src, b ^ a) )
