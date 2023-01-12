@@ -214,7 +214,7 @@ typedef struct UxnDebugSymbols {
 } UxnDebugSymbols;
 
 enum { TimerID_Screen60hz = 1, TimerID_InitAudio, TimerID_FlushConsole };
-enum { UXNMSG_ContinueExec = WM_USER, UXNMSG_BecomeClone };
+enum { UXNMSG_ContinueExec = WM_USER, UXNMSG_BecomeClone, UXNMSG_LoadSymbols };
 enum EmuIn
 {
 	EmuIn_KeyChar = 1,
@@ -1316,6 +1316,7 @@ static void ReloadFromROMFile(EmuWindow *d)
 	StartVM(d);
 	SynthesizeMouseMoveToCurrent(d); /* Still has a brief flicker of wrong cursor... oh well */
 	/* We want to resync the held keys here, but it's not safe to do so, because we get garbage results from GetKeyState() and GetAsyncKeyState() if the open file dialog has just recently been closed by the user. There are also similar issues with syncing key state when reactivating the window by clicking on the title bar while holding modifiers. So forget about it for now.*/
+	if (d->beetbugHWnd) SendMessage(d->beetbugHWnd, UXNMSG_LoadSymbols, 0, 0);
 }
 
 static void OpenROMDialog(EmuWindow *d)
@@ -1649,15 +1650,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		SetWindowLongPtr(d->ctrls[BB_JumpEdit], GWLP_WNDPROC,  (LONG_PTR)BeetbugJumpEditProc);
 		SendMessage(d->ctrls[BB_JumpEdit], EM_SETLIMITTEXT, 4, 0);
 		SendMessage(d->ctrls[BB_JumpEdit], WM_SETFONT, (WPARAM)hFont, 0);
-		{
-			TCHAR tmp[MAX_PATH]; int pathlen = lstrlen(d->emu->rom_path);
-			if (pathlen < MAX_PATH - 5)
-			{
-				CopyMemory(tmp, d->emu->rom_path, pathlen * sizeof(TCHAR));
-				CopyMemory(tmp + pathlen, TEXT(".sym"), 5 * sizeof(TCHAR));
-				LoadUxnDebugSymbols(tmp, &d->symbols);
-			}
-		}
+		SendMessage(hWnd, UXNMSG_LoadSymbols, 0, 0);
 		UpdateBeetbugStuff(hWnd, d);
 		SetTimer(hWnd, 1, 50, NULL);
 		break;
@@ -1924,6 +1917,18 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			return 0;
 		}
 		break;
+	case UXNMSG_LoadSymbols:
+	{
+		TCHAR tmp[MAX_PATH]; int pathlen = lstrlen(d->emu->rom_path);
+		FreeUxnDebugSymbols(&d->symbols); /* wasted work on first time... hmm */
+		ZeroMemory(&d->symbols, sizeof d->symbols); /* also */
+		if (pathlen < MAX_PATH - 5)
+		{
+			CopyMemory(tmp, d->emu->rom_path, pathlen * sizeof(TCHAR));
+			CopyMemory(tmp + pathlen, TEXT(".sym"), 5 * sizeof(TCHAR));
+			LoadUxnDebugSymbols(tmp, &d->symbols);
+		}
+	}
 	}
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
