@@ -51,7 +51,6 @@ UxnExec(UxnCore *u, unsigned int limit)
 		limit--;
 		instr = u->ram[pc];
 		pc = (pc + 1) & 0xFFFFu;
-		if (!instr) { u->fault_code = 1; goto done; } // TODO
 		switch(instr) {
 		/* BRK */ case 0x00: u->fault_code = 1; goto done;
 		/* JCI */ case 0x20: sp = &u->wst->ptr, src = u->wst; POP8(b) if(b) goto JMI; pc += 2; break;
