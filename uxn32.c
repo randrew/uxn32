@@ -1453,7 +1453,7 @@ static BOOL LoadUxnDebugSymbols(LPCTSTR path, UxnDebugSymbols *out)
 {
 	DWORD bytes_read, file_size;
 	UINT entry_count, addrs_size, i, e;
-	char *buff = NULL; USHORT *addresses; CHAR **strings;
+	BYTE *buff = NULL; USHORT *addresses; CHAR **strings;
 	BOOL result = FALSE;
 	HANDLE hFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (hFile == INVALID_HANDLE_VALUE) return FALSE;
@@ -1477,7 +1477,7 @@ static BOOL LoadUxnDebugSymbols(LPCTSTR path, UxnDebugSymbols *out)
 	for (i = e = 0; e < entry_count; e++) /* Set the values in the addresses and char pointers arrays */
 	{
 		addresses[e] = (buff[i] << 8) + buff[i + 1];
-		for (strings[e] = buff + (i += 2); buff[i++];);
+		for (strings[e] = (CHAR *)buff + (i += 2); buff[i++];);
 	}
 	for (i = 1; i < entry_count; i++) /* Insertion sort, to make it binary searchable */
 	{
