@@ -96,6 +96,8 @@ static HINSTANCE MainInstance;
 static LPCSTR EmuWinClass = TEXT("uxn_emu_win"), ConsoleWinClass = TEXT("uxn_console_win"), EditWinClass = TEXT("EDIT");
 static LPCSTR BeetbugWinClass = TEXT("uxn_beetbug_win");
 static LPCSTR DefaultROMPath = TEXT("launcher.rom");
+static LPWSTR *cmdline_args;
+static int cmdline_arg_count;
 
 static LONGLONG LongLongMulDiv(LONGLONG value, LONGLONG numer, LONGLONG denom)
 {
@@ -214,7 +216,7 @@ typedef struct UxnDebugSymbols {
 } UxnDebugSymbols;
 
 enum { TimerID_Screen60hz = 1, TimerID_InitAudio, TimerID_FlushConsole };
-enum { UXNMSG_ContinueExec = WM_USER, UXNMSG_BecomeClone, UXNMSG_LoadSymbols };
+enum { UXNMSG_ContinueExec = WM_USER, UXNMSG_BecomeClone, UXNMSG_LoadSymbols, UXNMSG_SendArgs };
 enum EmuIn
 {
 	EmuIn_KeyChar = 1,
@@ -1316,6 +1318,7 @@ static void ReloadFromROMFile(EmuWindow *d)
 	StartVM(d);
 	SynthesizeMouseMoveToCurrent(d); /* Still has a brief flicker of wrong cursor... oh well */
 	/* We want to resync the held keys here, but it's not safe to do so, because we get garbage results from GetKeyState() and GetAsyncKeyState() if the open file dialog has just recently been closed by the user. There are also similar issues with syncing key state when reactivating the window by clicking on the title bar while holding modifiers. So forget about it for now.*/
+	SendMessage(d->hWnd, UXNMSG_SendArgs, 0, 0);
 	if (d->beetbugHWnd) SendMessage(d->beetbugHWnd, UXNMSG_LoadSymbols, 0, 0);
 }
 
@@ -2306,6 +2309,18 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		UpdateWindow(d->hWnd);
 		return 0;
 	}
+	case UXNMSG_SendArgs: if (!cmdline_args) break;
+	/* Send any additional arguments as virtual console input */
+	{
+		int arg, i, n; CHAR buff[256];
+		for (arg = 2; arg < cmdline_arg_count; arg++)
+			if ((n = WideCharToMultiByte(CP_ACP, 0, cmdline_args[arg], -1, buff, sizeof buff, NULL, NULL)))
+			{
+				buff[n - 1] = '\n';
+				for (i = 0; i < n; i++) SendInputEvent(d, EmuIn_Console, buff[i], 0, 0);
+			}
+		return 0;
+	}
 	}
 	return DefWindowProc(hwnd, msg, wparam, lparam);
 }
@@ -2316,7 +2331,6 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	MSG msg; HACCEL hAccel;
 	Type_CommandLineToArgvW *Ptr_CommandLineToArgvW;
 	Type_GetCommandLineW *Ptr_GetCommandLineW;
-	int arg_count = 0; LPWSTR *args = NULL;
 	EmuWindow *emu = AllocZeroedOrFail(sizeof(EmuWindow));
 	(void)command_line; (void)prev_instance;
 	CopyMemory(emu->rom_path, DefaultROMPath, (lstrlen(DefaultROMPath) + 1) * sizeof(TCHAR));
@@ -2328,9 +2342,9 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	if ((Ptr_GetCommandLineW = (Type_GetCommandLineW *)GetProcAddress(GetModuleHandle(TEXT("kernel32.dll")), "GetCommandLineW")) &&
 		(Ptr_CommandLineToArgvW = (Type_CommandLineToArgvW *)GetProcAddress(GetModuleHandle(TEXT("shell32.dll")), "CommandLineToArgvW")))
 	{
-		if ((args = Ptr_CommandLineToArgvW(Ptr_GetCommandLineW(), &arg_count)) && arg_count > 1)
+		if ((cmdline_args = Ptr_CommandLineToArgvW(Ptr_GetCommandLineW(), &cmdline_arg_count)) && cmdline_arg_count > 1)
 		{
-			if (!WideCharToMultiByte(CP_ACP, 0, args[1], -1, emu->rom_path, sizeof emu->rom_path, NULL, NULL))
+			if (!WideCharToMultiByte(CP_ACP, 0, cmdline_args[1], -1, emu->rom_path, sizeof emu->rom_path, NULL, NULL))
 				FatalBox("The command line argument for the file path was too long, or contained characters that couldn't be handled by this program.");
 		}
 	}
@@ -2358,19 +2372,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 
 	hWin = CreateWindowForEmu(instance, emu);
 	ShowWindow(hWin, show_code);
-
-	if (args) /* Send any additional arguments as virtual console input */
-	{
-		int arg, i, n; CHAR buff[256];
-		for (arg = 2; arg < arg_count; arg++)
-		{
-			if ((n = WideCharToMultiByte(CP_ACP, 0, args[arg], -1, buff, sizeof buff, NULL, NULL)))
-			{
-				buff[n - 1] = '\n';
-				for (i = 0; i < n; i++) SendInputEvent(emu, EmuIn_Console, buff[i], 0, 0);
-			}
-		}
-	}
+	SendMessage(hWin, UXNMSG_SendArgs, 0, 0);
 
 	for (;;)
 	{
