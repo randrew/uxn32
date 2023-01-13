@@ -30,7 +30,7 @@ WITH REGARD TO THIS SOFTWARE.
 #define DEVW(x, y) { if(bs) { u->deo(u, (x), (y) >> 8); u->deo(u, ((x) + 1) & 0xFF, (y)); } else u->deo(u, x, (y)); }
 #define WARP(x) { if(bs) pc = (x); else pc += (UxnI8)(x); }
 
-#define MODE(opcode, body) \
+#define MODE(opcode, body)\
 	case opcode|0x00|0x00|0x00: {enum{bs=0}; src = u->wst, dst = u->rst; sp = &src->ptr; body break;}\
 	case opcode|0x00|0x00|0x20: {enum{bs=1}; src = u->wst, dst = u->rst; sp = &src->ptr; body break;}\
 	case opcode|0x00|0x40|0x00: {enum{bs=0}; src = u->rst, dst = u->wst; sp = &src->ptr; body break;}\
