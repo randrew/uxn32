@@ -10,6 +10,8 @@
 #include <commctrl.h>
 #include <mmsystem.h>
 
+#pragma warning(disable:4244) /* Noisy VC6 warning. Can't disable with flag */
+
 #if !defined(GWLP_WNDPROC)
 #define GetWindowLongPtrA   GetWindowLongA
 #define GetWindowLongPtrW   GetWindowLongW
