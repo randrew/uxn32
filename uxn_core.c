@@ -11,8 +11,6 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
 WITH REGARD TO THIS SOFTWARE.
 */
 
-/* clang-format off */
-
 /*	a,b,c: general use.  bs: byte/short bool. src, dst: stack ptrs, swapped in return mode.
 	pc: program counter. sp: ptr to src stack ptr. kptr: "keep" mode copy of src stack ptr.
 	x,y: macro in params. j,k: macro temp variables. o: macro out param. */
