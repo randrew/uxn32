@@ -26,7 +26,7 @@ WITH REGARD TO THIS SOFTWARE.
 #define PEEK(o, x) { if(bs) PEEK16(o, x) else o = u->ram[(x)]; }
 #define DEVR(o, x) { o = u->dei(u, x); if(bs) o = (o << 8) + u->dei(u, ((x) + 1) & 0xFF); }
 #define DEVW(x, y) { if(bs) { u->deo(u, (x), (y) >> 8); u->deo(u, ((x) + 1) & 0xFF, (y)); } else u->deo(u, x, (y)); }
-#define WARP(x) { if(bs) pc = (x); else pc += (UxnI8)(x); }
+#define JUMP(x) { if(bs) pc = (x); else pc += (UxnI8)(x); }
 
 #define MODE(op, body)\
 	case op|0x00|0x00|0x00: {enum{bs=0}; src = u->wst, dst = u->rst; sp = &src->ptr; body break;}\
@@ -65,9 +65,9 @@ UxnExec(UxnCore *u, unsigned int limit)
 		/* NEQ */ MODE(0x09, POP(a) POP(b) PUSH8(src, b != a) )
 		/* GTH */ MODE(0x0A, POP(a) POP(b) PUSH8(src, b > a) )
 		/* LTH */ MODE(0x0B, POP(a) POP(b) PUSH8(src, b < a) )
-		/* JMP */ MODE(0x0C, POP(a) WARP(a) )
-		/* JCN */ MODE(0x0D, POP(a) POP8(b) if(b) WARP(a) )
-		/* JSR */ MODE(0x0E, POP(a) PUSH16(dst, pc) WARP(a) )
+		/* JMP */ MODE(0x0C, POP(a) JUMP(a) )
+		/* JCN */ MODE(0x0D, POP(a) POP8(b) if(b) JUMP(a) )
+		/* JSR */ MODE(0x0E, POP(a) PUSH16(dst, pc) JUMP(a) )
 		/* STH */ MODE(0x0F, POP(a) PUSH(dst, a) )
 		/* LDZ */ MODE(0x10, POP8(a) PEEK(b, a) PUSH(src, b) )
 		/* STZ */ MODE(0x11, POP8(a) POP(b) POKE(a, b) )
