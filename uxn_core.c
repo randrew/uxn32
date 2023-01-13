@@ -31,14 +31,14 @@ WITH REGARD TO THIS SOFTWARE.
 #define WARP(x) { if(bs) pc = (x); else pc += (UxnI8)(x); }
 
 #define MODE(opcode, body) \
-	case opcode|0x80|0x40|0x20: {enum{bs=1}; src = u->rst, dst = u->wst; kptr = src->ptr, sp = &kptr; body break;}\
-	case opcode|0x80|0x40|0x00: {enum{bs=0}; src = u->rst, dst = u->wst; kptr = src->ptr, sp = &kptr; body break;}\
-	case opcode|0x80|0x00|0x20: {enum{bs=1}; src = u->wst, dst = u->rst; kptr = src->ptr, sp = &kptr; body break;}\
-	case opcode|0x80|0x00|0x00: {enum{bs=0}; src = u->wst, dst = u->rst; kptr = src->ptr, sp = &kptr; body break;}\
-	case opcode|0x00|0x40|0x20: {enum{bs=1}; src = u->rst, dst = u->wst; sp = &src->ptr; body break;}\
-	case opcode|0x00|0x40|0x00: {enum{bs=0}; src = u->rst, dst = u->wst; sp = &src->ptr; body break;}\
+	case opcode|0x00|0x00|0x00: {enum{bs=0}; src = u->wst, dst = u->rst; sp = &src->ptr; body break;}\
 	case opcode|0x00|0x00|0x20: {enum{bs=1}; src = u->wst, dst = u->rst; sp = &src->ptr; body break;}\
-	case opcode|0x00|0x00|0x00: {enum{bs=0}; src = u->wst, dst = u->rst; sp = &src->ptr; body break;}
+	case opcode|0x00|0x40|0x00: {enum{bs=0}; src = u->rst, dst = u->wst; sp = &src->ptr; body break;}\
+	case opcode|0x00|0x40|0x20: {enum{bs=1}; src = u->rst, dst = u->wst; sp = &src->ptr; body break;}\
+	case opcode|0x80|0x00|0x00: {enum{bs=0}; src = u->wst, dst = u->rst; kptr = src->ptr, sp = &kptr; body break;}\
+	case opcode|0x80|0x00|0x20: {enum{bs=1}; src = u->wst, dst = u->rst; kptr = src->ptr, sp = &kptr; body break;}\
+	case opcode|0x80|0x40|0x00: {enum{bs=0}; src = u->rst, dst = u->wst; kptr = src->ptr, sp = &kptr; body break;}\
+	case opcode|0x80|0x40|0x20: {enum{bs=1}; src = u->rst, dst = u->wst; kptr = src->ptr, sp = &kptr; body break;}\
 
 unsigned int
 UxnExec(UxnCore *u, unsigned int limit)
