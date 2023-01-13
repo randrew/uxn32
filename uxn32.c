@@ -911,8 +911,8 @@ static void UxnDeviceWrite_Cold(UxnBox *box, UINT address, UINT value)
 				if (!ram[i++]) { SetWindowTextA(emu->hWnd, (CHAR *)ram + offset); break; }
 			break;
 		}
-		case 0xE: box->core.fault_code = UXN_FAULT_DEBUG; break;
-		case 0xF: box->core.fault_code = UXN_FAULT_QUIT; break;
+		case 0xE: box->core.fault = UXN_FAULT_DEBUG; break;
+		case 0xF: box->core.fault = UXN_FAULT_QUIT; break;
 		default: if (port > 0x7 && port < 0xE)
 		{
 			UxnU8 *addr = imem + 0x8;
@@ -1077,7 +1077,7 @@ static int emu_window_count;
 
 static void ResetVM(EmuWindow *d)
 {
-	d->box->core.fault_code = 0;
+	d->box->core.fault = 0;
 	d->exec_state = 0;
 	ZeroMemory(&d->box->work_stack, sizeof(UxnStack) * 2); /* optional for quick reload */
 	ZeroMemory(d->box->device_memory, sizeof d->box->device_memory); /* optional for quick reload */
@@ -1178,26 +1178,26 @@ static void RunUxn(EmuWindow *d, UINT steps, BOOL initial)
 		instr_interrupts++;
 		t_delta = TimeStampNow() - t_a;
 		d->instr_count += use_steps - res;
-		if (u->fault_code) break;
+		if (u->fault) break;
 		if (t_delta > ExecutionTimeLimit || steps) goto residual;
 	}
 	/* TODO add checkbox to enable this debris check if (u->wst->ptr || u->rst->ptr) u->fault_code = 127; */
-	if (u->fault_code != UXN_FAULT_DONE)
+	if (u->fault != UXN_FAULT_DONE)
 	{
 		UINT last_addr = ((UINT)u->pc - 1) % UXN_RAM_SIZE, last_op = u->ram[last_addr], fault_handler;
 		DEVPEEK(d->box->device_memory, fault_handler, 0x0);
-		if (fault_handler && u->fault_code <= UXN_FAULT_DIVIDE_BY_ZERO)
+		if (fault_handler && u->fault <= UXN_FAULT_DIVIDE_BY_ZERO)
 		{
 			u->wst->ptr = 4;
 			u->wst->dat[0] = last_addr >> 8, u->wst->dat[1] = last_addr;
 			u->wst->dat[2] = last_op;
-			u->wst->dat[3] = u->fault_code - 1;
-			u->fault_code = 0;
+			u->wst->dat[3] = u->fault - 1;
+			u->fault = 0;
 			u->pc = fault_handler;
 			goto residual;
 		}
 		/* If there's a division by zero, push 0xFF onto the stack to rebalance it. Then, if the user hits resume, the program has a better chance of not faulting again. */
-		if (u->fault_code == UXN_FAULT_DIVIDE_BY_ZERO)
+		if (u->fault == UXN_FAULT_DIVIDE_BY_ZERO)
 		{
 			UxnStack *s = last_op & 0x40 ? u->rst : u->wst; /* Which stack to push to */
 			int i = 0, count = (last_op & 0x20) >> 5; /* Push 1 or 2 bytes */
@@ -1207,7 +1207,7 @@ static void RunUxn(EmuWindow *d, UINT steps, BOOL initial)
 		/* This particular fault code means ROM program requested to 'quit'. What should we do?
 		 * If Beetbug isn't open, then close the emulator window.
 		 * If Beetbug is open, then let Beetbug show that the ROM wanted to quit. */
-		if (u->fault_code == UXN_FAULT_QUIT && !IsWindowVisible(d->beetbugHWnd))
+		if (u->fault == UXN_FAULT_QUIT && !IsWindowVisible(d->beetbugHWnd))
 		{
 			PostMessage(d->hWnd, WM_CLOSE, 0, 0);
 			return;
@@ -1238,7 +1238,7 @@ completed:
 		DEVPOKE2(d->box->device_memory, VV_MOUSE + 0xA, 0, 0);
 		break;
 	}
-	if (d->running) u->fault_code = 0;
+	if (d->running) u->fault = 0;
 	d->exec_state = 0;
 residual:
 	more_work = d->exec_state || d->queue_count;
@@ -1572,10 +1572,10 @@ static void UpdateBeetbugStuff(HWND hWnd, BeetbugWin *d)
 		wsprintf(buff, "Ops: %u", u);
 		SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 3, (LPARAM)buff);
 	}
-	if (d->sbar_fault != d->emu->box->core.fault_code)
+	if (d->sbar_fault != d->emu->box->core.fault)
 	{
 		LPCSTR text = NULL;
-		switch (d->sbar_fault = d->emu->box->core.fault_code)
+		switch (d->sbar_fault = d->emu->box->core.fault)
 		{
 		case UXN_FAULT_DONE: text = TEXT("Break"); break;
 		case UXN_FAULT_STACK_UNDERFLOW: text = TEXT("Stack underflow"); break;
@@ -1911,7 +1911,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			}
 		if ((idm == IDM_STEP || idm == IDM_BIGSTEP) && !d->emu->running && d->emu->exec_state)
 		{
-			d->emu->box->core.fault_code = 0;
+			d->emu->box->core.fault = 0;
 			RunUxn(d->emu, idm == IDM_STEP ? 1 : 100, FALSE);
 			UpdateBeetbugStuff(hWnd, d);
 			ShowBeetbugInstruction(d->emu, d->emu->box->core.pc);
@@ -2304,7 +2304,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	{
 		EmuWindow *b = (EmuWindow *)wparam;
 		d->box->core.pc = b->box->core.pc;
-		d->box->core.fault_code = b->box->core.fault_code;
+		d->box->core.fault = b->box->core.fault;
 		d->exec_state = b->exec_state;
 		CopyMemory(&d->box->work_stack, &b->box->work_stack, sizeof(UxnStack) * 2);
 		CopyMemory(d->box->device_memory, b->box->device_memory, sizeof d->box->device_memory);

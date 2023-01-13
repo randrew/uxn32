@@ -46,7 +46,7 @@ UxnExec(UxnCore *u, unsigned int limit)
 	while(limit) {
 		limit--;
 		switch(u->ram[pc++]) {
-		/* BRK */ case 0x00: u->fault_code = 1; goto done;
+		/* BRK */ case 0x00: u->fault = 1; goto done;
 		/* JCI */ case 0x20: sp = &u->wst->ptr, src = u->wst; POP8(b) if(b) goto JMI; pc += 2; break;
 		/* JMI */ case 0x40: JMI: PEEK16(a, pc) pc += a + 2; break;
 		/* JSI */ case 0x60: PUSH16(u->rst, pc + 2) goto JMI;
@@ -76,11 +76,11 @@ UxnExec(UxnCore *u, unsigned int limit)
 		/* LDA */ MODE(0x14, POP16(a) PEEK(b, a) PUSH(src, b) )
 		/* STA */ MODE(0x15, POP16(a) POP(b) POKE(a, b) )
 		/* DEI */ MODE(0x16, POP8(a) DEVR(b, a) PUSH(src, b) )
-		/* DEO */ MODE(0x17, POP8(a) POP(b) DEVW(a, b) if(u->fault_code) goto done; )
+		/* DEO */ MODE(0x17, POP8(a) POP(b) DEVW(a, b) if(u->fault) goto done; )
 		/* ADD */ MODE(0x18, POP(a) POP(b) PUSH(src, b + a) )
 		/* SUB */ MODE(0x19, POP(a) POP(b) PUSH(src, b - a) )
 		/* MUL */ MODE(0x1A, POP(a) POP(b) PUSH(src, b * a) )
-		/* DIV */ MODE(0x1B, POP(a) POP(b) if(!a) { u->fault_code = 4; goto done; } PUSH(src, b / a) )
+		/* DIV */ MODE(0x1B, POP(a) POP(b) if(!a) { u->fault = 4; goto done; } PUSH(src, b / a) )
 		/* AND */ MODE(0x1C, POP(a) POP(b) PUSH(src, b & a) )
 		/* ORA */ MODE(0x1D, POP(a) POP(b) PUSH(src, b | a) )
 		/* EOR */ MODE(0x1E, POP(a) POP(b) PUSH(src, b ^ a) )
@@ -88,6 +88,6 @@ UxnExec(UxnCore *u, unsigned int limit)
 		}
 	}
 done: u->pc = pc; return limit;
-fault_2: u->fault_code = 2; goto done;
-fault_3: u->fault_code = 3; goto done;
+fault_2: u->fault = 2; goto done;
+fault_3: u->fault = 3; goto done;
 }

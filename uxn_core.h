@@ -23,7 +23,7 @@ typedef struct UxnCore {
 	UxnStack *wst, *rst;
 	UxnU8 (*dei)(struct UxnCore *u, unsigned int address);
 	void (*deo)(struct UxnCore *u, unsigned int address, unsigned int value);
-	UxnU16 pc, fault_code;
+	UxnU16 pc, fault;
 } UxnCore;
 
 #define UXN_FAULT_DONE 1
