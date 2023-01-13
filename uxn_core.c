@@ -43,13 +43,12 @@ WITH REGARD TO THIS SOFTWARE.
 unsigned int
 UxnExec(UxnCore *u, unsigned int limit)
 {
-	unsigned int a, b, c, j, k, instr, pc = u->pc;
-	UxnU8 kptr, *sp;
+	unsigned int a, b, c, j, k, instr;
+	UxnU16 pc = u->pc; UxnU8 kptr, *sp;
 	UxnStack *src, *dst;
 	while(limit) {
 		limit--;
-		instr = u->ram[pc];
-		pc = (pc + 1) & 0xFFFFu;
+		instr = u->ram[pc++];
 		switch(instr) {
 		/* BRK */ case 0x00: u->fault_code = 1; goto done;
 		/* JCI */ case 0x20: sp = &u->wst->ptr, src = u->wst; POP8(b) if(b) goto JMI; pc += 2; break;
@@ -76,8 +75,8 @@ UxnExec(UxnCore *u, unsigned int limit)
 		/* STH */ MODE(0x0F, POP(a) PUSH(dst, a) )
 		/* LDZ */ MODE(0x10, POP8(a) PEEK(b, a) PUSH(src, b) )
 		/* STZ */ MODE(0x11, POP8(a) POP(b) POKE(a, b) )
-		/* LDR */ MODE(0x12, POP8(a) PEEK(b, pc + (UxnI8)a) PUSH(src, b) )
-		/* STR */ MODE(0x13, POP8(a) POP(b) c = pc + (UxnI8)a; POKE(c, b) )
+		/* LDR */ MODE(0x12, POP8(a) PEEK(b, pc + (UxnI8)a & 0xFFFF) PUSH(src, b) )
+		/* STR */ MODE(0x13, POP8(a) POP(b) c = pc + (UxnI8)a & 0xFFFF; POKE(c, b) )
 		/* LDA */ MODE(0x14, POP16(a) PEEK(b, a) PUSH(src, b) )
 		/* STA */ MODE(0x15, POP16(a) POP(b) POKE(a, b) )
 		/* DEI */ MODE(0x16, POP8(a) DEVR(b, a) PUSH(src, b) )
