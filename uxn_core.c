@@ -26,7 +26,7 @@ WITH REGARD TO THIS SOFTWARE.
 #define POKE(x, y) { if(bs) { u->ram[(x)] = (y) >> 8; u->ram[(x) + 1] = (y); } else u->ram[(x)] = y; }
 #define PEEK16(o, x) { o = (u->ram[(x)] << 8) + u->ram[(x) + 1]; }
 #define PEEK(o, x) { if(bs) PEEK16(o, x) else o = u->ram[(x)]; }
-#define DEVR(o, x) { o = u->dei(u, x); if (bs) o = (o << 8) + u->dei(u, ((x) + 1) & 0xFF); }
+#define DEVR(o, x) { o = u->dei(u, x); if(bs) o = (o << 8) + u->dei(u, ((x) + 1) & 0xFF); }
 #define DEVW(x, y) { if(bs) { u->deo(u, (x), (y) >> 8); u->deo(u, ((x) + 1) & 0xFF, (y)); } else u->deo(u, x, (y)); }
 #define WARP(x) { if(bs) pc = (x); else pc += (UxnI8)(x); }
 
@@ -80,7 +80,7 @@ UxnExec(UxnCore *u, unsigned int limit)
 		/* LDA */ MODE(0x14, POP16(a) PEEK(b, a) PUSH(src, b) )
 		/* STA */ MODE(0x15, POP16(a) POP(b) POKE(a, b) )
 		/* DEI */ MODE(0x16, POP8(a) DEVR(b, a) PUSH(src, b) )
-		/* DEO */ MODE(0x17, POP8(a) POP(b) DEVW(a, b) if (u->fault_code) goto done; )
+		/* DEO */ MODE(0x17, POP8(a) POP(b) DEVW(a, b) if(u->fault_code) goto done; )
 		/* ADD */ MODE(0x18, POP(a) POP(b) PUSH(src, b + a) )
 		/* SUB */ MODE(0x19, POP(a) POP(b) PUSH(src, b - a) )
 		/* MUL */ MODE(0x1A, POP(a) POP(b) PUSH(src, (unsigned int)b * a) )
