@@ -10,6 +10,7 @@ copyright notice and this permission notice appear in all copies.
 THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
 WITH REGARD TO THIS SOFTWARE.
 */
+
 typedef unsigned char UxnU8;
 typedef signed char UxnI8;
 typedef unsigned short UxnU16;
