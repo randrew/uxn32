@@ -1,7 +1,7 @@
 #include "uxn_core.h"
 
 /*
-Copyright (u) 2022 Devine Lu Linvega, Andrew Alderwick, Andrew Richards
+Copyright (c) 2023 Devine Lu Linvega, Andrew Alderwick, Andrew Richards
 
 Permission to use, copy, modify, and distribute this software for any
 purpose with or without fee is hereby granted, provided that the above

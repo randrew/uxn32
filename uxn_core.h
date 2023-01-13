@@ -1,7 +1,7 @@
 #ifndef __UXN_CORE_H__
 #define __UXN_CORE_H__
 /*
-Copyright (c) 2022 Devine Lu Linvega, Andrew Richards
+Copyright (c) 2022-2023 Devine Lu Linvega, Andrew Richards
 
 Permission to use, copy, modify, and distribute this software for any
 purpose with or without fee is hereby granted, provided that the above
