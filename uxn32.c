@@ -1797,8 +1797,11 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			hEdit = ListView_EditLabel(d->ctrls[wParam], ((NMITEMACTIVATE *)lParam)->iItem);
 		custom_edit:
 			if (!hEdit || wParam != BB_AsmList) return 0;
-			for (i = 0; i < 10; i++) buff[i] = ' ';
-			DecodeUxnOpcode(buff + i, d->emu->box->core.ram[((NMITEMACTIVATE *)lParam)->iItem]);
+			/* Using ((NMITEMACTIVATE *)lParam)->iItem to get the item index seems busted in the NM_RETURN case. Tends to use whatever the last time that was double clicked was. Shrug. Use the text in the thing given to us instead. */
+			GetWindowText(hEdit, buff, 256);
+			for (i = 0; i < 10; i++) buff[i] = ' '; /* Wipe over everything before the mnemonic with a space. */
+			while (buff[i] && buff[i] != ' ') i++; /* Trim anything after opcode mnemonic, like a symbol name. */
+			buff[i] = 0;
 			SetWindowText(hEdit, buff);
 			SendMessage(hEdit, EM_SETSEL, 10, -1);
 			return 0;
