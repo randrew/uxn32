@@ -1184,6 +1184,15 @@ static void RunUxn(EmuWindow *d, UINT steps, BOOL initial)
 	/* TODO add checkbox to enable this debris check if (u->wst->ptr || u->rst->ptr) u->fault_code = 127; */
 	if (u->fault_code != UXN_FAULT_DONE)
 	{
+		UINT fault_handler;
+		DEVPEEK(d->box->device_memory, fault_handler, 0x0);
+		if (u->fault_code <= UXN_FAULT_DIVIDE_BY_ZERO && fault_handler)
+		{
+			u->pc = fault_handler;
+			u->wst->ptr = 1;
+			u->wst->dat[0] = u->fault_code - 1;
+			goto residual;
+		}
 		/* If there's a division by zero, push 0xFF onto the stack to rebalance it. Then, if the user hits resume, the program has a better chance of not faulting again. */
 		if (u->fault_code == UXN_FAULT_DIVIDE_BY_ZERO)
 		{
