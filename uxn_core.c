@@ -43,13 +43,12 @@ WITH REGARD TO THIS SOFTWARE.
 unsigned int
 UxnExec(UxnCore *u, unsigned int limit)
 {
-	unsigned int a, b, c, j, k, instr;
+	unsigned int a, b, c, j, k;
 	UxnU16 pc = u->pc; UxnU8 kptr, *sp;
 	UxnStack *src, *dst;
 	while(limit) {
 		limit--;
-		instr = u->ram[pc++];
-		switch(instr) {
+		switch(u->ram[pc++]) {
 		/* BRK */ case 0x00: u->fault_code = 1; goto done;
 		/* JCI */ case 0x20: sp = &u->wst->ptr, src = u->wst; POP8(b) if(b) goto JMI; pc += 2; break;
 		/* JMI */ case 0x40: JMI: PEEK16(a, pc) pc += a + 2; break;
