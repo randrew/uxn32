@@ -43,9 +43,8 @@ WITH REGARD TO THIS SOFTWARE.
 unsigned int
 UxnExec(UxnCore *u, unsigned int limit)
 {
-	unsigned int a, b, c, j, k;
-	UxnU16 pc = u->pc; UxnU8 kptr, *sp;
-	UxnStack *src, *dst;
+	unsigned int a, b, c, j, k; UxnU16 pc = u->pc;
+	UxnU8 kptr, *sp; UxnStack *src, *dst;
 	while(limit) {
 		limit--;
 		switch(u->ram[pc++]) {
