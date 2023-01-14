@@ -245,6 +245,7 @@ typedef struct EmuWindow
 {
 	UxnBox *box;
 	HWND hWnd, consoleHWnd, beetbugHWnd;
+	HMENU hHiddenMenu;
 	HBITMAP hBMP;
 	HDC hDibDC;
 	SIZE dib_dims;
@@ -428,7 +429,7 @@ static void RefitEmuWindow(EmuWindow *d)
 	RECT c, r;
 	c.left = c.top = 0;
 	c.right = d->screen.width * d->viewport_scale; c.bottom = d->screen.height * d->viewport_scale;
-	AdjustWindowRect(&c, GetWindowLong(d->hWnd, GWL_STYLE), TRUE); /* note: no spam protection from Uxn program yet */
+	AdjustWindowRect(&c, GetWindowLong(d->hWnd, GWL_STYLE), !d->hHiddenMenu); /* note: no spam protection from Uxn program yet */
 	GetWindowRect(d->hWnd, &r);
 	MoveWindow(d->hWnd, r.left, r.top, c.right - c.left, c.bottom - c.top, TRUE);
 	/* Seems like the repaint from this is always async. We need the TRUE flag for repainting or the non-client area will be messed up on non-DWM. */
@@ -2067,6 +2068,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		FreeUxnScreen(&d->screen);
 		ResetFiler(&d->filers[0]);
 		ResetFiler(&d->filers[1]);
+		if (d->hHiddenMenu) DestroyMenu(d->hHiddenMenu);
 		if (d->hBMP) DeleteObject(d->hBMP);
 		if (d->hDibDC) DeleteDC(d->hDibDC);
 		if (d->wave_out)
@@ -2149,7 +2151,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		/* Note: WM_GETMINMAXINFO may be sent before WM_CREATE! */
 		/* Use 1x Uxn screen scale when calculating minimum window size. */
 		if (d) { c.right = MAX(c.right, d->screen.width); c.bottom = d->screen.height; }
-		AdjustWindowRect(&c, GetWindowLong(hwnd, GWL_STYLE), TRUE);
+		AdjustWindowRect(&c, GetWindowLong(hwnd, GWL_STYLE), d && !d->hHiddenMenu);
 		info->ptMinTrackSize.x = c.right - c.left;
 		info->ptMinTrackSize.y = c.bottom - c.top;
 		return 0;
@@ -2293,6 +2295,15 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		case IDM_OPENBEETBUG: case IDM_MOREBUG:
 			OpenBeetbugWindow(d, LOWORD(wparam) == IDM_MOREBUG);
 			return 0;
+		case IDM_TOGGLEMENU:
+		{
+			HMENU tmp = d->hHiddenMenu; LONG scale = d->viewport_scale;
+			d->hHiddenMenu = GetMenu(d->hWnd);
+			SetMenu(d->hWnd, tmp);
+			/* WM_SIZE was sent when calling SetMenu(). If the zoom is 2x, and the menu is unhiding, then CalcUxnViewport() may set viewport_scale to be 1x instead of 2x. Set it back so that the window doesn't shrink. */
+			if (!IsZoomed(d->hWnd)) { d->viewport_scale = scale; RefitEmuWindow(d); }
+			return 0;
+		}
 		}
 		break;
 
@@ -2320,6 +2331,8 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		CopyMemory(d->screen.palette, b->screen.palette, sizeof d->screen.palette);
 		SetUxnScreenSize(&d->screen, b->screen.width, b->screen.height);
 		d->viewport_scale = b->viewport_scale;
+		if (!d->hHiddenMenu != !b->hHiddenMenu) /* Quick hack for now. Do it better later to avoid resize twitch. */
+			SendMessage(d->hWnd, WM_COMMAND, MAKEWPARAM(IDM_TOGGLEMENU, 0), 0);
 		RefitEmuWindow(d);
 		CopyMemory(d->screen.bg, b->screen.bg, d->screen.width * d->screen.height * 2);
 		CopyMemory(d->rom_path, b->rom_path, MAX_PATH);
