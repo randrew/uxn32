@@ -776,7 +776,7 @@ result:
 static void CreateConsoleWindow(EmuWindow *emu)
 {
 	DWORD exStyle = WS_EX_TOOLWINDOW, wStyle = WS_SIZEBOX | WS_SYSMENU;
-	RECT rect; rect.left = 0; rect.top = 0; rect.right = 200; rect.bottom = 150;
+	RECT rect; rect.left = 0; rect.top = 0; rect.right = 400; rect.bottom = 200;
 	AdjustWindowRectEx(&rect, wStyle, FALSE, exStyle);
 	emu->consoleHWnd = CreateWindowEx(exStyle, ConsoleWinClass, TEXT("Console"), wStyle, CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, emu->hWnd, NULL, MainInstance, (void *)NULL);
 }
@@ -1210,7 +1210,19 @@ static void RunUxn(EmuWindow *d, UINT steps, BOOL initial)
 		 * If Beetbug is open, then let Beetbug show that the ROM wanted to quit. */
 		if (u->fault == UXN_FAULT_QUIT && !IsWindowVisible(d->beetbugHWnd))
 		{
-			PostMessage(d->hWnd, WM_CLOSE, 0, 0);
+			/* If Beetbug isn't open but the console window is open, don't quit. There might be useful messages there. */
+			if (IsWindowVisible(d->consoleHWnd))
+			{
+				ConWindow *con = (ConWindow *)GetWindowLongPtr(d->consoleHWnd, GWLP_USERDATA); int len;
+				FlushUxnConsole(con, d->consoleHWnd);
+				len = GetWindowTextLength(con->outHWnd); /* TODO repetitive */
+				SendMessage(con->outHWnd, EM_SETSEL, len, len);
+				SendMessage(con->outHWnd, EM_REPLACESEL, 0, (LPARAM)TEXT("\r\n\r\n[Program quit]"));
+			}
+			else
+			{
+				PostMessage(d->hWnd, WM_CLOSE, 0, 0);
+			}
 			return;
 		}
 		InvalidateUxnScreenRect(d);
