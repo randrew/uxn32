@@ -2345,7 +2345,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	/* Send any additional arguments as virtual console input */
 	{
 		int arg, i, n; CHAR buff[256];
-		for (arg = 2; arg < CmdLineArgCount; arg++)
+		for (arg = 0; arg < CmdLineArgCount; arg++)
 			if ((n = WideCharToMultiByte(CP_ACP, 0, CmdLineArgs[arg], -1, buff, sizeof buff, NULL, NULL)))
 			{
 				buff[n - 1] = '\n';
@@ -2357,10 +2357,12 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	return DefWindowProc(hwnd, msg, wparam, lparam);
 }
 
+
 int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
 {
 	WNDCLASSEX wc; HWND hWin, hParent;
 	MSG msg; HACCEL hAccel;
+	BOOL hide_menu = FALSE;
 	Type_CommandLineToArgvW *Ptr_CommandLineToArgvW;
 	Type_GetCommandLineW *Ptr_GetCommandLineW;
 	EmuWindow *emu = AllocZeroedOrFail(sizeof(EmuWindow));
@@ -2373,12 +2375,26 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	/* Prepare any command line args for later use.
 	 * Windows 95 won't have the procedures for commandline args, so we'll load them only optionally, at runtime. */
 	if ((Ptr_GetCommandLineW = (Type_GetCommandLineW *)GetProcAddress(GetModuleHandle(TEXT("kernel32.dll")), "GetCommandLineW")) &&
-		(Ptr_CommandLineToArgvW = (Type_CommandLineToArgvW *)GetProcAddress(GetModuleHandle(TEXT("shell32.dll")), "CommandLineToArgvW")))
+		(Ptr_CommandLineToArgvW = (Type_CommandLineToArgvW *)GetProcAddress(GetModuleHandle(TEXT("shell32.dll")), "CommandLineToArgvW")) &&
+		(CmdLineArgs = Ptr_CommandLineToArgvW(Ptr_GetCommandLineW(), &CmdLineArgCount)))
 	{
-		if ((CmdLineArgs = Ptr_CommandLineToArgvW(Ptr_GetCommandLineW(), &CmdLineArgCount)) && CmdLineArgCount > 1)
+		LPWSTR arg; void **opt, *options[] = {L"hidemenu", &hide_menu, 0};
+		while (CmdLineArgs += 1, CmdLineArgCount -= 1)
 		{
-			if (!WideCharToMultiByte(CP_ACP, 0, CmdLineArgs[1], -1, emu->rom_path, sizeof emu->rom_path, NULL, NULL))
+			if ((arg = *CmdLineArgs, lstrlenW(arg)) < 2 || (arg[0] != L'/' && arg[0] != L'-')) break;
+			for (opt = options; opt[0]; opt += 2)
+			{
+				if (CompareStringW(LOCALE_USER_DEFAULT, NORM_IGNORECASE, arg + 1, -1, (LPCWSTR)opt[0], -1) != CSTR_EQUAL) continue;
+				*(BOOL *)opt[1] = TRUE;
+				goto next_arg;
+			}
+			break; next_arg:;
+		}
+		if (CmdLineArgCount) /* Next argument will be the ROM file to load, if any */
+		{
+			if (!WideCharToMultiByte(CP_ACP, 0, CmdLineArgs[0], -1, emu->rom_path, sizeof emu->rom_path, NULL, NULL))
 				FatalBox("The command line argument for the file path was too long, or contained characters that couldn't be handled by this program.");
+			CmdLineArgs += 1, CmdLineArgCount -= 1;
 		}
 	}
 
@@ -2404,6 +2420,8 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	InitCommonControls();
 
 	hWin = CreateWindowForEmu(instance, emu);
+	if (hide_menu) SendMessage(hWin, WM_COMMAND, MAKEWPARAM(IDM_TOGGLEMENU, 0), 0);
+	/* ^ Hacky. Search for other use of IDM_TOGGLEMENU in this file to see other place we do this. When we clean this up, fix it in both places. */
 	ShowWindow(hWin, show_code);
 	SendMessage(hWin, UXNMSG_SendArgs, 0, 0); /* Send the cmd line args, if any */
 
