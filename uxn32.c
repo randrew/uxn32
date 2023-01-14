@@ -99,6 +99,7 @@ static LPCSTR EmuWinClass = TEXT("uxn_emu_win"), ConsoleWinClass = TEXT("uxn_con
 static LPCSTR BeetbugWinClass = TEXT("uxn_beetbug_win");
 static LPCSTR DefaultROMPath = TEXT("launcher.rom");
 static LPWSTR *CmdLineArgs; static int CmdLineArgCount;
+static UINT PresetBreakAddress;
 
 static LONGLONG LongLongMulDiv(LONGLONG value, LONGLONG numer, LONGLONG denom)
 {
@@ -293,6 +294,7 @@ typedef struct BeetbugWin {
 	RECT rcBlank, rcWstLabel, rcRstLabel, rcDevMemLabel;
 	UxnDebugSymbols symbols;
 	BYTE sbar_play_mode, sbar_input_event;
+	BYTE preset_break_original;
 } BeetbugWin;
 
 static int VFmtBox(HWND hWnd, LPCSTR title, UINT flags, char const *fmt, va_list ap)
@@ -1143,7 +1145,6 @@ static void BeetbugAutoScrollStacks(BeetbugWin *dbg)
 		if (s-- == 0 || (s >= top && s < top + pp)) continue;
 		ListView_EnsureVisible(dbg->ctrls[i], MAX(0, s - pp), FALSE);
 		ListView_EnsureVisible(dbg->ctrls[i], MIN(255, s + pad), FALSE);
-
 	}
 }
 
@@ -1183,10 +1184,21 @@ static void RunUxn(EmuWindow *d, UINT steps, BOOL initial)
 		if (t_delta > ExecutionTimeLimit || steps) goto residual;
 	}
 	/* TODO add checkbox to enable this debris check if (u->wst->ptr || u->rst->ptr) u->fault_code = 127; */
-	if (u->fault != UXN_FAULT_DONE)
+	if (u->fault)
 	{
 		UINT last_addr = ((UINT)u->pc - 1) % UXN_RAM_SIZE, last_op = u->ram[last_addr], fault_handler;
 		DEVPEEK(d->box->device_memory, fault_handler, 0x0);
+		if (u->fault == UXN_FAULT_DONE) /* Normal end of execution, or breakpoint set by debugger */
+		{
+			BeetbugWin *dbg;
+			if (last_addr != PresetBreakAddress || !d->beetbugHWnd) goto completed;
+			dbg = (BeetbugWin *)GetWindowLongPtr(d->beetbugHWnd, GWLP_USERDATA);
+			if (!dbg->preset_break_original) goto completed; /* Could be weird if this instruction was a BRK. Will be fixed when we use a list */
+			u->pc = last_addr;
+			u->ram[last_addr] = dbg->preset_break_original;
+			dbg->preset_break_original = 0;
+			goto pause_and_debug;
+		}
 		if (fault_handler && u->fault <= UXN_FAULT_DIVIDE_BY_ZERO)
 		{
 			u->wst->ptr = 4;
@@ -1204,6 +1216,7 @@ static void RunUxn(EmuWindow *d, UINT steps, BOOL initial)
 			int i = 0, count = (last_op & 0x20) >> 5; /* Push 1 or 2 bytes */
 			for (; i <= count; i++) s->dat[s->ptr++] = 0xFF;
 		}
+	pause_and_debug:
 		PauseVM(d);
 		/* This particular fault code means ROM program requested to 'quit'. What should we do?
 		 * If Beetbug isn't open, then close the emulator window.
@@ -1307,7 +1320,7 @@ static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT
 	d->exec_state = type;
 	if (*pc) { d->last_event = type; d->instr_count = 0; }
 	/* ^- To make the debugger UI useful, don't update these if the program vector is empty */
-#ifndef NDEBUG
+#if !defined(NDEBUG) && 0
 	if (type == EmuIn_Start && IsWindowVisible(d->beetbugHWnd)) { PauseVM(d); ShowBeetbugInstruction(d, *pc); return; }
 #endif
 	RunUxn(d, 0, TRUE);
@@ -1331,6 +1344,14 @@ static void StartVM(EmuWindow *d)
 {
 	if (LoadROMIntoBox(d->box, d->rom_path))
 	{
+		if (PresetBreakAddress < UXN_RAM_SIZE)
+		{
+			BeetbugWin *dbg;
+			ShowBeetbugInstruction(d, (USHORT)PresetBreakAddress);
+			dbg = (BeetbugWin *)GetWindowLongPtr(d->beetbugHWnd, GWLP_USERDATA);
+			dbg->preset_break_original = d->box->core.ram[PresetBreakAddress];
+			d->box->core.ram[PresetBreakAddress] = 0x00;
+		}
 		d->running = 1;
 		SendInputEvent(d, EmuIn_Start, 0, 0, 0);
 	}
@@ -2383,6 +2404,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	QueryPerformanceFrequency(&_perfcount_freq);
 	ExecutionTimeLimit = _perfcount_freq.QuadPart / 20;
 	MainInstance = instance;
+	PresetBreakAddress = (UINT)-1;
 
 	/* Prepare any command line args for later use.
 	 * Windows 95 won't have the procedures for commandline args, so we'll load them only optionally, at runtime. */
@@ -2390,14 +2412,27 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 		(Ptr_CommandLineToArgvW = (Type_CommandLineToArgvW *)GetProcAddress(GetModuleHandle(TEXT("shell32.dll")), "CommandLineToArgvW")) &&
 		(CmdLineArgs = Ptr_CommandLineToArgvW(Ptr_GetCommandLineW(), &CmdLineArgCount)))
 	{
-		LPWSTR arg; void **opt, *options[] = {L"hidemenu", &hide_menu, 0};
+		LPWSTR arg; int arglen; void **opt, *options[] = {L"hidemenu", &hide_menu, 0};
 		while (CmdLineArgs += 1, CmdLineArgCount -= 1)
 		{
-			if ((arg = *CmdLineArgs, lstrlenW(arg)) < 2 || (arg[0] != L'/' && arg[0] != L'-')) break;
+			if ((arg = *CmdLineArgs, arglen = lstrlenW(arg)) < 2 || (arg[0] != L'/' && arg[0] != L'-')) break;
 			for (opt = options; opt[0]; opt += 2)
 			{
 				if (CompareStringW(LOCALE_USER_DEFAULT, NORM_IGNORECASE, arg + 1, -1, (LPCWSTR)opt[0], -1) != CSTR_EQUAL) continue;
 				*(BOOL *)opt[1] = TRUE;
+				goto next_arg;
+			}
+			if (arglen > 8 && CompareStringW(LOCALE_USER_DEFAULT, NORM_IGNORECASE, arg + 1, 6, L"break:", 6) == CSTR_EQUAL)
+			{
+				if (arg[7] == L'#') /* Break on an address */
+				{
+					CHAR tmp[256];
+					if (WideCharToMultiByte(CP_ACP, 0, arg + 8, -1, tmp, sizeof tmp, NULL, NULL))
+					{
+						if (ParseHex(tmp, &PresetBreakAddress))
+							DebugPrint("break at %#X", PresetBreakAddress);
+					}
+				}
 				goto next_arg;
 			}
 			break; next_arg:;
