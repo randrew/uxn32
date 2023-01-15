@@ -124,6 +124,10 @@ SOURCE=.\beetbug.ico
 # End Source File
 # Begin Source File
 
+SOURCE=.\flummox.rom
+# End Source File
+# Begin Source File
+
 SOURCE=.\uxn32.ico
 # End Source File
 # End Group
