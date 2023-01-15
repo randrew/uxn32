@@ -55,6 +55,7 @@ BEGIN
     BEGIN
         MENUITEM "Toggle &Zoom\tF1",            IDM_TOGGLEZOOM
         MENUITEM "Toggle Console\tF3",          IDM_TOGGLECONSOLE
+        MENUITEM "Menu Bar\tF10",               IDM_TOGGLEMENU, CHECKED
         MENUITEM SEPARATOR
         MENUITEM "Beetbug\tF5",                 IDM_OPENBEETBUG
     END
@@ -78,6 +79,7 @@ IDC_UXN32 ACCELERATORS MOVEABLE PURE
 BEGIN
     "A",            IDM_SELECTALL,          VIRTKEY, CONTROL, NOINVERT
     VK_F1,          IDM_TOGGLEZOOM,         VIRTKEY, NOINVERT
+    VK_F10,         IDM_TOGGLEMENU,         VIRTKEY, NOINVERT
     VK_F2,          IDM_CLONEWINDOW,        VIRTKEY, NOINVERT
     VK_F3,          IDM_TOGGLECONSOLE,      VIRTKEY, NOINVERT
     VK_F4,          IDM_RELOAD,             VIRTKEY, NOINVERT
@@ -136,6 +138,13 @@ END
 
 #endif    // APSTUDIO_INVOKED
 
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// ROM
+//
+
+IDR_FLUMMOX             ROM     DISCARDABLE     "flummox.rom"
 
 /////////////////////////////////////////////////////////////////////////////
 //

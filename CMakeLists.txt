@@ -39,6 +39,7 @@ if (IS_MSVC)
         )
     string(REPLACE ";" " " MSVC_WARNING_FLAGS "${MSVC_WARNING_FLAGS}")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${MSVC_WARNING_FLAGS}")
+    set_source_files_properties(uxn_core.c PROPERTIES COMPILE_FLAGS /wd4127)
 
     # Disable incremental linking, which has been buggy for years and often
     # produces corrupt executables and debug info.

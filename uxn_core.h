@@ -1,7 +1,7 @@
 #ifndef __UXN_CORE_H__
 #define __UXN_CORE_H__
 /*
-Copyright (c) 2022 Devine Lu Linvega, Andrew Richards
+Copyright (c) 2022-2023 Devine Lu Linvega, Andrew Richards
 
 Permission to use, copy, modify, and distribute this software for any
 purpose with or without fee is hereby granted, provided that the above
@@ -10,7 +10,7 @@ copyright notice and this permission notice appear in all copies.
 THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
 WITH REGARD TO THIS SOFTWARE.
 */
-#pragma warning(disable:4244) /* Noisy VC6 warning. Can't disable with flag */
+
 typedef unsigned char UxnU8;
 typedef signed char UxnI8;
 typedef unsigned short UxnU16;
@@ -24,7 +24,7 @@ typedef struct UxnCore {
 	UxnStack *wst, *rst;
 	UxnU8 (*dei)(struct UxnCore *u, unsigned int address);
 	void (*deo)(struct UxnCore *u, unsigned int address, unsigned int value);
-	UxnU16 pc, fault_code;
+	UxnU16 pc, fault;
 } UxnCore;
 
 #define UXN_FAULT_DONE 1

@@ -10,6 +10,8 @@
 #include <commctrl.h>
 #include <mmsystem.h>
 
+#pragma warning(disable:4244) /* Noisy VC6 warning. Can't disable with flag */
+
 #if !defined(GWLP_WNDPROC)
 #define GetWindowLongPtrA   GetWindowLongA
 #define GetWindowLongPtrW   GetWindowLongW
@@ -96,6 +98,7 @@ static HINSTANCE MainInstance;
 static LPCSTR EmuWinClass = TEXT("uxn_emu_win"), ConsoleWinClass = TEXT("uxn_console_win"), EditWinClass = TEXT("EDIT");
 static LPCSTR BeetbugWinClass = TEXT("uxn_beetbug_win");
 static LPCSTR DefaultROMPath = TEXT("launcher.rom");
+static LPWSTR *CmdLineArgs; static int CmdLineArgCount;
 
 static LONGLONG LongLongMulDiv(LONGLONG value, LONGLONG numer, LONGLONG denom)
 {
@@ -215,9 +218,15 @@ typedef struct UxnMetadata
 	CHAR text[252 * 2 + 1]; /* Longest expected string */
 	USHORT devmask, icon_offset; /* Icon offset not guaranteed to be valid or in bounds */
 } UxnMetadata;
+typedef struct UxnDebugSymbols {
+	UINT count;
+	USHORT *addresses;
+	CHAR **strings;
+	void *buffer;
+} UxnDebugSymbols;
 
 enum { TimerID_Screen60hz = 1, TimerID_InitAudio, TimerID_FlushConsole };
-enum { UXNMSG_ContinueExec = WM_USER, UXNMSG_BecomeClone };
+enum { UXNMSG_ContinueExec = WM_USER, UXNMSG_BecomeClone, UXNMSG_LoadSymbols, UXNMSG_SendArgs };
 enum EmuIn
 {
 	EmuIn_KeyChar = 1,
@@ -245,6 +254,7 @@ typedef struct EmuWindow
 {
 	UxnBox *box;
 	HWND hWnd, consoleHWnd, beetbugHWnd;
+	HMENU hHiddenMenu;
 	HBITMAP hBMP;
 	HDC hDibDC;
 	SIZE dib_dims;
@@ -291,6 +301,7 @@ typedef struct BeetbugWin {
 	USHORT sbar_pc, sbar_fault, sbar_flashing;
 	LONGLONG sbar_instrcount;
 	RECT rcBlank, rcWstLabel, rcRstLabel, rcDevMemLabel;
+	UxnDebugSymbols symbols;
 	BYTE sbar_play_mode, sbar_input_event;
 } BeetbugWin;
 
@@ -428,7 +439,7 @@ static void RefitEmuWindow(EmuWindow *d)
 	RECT c, r;
 	c.left = c.top = 0;
 	c.right = d->screen.width * d->viewport_scale; c.bottom = d->screen.height * d->viewport_scale;
-	AdjustWindowRect(&c, GetWindowLong(d->hWnd, GWL_STYLE), TRUE); /* note: no spam protection from Uxn program yet */
+	AdjustWindowRect(&c, GetWindowLong(d->hWnd, GWL_STYLE), !d->hHiddenMenu); /* note: no spam protection from Uxn program yet */
 	GetWindowRect(d->hWnd, &r);
 	MoveWindow(d->hWnd, r.left, r.top, c.right - c.left, c.bottom - c.top, TRUE);
 	/* Seems like the repaint from this is always async. We need the TRUE flag for repainting or the non-client area will be messed up on non-DWM. */
@@ -467,6 +478,15 @@ static DWORD PrintDirListRow(char *dst, DWORD dst_len, char *display_name, DWORD
 	return (DWORD)written;
 }
 
+static BOOL PathExtensionBanned(CHAR *path) /* Path length must be <= than MAX_PATH */
+{
+	static CHAR const *outlawed[] = {"exe", "com", "dll", 0};
+	CHAR const **c = outlawed, *ext = PathFindExtensionA(path);
+	if (!*ext++) return FALSE;
+	while (*c) if (lstrcmpiA(ext, *c++) == 0) return TRUE;
+	return FALSE;
+}
+
 /* TODO now that there's two filers, I'm especially not happy with the arguments and stuff for these file functions. */
 static void FileDevPathChange(EmuWindow *emu, UINT device, UxnFiler *f)
 {
@@ -486,7 +506,7 @@ static void FileDevPathChange(EmuWindow *emu, UINT device, UxnFiler *f)
 	if (f->pathlen == 0 || f->pathlen >= MAX_PATH) goto error;
 	i = GetCurrentDirectoryA(MAX_PATH, tmp);
 	if (i == 0 || i >= MAX_PATH) goto error;
-	if (!PathIsPrefixA(tmp, f->path)) goto error;
+	if (!PathIsPrefixA(tmp, f->path) || PathExtensionBanned(f->path)) goto error;
 	return;
 error:
 	f->path[0] = 0;
@@ -525,7 +545,8 @@ static DWORD FileDevRead(UxnFiler *f, char *dst, DWORD dst_len)
 		{
 			/* DWORD copy = WideCharToMultiByte(1252, 0, ) */
 			DWORD written;
-			if (find_data->cFileName[0] == '.' && find_data->cFileName[1] == 0) goto next;
+			if (find_data->cFileName[0] == '.' && /* Skip '.' and '..' */
+				(find_data->cFileName[1] == 0 || (find_data->cFileName[1] == '.' && find_data->cFileName[2] == 0))) goto next;
 			written = PrintDirListRow(dst, dst_len, find_data->cFileName, find_data->nFileSizeHigh, find_data->nFileSizeLow, find_data->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY);
 			if (!written) break;
 			dst += written; result += written; dst_len -= written;
@@ -775,7 +796,7 @@ result:
 static void CreateConsoleWindow(EmuWindow *emu)
 {
 	DWORD exStyle = WS_EX_TOOLWINDOW, wStyle = WS_SIZEBOX | WS_SYSMENU;
-	RECT rect; rect.left = 0; rect.top = 0; rect.right = 200; rect.bottom = 150;
+	RECT rect; rect.left = 0; rect.top = 0; rect.right = 400; rect.bottom = 200;
 	AdjustWindowRectEx(&rect, wStyle, FALSE, exStyle);
 	emu->consoleHWnd = CreateWindowEx(exStyle, ConsoleWinClass, TEXT("Console"), wStyle, CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, emu->hWnd, NULL, MainInstance, (void *)NULL);
 }
@@ -951,6 +972,13 @@ static void UxnDeviceWrite_Cold(UxnBox *box, UINT address, UINT value)
 		{
 		case 0x2: box->work_stack.ptr = (UxnU8)value; break;
 		case 0x3: box->ret_stack.ptr = (UxnU8)value; break;
+		case 0x5: /* Set window title. Limit to 256 chars. */
+		{
+			BYTE *ram = box->core.ram; DWORD offset, i, n;
+			for (DEVPEEK(imem, offset, 0x4), i = offset, n = 0; i < UXN_RAM_SIZE && n++ < 256;)
+				if (!ram[i++]) { SetWindowTextA(emu->hWnd, (CHAR *)ram + offset); break; }
+			break;
+		}
 		case 0x7:
 		{
 			DWORD offset;
@@ -959,8 +987,8 @@ static void UxnDeviceWrite_Cold(UxnBox *box, UINT address, UINT value)
 			DebugPrint("incoming metadata at %#x", offset);
 			break;
 		}
-		case 0xE: box->core.fault_code = UXN_FAULT_DEBUG; break;
-		case 0xF: box->core.fault_code = UXN_FAULT_QUIT; break;
+		case 0xE: box->core.fault = UXN_FAULT_DEBUG; break;
+		case 0xF: box->core.fault = UXN_FAULT_QUIT; break;
 		default: if (port > 0x7 && port < 0xE)
 		{
 			UxnU8 *addr = imem + 0x8;
@@ -1125,7 +1153,7 @@ static int emu_window_count;
 
 static void ResetVM(EmuWindow *d)
 {
-	d->box->core.fault_code = 0;
+	d->box->core.fault = 0;
 	d->exec_state = 0;
 	ZeroMemory(&d->box->work_stack, sizeof(UxnStack) * 2); /* optional for quick reload */
 	ZeroMemory(d->box->device_memory, sizeof d->box->device_memory); /* optional for quick reload */
@@ -1174,7 +1202,7 @@ static void OpenBeetbugWindow(EmuWindow *emu, BOOL force)
 	{
 		emu->beetbugHWnd = CreateWindowEx(
 			0, BeetbugWinClass, TEXT("Beetbug"), WS_OVERLAPPEDWINDOW,
-			CW_USEDEFAULT, CW_USEDEFAULT, 480, 395,
+			CW_USEDEFAULT, CW_USEDEFAULT, 530, 395,
 			emu->hWnd, NULL, MainInstance, emu);
 	}
 	if (!IsWindowVisible(emu->beetbugHWnd)) ShowWindow(emu->beetbugHWnd, SW_SHOW);
@@ -1226,16 +1254,27 @@ static void RunUxn(EmuWindow *d, UINT steps, BOOL initial)
 		instr_interrupts++;
 		t_delta = TimeStampNow() - t_a;
 		d->instr_count += use_steps - res;
-		if (u->fault_code) break;
+		if (u->fault) break;
 		if (t_delta > ExecutionTimeLimit || steps) goto residual;
 	}
 	/* TODO add checkbox to enable this debris check if (u->wst->ptr || u->rst->ptr) u->fault_code = 127; */
-	if (u->fault_code != UXN_FAULT_DONE)
+	if (u->fault != UXN_FAULT_DONE)
 	{
-		/* If there's a division by zero, push 0xFF onto the stack to rebalance it. Then, if the user hits resume, the program has a better chance of not faulting again. */
-		if (u->fault_code == UXN_FAULT_DIVIDE_BY_ZERO)
+		UINT last_addr = ((UINT)u->pc - 1) % UXN_RAM_SIZE, last_op = u->ram[last_addr], fault_handler;
+		DEVPEEK(d->box->device_memory, fault_handler, 0x0);
+		if (fault_handler && u->fault <= UXN_FAULT_DIVIDE_BY_ZERO)
 		{
-			UINT last_op = u->ram[((UINT)u->pc - 1) % UXN_RAM_SIZE]; /* Get last op executed */
+			u->wst->ptr = 4;
+			u->wst->dat[0] = last_addr >> 8, u->wst->dat[1] = last_addr;
+			u->wst->dat[2] = last_op;
+			u->wst->dat[3] = u->fault - 1;
+			u->fault = 0;
+			u->pc = fault_handler;
+			goto residual;
+		}
+		/* If there's a division by zero, push 0xFF onto the stack to rebalance it. Then, if the user hits resume, the program has a better chance of not faulting again. */
+		if (u->fault == UXN_FAULT_DIVIDE_BY_ZERO)
+		{
 			UxnStack *s = last_op & 0x40 ? u->rst : u->wst; /* Which stack to push to */
 			int i = 0, count = (last_op & 0x20) >> 5; /* Push 1 or 2 bytes */
 			for (; i <= count; i++) s->dat[s->ptr++] = 0xFF;
@@ -1244,9 +1283,21 @@ static void RunUxn(EmuWindow *d, UINT steps, BOOL initial)
 		/* This particular fault code means ROM program requested to 'quit'. What should we do?
 		 * If Beetbug isn't open, then close the emulator window.
 		 * If Beetbug is open, then let Beetbug show that the ROM wanted to quit. */
-		if (u->fault_code == UXN_FAULT_QUIT && !IsWindowVisible(d->beetbugHWnd))
+		if (u->fault == UXN_FAULT_QUIT && !IsWindowVisible(d->beetbugHWnd))
 		{
-			PostMessage(d->hWnd, WM_CLOSE, 0, 0);
+			/* If Beetbug isn't open but the console window is open, don't quit. There might be useful messages there. */
+			if (IsWindowVisible(d->consoleHWnd))
+			{
+				ConWindow *con = (ConWindow *)GetWindowLongPtr(d->consoleHWnd, GWLP_USERDATA); int len;
+				FlushUxnConsole(con, d->consoleHWnd);
+				len = GetWindowTextLength(con->outHWnd); /* TODO repetitive */
+				SendMessage(con->outHWnd, EM_SETSEL, len, len);
+				SendMessage(con->outHWnd, EM_REPLACESEL, 0, (LPARAM)TEXT("\r\n\r\n[Program quit]"));
+			}
+			else
+			{
+				PostMessage(d->hWnd, WM_CLOSE, 0, 0);
+			}
 			return;
 		}
 		InvalidateUxnScreenRect(d);
@@ -1275,7 +1326,7 @@ completed:
 		DEVPOKE2(d->box->device_memory, VV_MOUSE + 0xA, 0, 0);
 		break;
 	}
-	if (d->running) u->fault_code = 0;
+	if (d->running) u->fault = 0;
 	d->exec_state = 0;
 residual:
 	more_work = d->exec_state || d->queue_count;
@@ -1351,7 +1402,7 @@ static void SendInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT 
 	}
 }
 
-static void StartVM(EmuWindow *d)
+static void LoadROMFileAndStartVM(EmuWindow *d)
 {
 	if (LoadROMIntoBox(d->box, d->rom_path, &d->meta))
 	{
@@ -1365,18 +1416,29 @@ static void StartVM(EmuWindow *d)
 			DebugPrint("metadata: %s", d->meta.text);
 		else
 			DebugPrint("not valid metadata");
-		d->running = 1;
-		SendInputEvent(d, EmuIn_Start, 0, 0, 0);
 	}
+	else
+	{
+		/* Can't load ROM file? Load a small ROM to display an error screen. */
+		HRSRC hInfo = FindResource(MainInstance, MAKEINTRESOURCE(IDR_FLUMMOX), TEXT("ROM"));
+		DWORD rom_size = SizeofResource(MainInstance, hInfo);
+		void *data = LockResource(LoadResource(MainInstance, hInfo));
+		if (!data) return;
+		CopyMemory(d->box->core.ram + UXN_ROM_OFFSET, data, MIN(rom_size, UXN_RAM_SIZE - UXN_ROM_OFFSET));
+	}
+	d->running = 1;
+	SendInputEvent(d, EmuIn_Start, 0, 0, 0);
 }
 
 static void ReloadFromROMFile(EmuWindow *d)
 {
 	PauseVM(d);
 	ResetVM(d);
-	StartVM(d);
+	LoadROMFileAndStartVM(d);
 	SynthesizeMouseMoveToCurrent(d); /* Still has a brief flicker of wrong cursor... oh well */
 	/* We want to resync the held keys here, but it's not safe to do so, because we get garbage results from GetKeyState() and GetAsyncKeyState() if the open file dialog has just recently been closed by the user. There are also similar issues with syncing key state when reactivating the window by clicking on the title bar while holding modifiers. So forget about it for now.*/
+	SendMessage(d->hWnd, UXNMSG_SendArgs, 0, 0);
+	if (d->beetbugHWnd) SendMessage(d->beetbugHWnd, UXNMSG_LoadSymbols, 0, 0);
 }
 
 static void OpenROMDialog(EmuWindow *d)
@@ -1435,17 +1497,21 @@ static void CloneWindow(EmuWindow *a)
 }
 
 static LPCSTR const uxn_op_names =
-TEXT("LITINCPOPNIPSWPROTDUPOVREQUNEQGTHLTHJMPJCNJSRSTHLDZSTZLDRSTRLDASTADEIDEOADDSUBMULDIVANDORAEORSFTBRK");
+TEXT("LITINCPOPNIPSWPROTDUPOVREQUNEQGTHLTHJMPJCNJSRSTHLDZSTZLDRSTRLDASTADEIDEOADDSUBMULDIVANDORAEORSFTBRKJCIJMIJSI");
 /* Note: BRK is appended to the end for special-case code when encoding/decoding mnemonics. */
 
 static int DecodeUxnOpcode(TCHAR *out, BYTE instr)
 {
-	/* Special case BRK (0x00) mnemonic when the instruction is all zeroes. */
-	int n = 3, base_op = instr & 0x1F, name_offset = (instr ? base_op : 32) * 3;
-	CopyMemory(out, uxn_op_names + name_offset, 3 * sizeof(TCHAR));
-	if (instr & 0x20) out[n++] = '2';
-	if (instr & 0x80 && base_op) out[n++] = 'k'; /* Don't show 'k' on LIT */
-	if (instr & 0x40) out[n++] = 'r';
+	/* BRK, JCI, JMI, and JSI are special. LIT is also a little special. */
+	int n = 3, base_op = instr & 0x1F, is_normal = instr & ~0x60;
+	int name_index = is_normal ? base_op : (instr >> 5 & 3) + 32;
+	CopyMemory(out, uxn_op_names + name_index * 3, 3 * sizeof(TCHAR));
+	if (is_normal)
+	{
+		if (instr & 0x20) out[n++] = '2';
+		if (instr & 0x80 && base_op) out[n++] = 'k'; /* Don't show 'k' on LIT */
+		if (instr & 0x40) out[n++] = 'r';
+	}
 	out[n] = 0;
 	return n;
 }
@@ -1498,8 +1564,8 @@ static BOOL EncodeUxnOpcode(LPCSTR in, BYTE *out)
 			goto found;
 	return FALSE;
 found:
-	/* For 'LIT', add an implicit 'k' modifier. Or, if it's BRK, the 33rd item in the array, give it the numeric value 0x00 (by chopping off the 6th bit.) */
-	a = a ? a & 0x1F : 0x80;
+	/* For 'LIT', add an implicit 'k' modifier. For special ops, offset their position. */
+	a = !a ? 0x80 : a >= 32 ? (a - 32) << 5 : a;
 	for (i = 3; i < len; i++)
 		if      (tmp[i] == '2') a |= 0x20;
 		else if (tmp[i] == 'K') a |= 0x80;
@@ -1507,6 +1573,77 @@ found:
 		else return FALSE;
 	*out = (BYTE)a;
 	return TRUE;
+}
+
+static BOOL LoadUxnDebugSymbols(LPCTSTR path, UxnDebugSymbols *out)
+{
+	DWORD bytes_read, file_size;
+	UINT entry_count, addrs_size, i, e;
+	BYTE *buff = NULL; USHORT *addresses; CHAR **strings;
+	BOOL result = FALSE;
+	HANDLE hFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (hFile == INVALID_HANDLE_VALUE) return FALSE;
+	if ((file_size = GetFileSize(hFile, NULL)) == 0xFFFFFFFF) goto fail;
+	buff = AllocZeroedOrFail(file_size);
+	if (!ReadFile(hFile, buff, file_size, &bytes_read, NULL) || bytes_read != file_size) goto fail;
+	for (entry_count = i = 0; i < file_size; entry_count++) /* Find number of entries */
+	{
+		for (i += 2;;) /* Advance past a 16-bit value, then check for a null terminated string */
+		{
+			if (i >= file_size) goto fail; /* Bad: ragged file or not null terminated string */
+			if (!buff[i++]) break; /* If we find the string's null terminator, move to the next entry. */
+		}
+	}
+	if (entry_count > (UINT)-1 / (sizeof(CHAR *) * 2)) goto fail; /* Some reasonable upper limit */
+	addrs_size = entry_count * sizeof(USHORT) + sizeof(CHAR *) - 1 & ~(sizeof(CHAR *) - 1);
+	/* ^ Size needed to hold array of 16-bit addresses, plus pointer-aligning padding. */
+	addresses = entry_count ? AllocZeroedOrFail(addrs_size + entry_count * sizeof(CHAR *)) : NULL;
+	/* ^ Buffer for: array of 16-bit addresses + pad to pointer + array of char pointers */
+	strings = (CHAR **)((BYTE *)addresses + addrs_size); /* The char pointers array */
+	for (i = e = 0; e < entry_count; e++) /* Set the values in the addresses and char pointers arrays */
+	{
+		addresses[e] = (buff[i] << 8) + buff[i + 1];
+		for (strings[e] = (CHAR *)buff + (i += 2); buff[i++];);
+	}
+	for (i = 1; i < entry_count; i++) /* Insertion sort, to make it binary searchable */
+	{
+		USHORT t = addresses[i]; CHAR *u = strings[i]; /* tmp vars */
+		for (e = i; e > 0 && addresses[e - 1] > t; e--)
+		{
+			addresses[e] = addresses[e - 1], addresses[e - 1] = t;
+			strings[e] = strings[e - 1], strings[e - 1] = u;
+		}
+	}
+	out->count = entry_count; out->addresses = addresses; out->strings = strings; out->buffer = buff;
+	result = TRUE;
+done:
+	CloseHandle(hFile);
+	return result;
+fail:
+	HeapFree(GetProcessHeap(), 0, buff);
+	goto done;
+}
+
+static void FreeUxnDebugSymbols(UxnDebugSymbols *s)
+{
+	HeapFree(GetProcessHeap(), 0, s->buffer);
+	HeapFree(GetProcessHeap(), 0, s->addresses);
+}
+
+/* Returns the index (0 through UINT_MAX-1) for the symbol whose address that's equal to or earlier than 'address'.
+ * Returns (UINT)-1 if no symbol was found. */
+static UINT FindSymbolForAddress(UxnDebugSymbols *s, USHORT address)
+{
+	USHORT *addrs = s->addresses;
+	UINT count = s->count, first = 0, i, step;
+	while (count > 0) /* Binary search */
+	{
+		step = count / 2;
+		i = first + step;
+		if (addrs[i] <= address) { first = ++i; count -= step + 1; }
+		else count = step;
+	}
+	return first - 1;
 }
 
 static void UpdateBeetbugStuff(HWND hWnd, BeetbugWin *d)
@@ -1546,10 +1683,10 @@ static void UpdateBeetbugStuff(HWND hWnd, BeetbugWin *d)
 		wsprintf(buff, "Ops: %u", u);
 		SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 3, (LPARAM)buff);
 	}
-	if (d->sbar_fault != d->emu->box->core.fault_code)
+	if (d->sbar_fault != d->emu->box->core.fault)
 	{
 		LPCSTR text = NULL;
-		switch (d->sbar_fault = d->emu->box->core.fault_code)
+		switch (d->sbar_fault = d->emu->box->core.fault)
 		{
 		case UXN_FAULT_DONE: text = TEXT("Break"); break;
 		case UXN_FAULT_STACK_UNDERFLOW: text = TEXT("Stack underflow"); break;
@@ -1596,7 +1733,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	{
 		LONG_PTR i, j; HWND list; LV_COLUMN col; HFONT hFont = GetSmallFixedFont();
 		static const int
-			columns[] = { /* Instr list */ 45 + 25 + 50, /* Hex list */ 40 + 130,
+			columns[] = { /* Instr list */ 45 + 25 + 50 + 90, /* Hex list */ 40 + 130,
 			              /* Stacks */ 25, 25, /* Device mem */ 20 + 130},
 			rows[] = {UXN_RAM_SIZE, UXN_RAM_SIZE / 8, 255, 255, 256 / 8},
 			status_parts[] = {70, 140, 200, 300, -1};
@@ -1639,6 +1776,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		SetWindowLongPtr(d->ctrls[BB_JumpEdit], GWLP_WNDPROC,  (LONG_PTR)BeetbugJumpEditProc);
 		SendMessage(d->ctrls[BB_JumpEdit], EM_SETLIMITTEXT, 4, 0);
 		SendMessage(d->ctrls[BB_JumpEdit], WM_SETFONT, (WPARAM)hFont, 0);
+		SendMessage(hWnd, UXNMSG_LoadSymbols, 0, 0);
 		UpdateBeetbugStuff(hWnd, d);
 		SetTimer(hWnd, 1, 50, NULL);
 		break;
@@ -1647,6 +1785,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		ShowWindow(hWnd, SW_HIDE);
 		return 0;
 	case WM_DESTROY:
+		FreeUxnDebugSymbols(&d->symbols);
 		HeapFree(GetProcessHeap(), 0, d);
 		break;
 	case WM_SIZE:
@@ -1657,7 +1796,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		GetClientRect(d->ctrls[BB_Status], &tmp);
 		MapWindowPoints(d->ctrls[BB_Status], hWnd, (LPPOINT)&tmp, 2); /* must violate strict aliasing */
 		r.bottom = tmp.top;
-		CutRect(&r, FromLeft, 200, &tmp);
+		CutRect(&r, FromLeft, 250, &tmp);
 		CutRect(&tmp, FromBottom, 15, &tmp2);
 		CutRectForWindow(&tmp2, FromLeft, 50, d->ctrls[BB_JumpEdit]);
 		MoveWindowRect(d->ctrls[BB_JumpBtn], &tmp2, TRUE);
@@ -1769,8 +1908,11 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			hEdit = ListView_EditLabel(d->ctrls[wParam], ((NMITEMACTIVATE *)lParam)->iItem);
 		custom_edit:
 			if (!hEdit || wParam != BB_AsmList) return 0;
+			/* Using ((NMITEMACTIVATE *)lParam)->iItem to get the item index seems busted in the NM_RETURN case. Tends to use whatever the last time that was double clicked was. Shrug. Use the text in the thing given to us instead. */
 			GetWindowText(hEdit, buff, 256);
-			for (i = 0; i < 10; i++) buff[i] = ' ';
+			for (i = 0; i < 10; i++) buff[i] = ' '; /* Wipe over everything before the mnemonic with a space. */
+			while (buff[i] && buff[i] != ' ') i++; /* Trim anything after opcode mnemonic, like a symbol name. */
+			buff[i] = 0;
 			SetWindowText(hEdit, buff);
 			SendMessage(hEdit, EM_SETSEL, 10, -1);
 			return 0;
@@ -1794,14 +1936,19 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		case LVN_GETDISPINFO:
 		{
 			TCHAR buff[256]; UxnCore *core = &d->emu->box->core; LV_DISPINFO *di = (LV_DISPINFO *)lParam;
-			UINT iItem = di->item.iItem, addr = iItem; BYTE *mem; UxnStack *stack;
+			UINT iItem = di->item.iItem, addr = iItem, sym; BYTE *mem; UxnStack *stack;
 			if (!(di->item.mask & LVIF_TEXT)) return 0;
 			buff[0] = 0;
 			switch (wParam)
 			{
 			case BB_AsmList:
 				iItem = wsprintf(buff, "%c %04X %02X ", core->pc == addr ? '>' : ' ', (UINT)addr, (UINT)core->ram[addr]);
-				DecodeUxnOpcode(buff + iItem, (BYTE)core->ram[addr]);
+				iItem += DecodeUxnOpcode(buff + iItem, (BYTE)core->ram[addr]);
+				if ((sym = FindSymbolForAddress(&d->symbols, addr)) < d->symbols.count && d->symbols.addresses[sym] == addr)
+				{
+					while (iItem < 17) buff[iItem++] = ' ';
+					lstrcpynA(buff + iItem, d->symbols.strings[sym], 256 - iItem);
+				}
 				break;
 			case BB_HexList:
 				addr *= 8; mem = core->ram + addr;
@@ -1878,7 +2025,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			}
 		if ((idm == IDM_STEP || idm == IDM_BIGSTEP) && !d->emu->running && d->emu->exec_state)
 		{
-			d->emu->box->core.fault_code = 0;
+			d->emu->box->core.fault = 0;
 			RunUxn(d->emu, idm == IDM_STEP ? 1 : 100, FALSE);
 			UpdateBeetbugStuff(hWnd, d);
 			ShowBeetbugInstruction(d->emu, d->emu->box->core.pc);
@@ -1899,6 +2046,18 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			return 0;
 		}
 		break;
+	case UXNMSG_LoadSymbols:
+	{
+		TCHAR tmp[MAX_PATH]; int pathlen = lstrlen(d->emu->rom_path);
+		FreeUxnDebugSymbols(&d->symbols); /* wasted work on first time... hmm */
+		ZeroMemory(&d->symbols, sizeof d->symbols); /* also */
+		if (pathlen < MAX_PATH - 5)
+		{
+			CopyMemory(tmp, d->emu->rom_path, pathlen * sizeof(TCHAR));
+			CopyMemory(tmp + pathlen, TEXT(".sym"), 5 * sizeof(TCHAR));
+			LoadUxnDebugSymbols(tmp, &d->symbols);
+		}
+	}
 	}
 	return DefWindowProc(hWnd, msg, wParam, lParam);
 }
@@ -2002,7 +2161,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)d);
 		DragAcceptFiles(hwnd, TRUE);
 		InitEmuWindow(d, hwnd);
-		if (lstrlen(d->rom_path)) StartVM(d);
+		if (lstrlen(d->rom_path)) LoadROMFileAndStartVM(d);
 		return 0;
 	}
 	case WM_CLOSE:
@@ -2015,6 +2174,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		FreeUxnScreen(&d->screen);
 		ResetFiler(&d->filers[0]);
 		ResetFiler(&d->filers[1]);
+		if (d->hHiddenMenu) DestroyMenu(d->hHiddenMenu);
 		if (d->hBMP) DeleteObject(d->hBMP);
 		if (d->hDibDC) DeleteDC(d->hDibDC);
 		if (d->wave_out)
@@ -2097,7 +2257,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		/* Note: WM_GETMINMAXINFO may be sent before WM_CREATE! */
 		/* Use 1x Uxn screen scale when calculating minimum window size. */
 		if (d) { c.right = MAX(c.right, d->screen.width); c.bottom = d->screen.height; }
-		AdjustWindowRect(&c, GetWindowLong(hwnd, GWL_STYLE), TRUE);
+		AdjustWindowRect(&c, GetWindowLong(hwnd, GWL_STYLE), d && !d->hHiddenMenu);
 		info->ptMinTrackSize.x = c.right - c.left;
 		info->ptMinTrackSize.y = c.bottom - c.top;
 		return 0;
@@ -2241,6 +2401,15 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		case IDM_OPENBEETBUG: case IDM_MOREBUG:
 			OpenBeetbugWindow(d, LOWORD(wparam) == IDM_MOREBUG);
 			return 0;
+		case IDM_TOGGLEMENU:
+		{
+			HMENU tmp = d->hHiddenMenu; LONG scale = d->viewport_scale;
+			d->hHiddenMenu = GetMenu(d->hWnd);
+			SetMenu(d->hWnd, tmp);
+			/* WM_SIZE was sent when calling SetMenu(). If the zoom is 2x, and the menu is unhiding, then CalcUxnViewport() may set viewport_scale to be 1x instead of 2x. Set it back so that the window doesn't shrink. */
+			if (!IsZoomed(d->hWnd)) { d->viewport_scale = scale; RefitEmuWindow(d); }
+			return 0;
+		}
 		}
 		break;
 
@@ -2259,7 +2428,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	{
 		EmuWindow *b = (EmuWindow *)wparam;
 		d->box->core.pc = b->box->core.pc;
-		d->box->core.fault_code = b->box->core.fault_code;
+		d->box->core.fault = b->box->core.fault;
 		d->exec_state = b->exec_state;
 		CopyMemory(&d->box->work_stack, &b->box->work_stack, sizeof(UxnStack) * 2);
 		CopyMemory(d->box->device_memory, b->box->device_memory, sizeof d->box->device_memory);
@@ -2268,12 +2437,26 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		CopyMemory(d->screen.palette, b->screen.palette, sizeof d->screen.palette);
 		SetUxnScreenSize(&d->screen, b->screen.width, b->screen.height);
 		d->viewport_scale = b->viewport_scale;
+		if (!d->hHiddenMenu != !b->hHiddenMenu) /* Quick hack for now. Do it better later to avoid resize twitch. */
+			SendMessage(d->hWnd, WM_COMMAND, MAKEWPARAM(IDM_TOGGLEMENU, 0), 0);
 		RefitEmuWindow(d);
 		CopyMemory(d->screen.bg, b->screen.bg, d->screen.width * d->screen.height * 2);
 		CopyMemory(d->rom_path, b->rom_path, MAX_PATH);
 		/* can't copy filer state */
 		if (b->running) UnpauseVM(d);
 		UpdateWindow(d->hWnd);
+		return 0;
+	}
+	case UXNMSG_SendArgs: if (!CmdLineArgs) break;
+	/* Send any additional arguments as virtual console input */
+	{
+		int arg, i, n; CHAR buff[256];
+		for (arg = 0; arg < CmdLineArgCount; arg++)
+			if ((n = WideCharToMultiByte(CP_ACP, 0, CmdLineArgs[arg], -1, buff, sizeof buff, NULL, NULL)))
+			{
+				buff[n - 1] = '\n';
+				for (i = 0; i < n; i++) SendInputEvent(d, EmuIn_Console, buff[i], 0, 0);
+			}
 		return 0;
 	}
 	}
@@ -2284,9 +2467,9 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 {
 	WNDCLASSEX wc; HWND hWin, hParent;
 	MSG msg; HACCEL hAccel;
+	BOOL hide_menu = FALSE;
 	Type_CommandLineToArgvW *Ptr_CommandLineToArgvW;
 	Type_GetCommandLineW *Ptr_GetCommandLineW;
-	int arg_count = 0; LPWSTR *args = NULL;
 	EmuWindow *emu = AllocZeroedOrFail(sizeof(EmuWindow));
 	(void)command_line; (void)prev_instance;
 	CopyMemory(emu->rom_path, DefaultROMPath, (lstrlen(DefaultROMPath) + 1) * sizeof(TCHAR));
@@ -2294,14 +2477,29 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	ExecutionTimeLimit = _perfcount_freq.QuadPart / 20;
 	MainInstance = instance;
 
-	/* Windows 95 won't have the procedures for commandline args, so we'll load them only optionally, at runtime. */
+	/* Prepare any command line args for later use.
+	 * Windows 95 won't have the procedures for commandline args, so we'll load them only optionally, at runtime. */
 	if ((Ptr_GetCommandLineW = (Type_GetCommandLineW *)GetProcAddress(GetModuleHandle(TEXT("kernel32.dll")), "GetCommandLineW")) &&
-		(Ptr_CommandLineToArgvW = (Type_CommandLineToArgvW *)GetProcAddress(GetModuleHandle(TEXT("shell32.dll")), "CommandLineToArgvW")))
+		(Ptr_CommandLineToArgvW = (Type_CommandLineToArgvW *)GetProcAddress(GetModuleHandle(TEXT("shell32.dll")), "CommandLineToArgvW")) &&
+		(CmdLineArgs = Ptr_CommandLineToArgvW(Ptr_GetCommandLineW(), &CmdLineArgCount)))
 	{
-		if ((args = Ptr_CommandLineToArgvW(Ptr_GetCommandLineW(), &arg_count)) && arg_count > 1)
+		LPWSTR arg; void **opt, *options[] = {L"hidemenu", &hide_menu, 0};
+		while (CmdLineArgs += 1, CmdLineArgCount -= 1)
 		{
-			if (!WideCharToMultiByte(CP_ACP, 0, args[1], -1, emu->rom_path, sizeof emu->rom_path, NULL, NULL))
+			if ((arg = *CmdLineArgs, lstrlenW(arg)) < 2 || (arg[0] != L'/' && arg[0] != L'-')) break;
+			for (opt = options; opt[0]; opt += 2)
+			{
+				if (CompareStringW(LOCALE_USER_DEFAULT, NORM_IGNORECASE, arg + 1, -1, (LPCWSTR)opt[0], -1) != CSTR_EQUAL) continue;
+				*(BOOL *)opt[1] = TRUE;
+				goto next_arg;
+			}
+			break; next_arg:;
+		}
+		if (CmdLineArgCount) /* Next argument will be the ROM file to load, if any */
+		{
+			if (!WideCharToMultiByte(CP_ACP, 0, CmdLineArgs[0], -1, emu->rom_path, sizeof emu->rom_path, NULL, NULL))
 				FatalBox("The command line argument for the file path was too long, or contained characters that couldn't be handled by this program.");
+			CmdLineArgs += 1, CmdLineArgCount -= 1;
 		}
 	}
 
@@ -2327,20 +2525,10 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	InitCommonControls();
 
 	hWin = CreateWindowForEmu(instance, emu);
+	if (hide_menu) SendMessage(hWin, WM_COMMAND, MAKEWPARAM(IDM_TOGGLEMENU, 0), 0);
+	/* ^ Hacky. Search for other use of IDM_TOGGLEMENU in this file to see other place we do this. When we clean this up, fix it in both places. */
 	ShowWindow(hWin, show_code);
-
-	if (args) /* Send any additional arguments as virtual console input */
-	{
-		int arg, i, n; CHAR buff[256];
-		for (arg = 2; arg < arg_count; arg++)
-		{
-			if ((n = WideCharToMultiByte(CP_ACP, 0, args[arg], -1, buff, sizeof buff, NULL, NULL)))
-			{
-				buff[n - 1] = '\n';
-				for (i = 0; i < n; i++) SendInputEvent(emu, EmuIn_Console, buff[i], 0, 0);
-			}
-		}
-	}
+	SendMessage(hWin, UXNMSG_SendArgs, 0, 0); /* Send the cmd line args, if any */
 
 	for (;;)
 	{
