@@ -468,6 +468,15 @@ static DWORD PrintDirListRow(char *dst, DWORD dst_len, char *display_name, DWORD
 	return (DWORD)written;
 }
 
+static BOOL PathExtensionBanned(CHAR *path) /* Path length must be <= than MAX_PATH */
+{
+	static CHAR const *outlawed[] = {"exe", "com", "dll", 0};
+	CHAR const **c = outlawed, *ext = PathFindExtensionA(path);
+	if (!*ext++) return FALSE;
+	while (*c) if (lstrcmpiA(ext, *c++) == 0) return TRUE;
+	return FALSE;
+}
+
 /* TODO now that there's two filers, I'm especially not happy with the arguments and stuff for these file functions. */
 static void FileDevPathChange(EmuWindow *emu, UINT device, UxnFiler *f)
 {
@@ -487,7 +496,7 @@ static void FileDevPathChange(EmuWindow *emu, UINT device, UxnFiler *f)
 	if (f->pathlen == 0 || f->pathlen >= MAX_PATH) goto error;
 	i = GetCurrentDirectoryA(MAX_PATH, tmp);
 	if (i == 0 || i >= MAX_PATH) goto error;
-	if (!PathIsPrefixA(tmp, f->path)) goto error;
+	if (!PathIsPrefixA(tmp, f->path) || PathExtensionBanned(f->path)) goto error;
 	return;
 error:
 	f->path[0] = 0;
