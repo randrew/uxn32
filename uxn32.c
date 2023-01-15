@@ -526,7 +526,8 @@ static DWORD FileDevRead(UxnFiler *f, char *dst, DWORD dst_len)
 		{
 			/* DWORD copy = WideCharToMultiByte(1252, 0, ) */
 			DWORD written;
-			if (find_data->cFileName[0] == '.' && find_data->cFileName[1] == 0) goto next;
+			if (find_data->cFileName[0] == '.' && /* Skip '.' and '..' */
+				(find_data->cFileName[1] == 0 || (find_data->cFileName[1] == '.' && find_data->cFileName[2] == 0))) goto next;
 			written = PrintDirListRow(dst, dst_len, find_data->cFileName, find_data->nFileSizeHigh, find_data->nFileSizeLow, find_data->dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY);
 			if (!written) break;
 			dst += written; result += written; dst_len -= written;
