@@ -2376,7 +2376,6 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	return DefWindowProc(hwnd, msg, wparam, lparam);
 }
 
-
 int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
 {
 	WNDCLASSEX wc; HWND hWin, hParent;
