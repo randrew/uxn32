@@ -1327,20 +1327,26 @@ static void SendInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT 
 	}
 }
 
-static void StartVM(EmuWindow *d)
+static void LoadROMFileAndStartVM(EmuWindow *d)
 {
-	if (LoadROMIntoBox(d->box, d->rom_path))
+	if (!LoadROMIntoBox(d->box, d->rom_path))
 	{
-		d->running = 1;
-		SendInputEvent(d, EmuIn_Start, 0, 0, 0);
+		/* Can't load ROM file? Load a small ROM to display an error screen. */
+		HRSRC hInfo = FindResource(MainInstance, MAKEINTRESOURCE(IDR_FLUMMOX), TEXT("ROM"));
+		DWORD rom_size = SizeofResource(MainInstance, hInfo);
+		void *data = LockResource(LoadResource(MainInstance, hInfo));
+		if (!data) return;
+		CopyMemory(d->box->core.ram + UXN_ROM_OFFSET, data, MIN(rom_size, UXN_RAM_SIZE - UXN_ROM_OFFSET));
 	}
+	d->running = 1;
+	SendInputEvent(d, EmuIn_Start, 0, 0, 0);
 }
 
 static void ReloadFromROMFile(EmuWindow *d)
 {
 	PauseVM(d);
 	ResetVM(d);
-	StartVM(d);
+	LoadROMFileAndStartVM(d);
 	SynthesizeMouseMoveToCurrent(d); /* Still has a brief flicker of wrong cursor... oh well */
 	/* We want to resync the held keys here, but it's not safe to do so, because we get garbage results from GetKeyState() and GetAsyncKeyState() if the open file dialog has just recently been closed by the user. There are also similar issues with syncing key state when reactivating the window by clicking on the title bar while holding modifiers. So forget about it for now.*/
 	SendMessage(d->hWnd, UXNMSG_SendArgs, 0, 0);
@@ -2067,7 +2073,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)d);
 		DragAcceptFiles(hwnd, TRUE);
 		InitEmuWindow(d, hwnd);
-		if (lstrlen(d->rom_path)) StartVM(d);
+		if (lstrlen(d->rom_path)) LoadROMFileAndStartVM(d);
 		return 0;
 	}
 	case WM_CLOSE:
