@@ -35,9 +35,9 @@ typedef struct UxnCore {
 /* Runs up to 'limit' number of Uxn instructions.
    Returns limit - (number of instructions executed).
    Execution starts at address 'u->pc', so set it (or leave it) as needed.
-   `u->fault_code` should be set to 0 before calling.
+   `u->fault` should be set to 0 before calling.
 
-   Upon returning, `u->fault_code` indicates the reason execution ended:
+   After returning, `u->fault` indicates the reason execution ended:
      0: Instruction limit was reached before executing a halt instruction.
         The program needs to execute more before it finishes.
      1: The program halted normally after executing a halt instruction.
