@@ -1193,7 +1193,7 @@ static void RunUxn(EmuWindow *d, UINT steps, BOOL initial)
 		if (t_delta > ExecutionTimeLimit || steps) goto residual;
 	}
 	/* TODO add checkbox to enable this debris check if (u->wst->ptr || u->rst->ptr) u->fault_code = 127; */
-	if (u->fault != UXN_FAULT_DONE)
+	if (u->fault)
 	{
 		UINT last_addr = ((UINT)u->pc - 1) % UXN_RAM_SIZE, last_op = u->ram[last_addr], fault_handler;
 		DEVPEEK(d->box->device_memory, fault_handler, 0x0);
@@ -1207,6 +1207,7 @@ static void RunUxn(EmuWindow *d, UINT steps, BOOL initial)
 			u->pc = fault_handler;
 			goto residual;
 		}
+		if (u->fault == UXN_FAULT_DONE) goto completed;
 		/* If there's a division by zero, push 0xFF onto the stack to rebalance it. Then, if the user hits resume, the program has a better chance of not faulting again. */
 		if (u->fault == UXN_FAULT_DIVIDE_BY_ZERO)
 		{
