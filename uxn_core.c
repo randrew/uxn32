@@ -29,14 +29,14 @@ WITH REGARD TO THIS SOFTWARE.
 #define JUMP(x) { if(bs) pc = (x); else pc += (UxnI8)(x); }
 
 #define MODE(op, body)\
-	case op|0x00|0x00|0x00: {enum{bs=0}; src = u->wst, dst = u->rst; sp = &src->ptr; body break;}\
-	case op|0x00|0x00|0x20: {enum{bs=1}; src = u->wst, dst = u->rst; sp = &src->ptr; body break;}\
-	case op|0x00|0x40|0x00: {enum{bs=0}; src = u->rst, dst = u->wst; sp = &src->ptr; body break;}\
-	case op|0x00|0x40|0x20: {enum{bs=1}; src = u->rst, dst = u->wst; sp = &src->ptr; body break;}\
-	case op|0x80|0x00|0x00: {enum{bs=0}; src = u->wst, dst = u->rst; kptr = src->ptr, sp = &kptr; body break;}\
-	case op|0x80|0x00|0x20: {enum{bs=1}; src = u->wst, dst = u->rst; kptr = src->ptr, sp = &kptr; body break;}\
-	case op|0x80|0x40|0x00: {enum{bs=0}; src = u->rst, dst = u->wst; kptr = src->ptr, sp = &kptr; body break;}\
-	case op|0x80|0x40|0x20: {enum{bs=1}; src = u->rst, dst = u->wst; kptr = src->ptr, sp = &kptr; body break;}
+	case 0x00|0x00|0x00|op: {enum{bs=0}; src = u->wst, dst = u->rst; sp = &src->ptr; body break;}\
+	case 0x00|0x00|0x20|op: {enum{bs=1}; src = u->wst, dst = u->rst; sp = &src->ptr; body break;}\
+	case 0x00|0x40|0x00|op: {enum{bs=0}; src = u->rst, dst = u->wst; sp = &src->ptr; body break;}\
+	case 0x00|0x40|0x20|op: {enum{bs=1}; src = u->rst, dst = u->wst; sp = &src->ptr; body break;}\
+	case 0x80|0x00|0x00|op: {enum{bs=0}; src = u->wst, dst = u->rst; kptr = src->ptr, sp = &kptr; body break;}\
+	case 0x80|0x00|0x20|op: {enum{bs=1}; src = u->wst, dst = u->rst; kptr = src->ptr, sp = &kptr; body break;}\
+	case 0x80|0x40|0x00|op: {enum{bs=0}; src = u->rst, dst = u->wst; kptr = src->ptr, sp = &kptr; body break;}\
+	case 0x80|0x40|0x20|op: {enum{bs=1}; src = u->rst, dst = u->wst; kptr = src->ptr, sp = &kptr; body break;}
 
 unsigned int
 UxnExec(UxnCore *u, unsigned int limit)
