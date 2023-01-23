@@ -43,7 +43,7 @@ typedef struct UxnCore {
      1: The program halted normally after executing a halt instruction.
      x: The program halted after an error was encountered.
 
-   `u->ram` should point to a buffer 0x100001 bytes in size. The extra byte
+   `u->ram` should point to a buffer 0x10001 bytes in size. The extra byte
    prevents 16-bit POKE and PEEK instructions with address 0xFFFF going out
    of bounds. Uxn does not wrap those high byte accesses to 0x0. */
 unsigned int UxnExec(UxnCore *u, unsigned int limit);
