@@ -1200,9 +1200,9 @@ static void RunUxn(EmuWindow *d, UINT steps, BOOL initial)
 		if (fault_handler && u->fault <= UXN_FAULT_DIVIDE_BY_ZERO)
 		{
 			u->wst->num = 4;
-			u->wst->dat[0] = last_addr >> 8, u->wst->dat[1] = last_addr;
-			u->wst->dat[2] = last_op;
-			u->wst->dat[3] = u->fault - 1;
+			u->wst->mem[0] = last_addr >> 8, u->wst->mem[1] = last_addr;
+			u->wst->mem[2] = last_op;
+			u->wst->mem[3] = u->fault - 1;
 			u->fault = 0;
 			u->pc = fault_handler;
 			goto residual;
@@ -1213,7 +1213,7 @@ static void RunUxn(EmuWindow *d, UINT steps, BOOL initial)
 		{
 			UxnStack *s = last_op & 0x40 ? u->rst : u->wst; /* Which stack to push to */
 			int i = 0, count = (last_op & 0x20) >> 5; /* Push 1 or 2 bytes */
-			for (; i <= count; i++) s->dat[s->num++] = 0xFF;
+			for (; i <= count; i++) s->mem[s->num++] = 0xFF;
 		}
 		PauseVM(d);
 		/* This particular fault code means ROM program requested to 'quit'. What should we do?
@@ -1851,7 +1851,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			if (wParam == BB_AsmList)
 				base = d->emu->box->core.ram;
 			else if (wParam == BB_WrkStack || wParam == BB_RetStack)
-				base = (&d->emu->box->core.wst)[wParam - BB_WrkStack]->dat;
+				base = (&d->emu->box->core.wst)[wParam - BB_WrkStack]->mem;
 			else return FALSE;
 			if (!EncodeUxnOpcode(inf->item.pszText, base + inf->item.iItem)) return FALSE;
 			return TRUE;
@@ -1881,7 +1881,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				break;
 			case BB_WrkStack: case BB_RetStack:
 				stack = (&core->wst)[wParam - BB_WrkStack];
-				wsprintf(buff, "%02X", (UINT)stack->dat[addr]);
+				wsprintf(buff, "%02X", (UINT)stack->mem[addr]);
 				break;
 			case BB_DevMem:
 				addr *= 8; mem = d->emu->box->device_memory + addr;

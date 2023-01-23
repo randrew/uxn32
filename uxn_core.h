@@ -16,7 +16,7 @@ typedef signed char UxnI8;
 typedef unsigned short UxnU16;
 
 typedef struct UxnStack {
-	UxnU8 num, dat[255];
+	UxnU8 num, mem[255];
 } UxnStack;
 
 typedef struct UxnCore {

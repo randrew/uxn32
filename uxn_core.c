@@ -15,11 +15,11 @@ WITH REGARD TO THIS SOFTWARE.
 	pc: program counter. snum: pointer to src stack num. knum: "keep mode" copy of src stack num.
 	x,y: macro in params. j,k: macro temp variables. o: macro out param. */
 
-#define PUSH8(s, x) { if(s->num == 0xFF) goto fault_3; s->dat[s->num++] = (x); }
-#define PUSH16(s, x) { if((j = s->num) >= 0xFE) goto fault_3; k = (x); s->dat[j] = k >> 8; s->dat[j + 1] = k; s->num = j + 2; }
+#define PUSH8(s, x) { if(s->num == 0xFF) goto fault_3; s->mem[s->num++] = (x); }
+#define PUSH16(s, x) { if((j = s->num) >= 0xFE) goto fault_3; k = (x); s->mem[j] = k >> 8; s->mem[j + 1] = k; s->num = j + 2; }
 #define PUSH(s, x) { if(bs) PUSH16(s, (x)) else PUSH8(s, (x)) }
-#define POP8(o) { if(!(j = *snum)) goto fault_2; o = src->dat[--j]; *snum = j; }
-#define POP16(o) { if((j = *snum) <= 1) goto fault_2; o = src->dat[j - 1]; o += src->dat[j - 2] << 8; *snum = j - 2; }
+#define POP8(o) { if(!(j = *snum)) goto fault_2; o = src->mem[--j]; *snum = j; }
+#define POP16(o) { if((j = *snum) <= 1) goto fault_2; o = src->mem[j - 1]; o += src->mem[j - 2] << 8; *snum = j - 2; }
 #define POP(o) { if(bs) POP16(o) else POP8(o) }
 #define POKE(x, y) { if(bs) { u->ram[(x)] = (y) >> 8; u->ram[(x) + 1] = (y); } else u->ram[(x)] = y; }
 #define PEEK16(o, x) { o = (u->ram[(x)] << 8) + u->ram[(x) + 1]; }
