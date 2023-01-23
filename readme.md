@@ -88,7 +88,7 @@ Uxn32 TODO
 - [x] ~~Add console output.~~
 - [x] ~~Add console input.~~
 - [x] ~~Add File, View, etc. menus.~~
-- [ ] Add toggle to show/hide menu bar.
+- [x] ~~Add toggle to show/hide menu bar.~~
 - [ ] Add preferences.
 - [x] ~~Add a graphical debugger.~~
 - [x] ~~Add "About" dialog box. (Currently sitting unused in the resources file.)~~
