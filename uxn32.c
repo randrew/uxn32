@@ -824,8 +824,8 @@ static UxnU8 UxnDeviceRead(UxnCore *u, UINT address)
 
 	switch (address)
 	{
-	case VV_SYSTEM|0x2: return box->work_stack.ptr;
-	case VV_SYSTEM|0x3: return box->ret_stack.ptr;
+	case VV_SYSTEM|0x2: return box->work_stack.num;
+	case VV_SYSTEM|0x3: return box->ret_stack.num;
 
 	case VV_SCREEN|0x2: return emu->screen.width >> 8;
 	case VV_SCREEN|0x3: return emu->screen.width;
@@ -913,8 +913,8 @@ static void UxnDeviceWrite_Cold(UxnBox *box, UINT address, UINT value)
 	case VV_SYSTEM:
 		switch (port)
 		{
-		case 0x2: box->work_stack.ptr = (UxnU8)value; break;
-		case 0x3: box->ret_stack.ptr = (UxnU8)value; break;
+		case 0x2: box->work_stack.num = (UxnU8)value; break;
+		case 0x3: box->ret_stack.num = (UxnU8)value; break;
 		case 0x5: /* Set window title. Limit to 256 chars. */
 		{
 			BYTE *ram = box->core.ram; DWORD offset, i, n;
@@ -1149,7 +1149,7 @@ static void BeetbugAutoScrollStacks(BeetbugWin *dbg)
 	for (i = BB_WrkStack; i <= BB_RetStack; i++)
 	{
 		top = ListView_GetTopIndex(dbg->ctrls[i]);
-		s = (&dbg->emu->box->core.wst)[i - BB_WrkStack]->ptr; /* actually points to 1 past the last value */
+		s = (&dbg->emu->box->core.wst)[i - BB_WrkStack]->num; /* actually points to 1 past the last value */
 		if (s-- == 0 || (s >= top && s < top + pp)) continue;
 		ListView_EnsureVisible(dbg->ctrls[i], MAX(0, s - pp), FALSE);
 		ListView_EnsureVisible(dbg->ctrls[i], MIN(255, s + pad), FALSE);
@@ -1199,7 +1199,7 @@ static void RunUxn(EmuWindow *d, UINT steps, BOOL initial)
 		DEVPEEK(d->box->device_memory, fault_handler, 0x0);
 		if (fault_handler && u->fault <= UXN_FAULT_DIVIDE_BY_ZERO)
 		{
-			u->wst->ptr = 4;
+			u->wst->num = 4;
 			u->wst->dat[0] = last_addr >> 8, u->wst->dat[1] = last_addr;
 			u->wst->dat[2] = last_op;
 			u->wst->dat[3] = u->fault - 1;
@@ -1213,7 +1213,7 @@ static void RunUxn(EmuWindow *d, UINT steps, BOOL initial)
 		{
 			UxnStack *s = last_op & 0x40 ? u->rst : u->wst; /* Which stack to push to */
 			int i = 0, count = (last_op & 0x20) >> 5; /* Push 1 or 2 bytes */
-			for (; i <= count; i++) s->dat[s->ptr++] = 0xFF;
+			for (; i <= count; i++) s->dat[s->num++] = 0xFF;
 		}
 		PauseVM(d);
 		/* This particular fault code means ROM program requested to 'quit'. What should we do?
@@ -1629,7 +1629,7 @@ static void UpdateBeetbugStuff(HWND hWnd, BeetbugWin *d)
 	}
 	for (i = 0; i < 2; i++)
 	{
-		int p = (&d->emu->box->core.wst)[i]->ptr;
+		int p = (&d->emu->box->core.wst)[i]->num;
 		BOOL ok_push = p < 255, ok_pop = p > 0;
 		if (IsWindowEnabled(d->ctrls[BB_PushStackBtn0 + i]) != ok_push)
 			EnableWindow(d->ctrls[BB_PushStackBtn0 + i], ok_push);
@@ -1765,7 +1765,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			FillRect(hDC, &rTmp, (HBRUSH)(COLOR_3DFACE + 1));
 			if (i < 2)
 			{
-				wsprintf(buff, "%s %02X", st_labels[i], (UINT)(&d->emu->box->core.wst)[i]->ptr);
+				wsprintf(buff, "%s %02X", st_labels[i], (UINT)(&d->emu->box->core.wst)[i]->num);
 				str = buff;
 			}
 			else str = TEXT("DEVICE MEMORY");
@@ -1801,17 +1801,17 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			case CDDS_PREPAINT:
 				return CDRF_NOTIFYITEMDRAW | CDRF_NOTIFYPOSTPAINT;
 			case CDDS_POSTPAINT: /* clean up line junk left at top when scrolling */
-				if (ListView_GetTopIndex(d->ctrls[wParam]) == stack->ptr)
+				if (ListView_GetTopIndex(d->ctrls[wParam]) == stack->num)
 					return CDRF_NEWFONT;
 				r.left = 0, r.top = 0, r.right = cdraw->nmcd.rc.right, r.bottom = 2;
 				FillRect(cdraw->nmcd.hdc, &r, GetSysColorBrush(COLOR_WINDOW));
 				return CDRF_NEWFONT;
 			case CDDS_ITEMPREPAINT:
-				cdraw->clrText = cdraw->nmcd.dwItemSpec < stack->ptr ?
+				cdraw->clrText = cdraw->nmcd.dwItemSpec < stack->num ?
 					GetSysColor(COLOR_WINDOWTEXT) : GetSysColor(COLOR_GRAYTEXT);
-				return CDRF_NEWFONT | (stack->ptr == cdraw->nmcd.dwItemSpec + 1 ? CDRF_NOTIFYPOSTPAINT : 0);
+				return CDRF_NEWFONT | (stack->num == cdraw->nmcd.dwItemSpec + 1 ? CDRF_NOTIFYPOSTPAINT : 0);
 			case CDDS_ITEMPOSTPAINT:
-				if (cdraw->nmcd.dwItemSpec + 1 != stack->ptr) return 0;
+				if (cdraw->nmcd.dwItemSpec + 1 != stack->num) return 0;
 				if (!ListView_GetItemRect(d->ctrls[wParam], cdraw->nmcd.dwItemSpec, &r, LVIR_LABEL)) return 0;
 				r.top = r.bottom - 1;
 				FillRect(cdraw->nmcd.hdc, &r, GetSysColorBrush(COLOR_WINDOWTEXT));
@@ -1936,8 +1936,8 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				enum {Flags = LVIS_SELECTED | LVIS_FOCUSED}; int i;
 				int push = idm <= BB_PushStackBtn1, iList = idm - (push ? BB_PushStackBtn0 : BB_PopStackBtn0);
 				HWND hList = d->ctrls[BB_WrkStack + iList]; UxnStack *stack = (&d->emu->box->core.wst)[iList];
-				if (stack->ptr == (push ? 255 : 0)) break;
-				i = push ? stack->ptr++ : --stack->ptr - 1; if (i < 0) i = 0;
+				if (stack->num == (push ? 255 : 0)) break;
+				i = push ? stack->num++ : --stack->num - 1; if (i < 0) i = 0;
 				ListView_SetItemState(hList, i, Flags, Flags);
 				SetFocus(hList);
 				if (push) ListView_EditLabel(hList, i);

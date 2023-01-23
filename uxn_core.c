@@ -12,14 +12,14 @@ WITH REGARD TO THIS SOFTWARE.
 */
 
 /*	a,b,c: general use.  bs: byte/short bool. src, dst: stack ptrs, swapped in return mode.
-	pc: program counter. sp: ptr to src stack ptr. kptr: "keep" mode copy of src stack ptr.
+	pc: program counter. snum: pointer to src stack num. knum: "keep mode" copy of src stack num.
 	x,y: macro in params. j,k: macro temp variables. o: macro out param. */
 
-#define PUSH8(s, x) { if(s->ptr == 0xFF) goto fault_3; s->dat[s->ptr++] = (x); }
-#define PUSH16(s, x) { if((j = s->ptr) >= 0xFE) goto fault_3; k = (x); s->dat[j] = k >> 8; s->dat[j + 1] = k; s->ptr = j + 2; }
+#define PUSH8(s, x) { if(s->num == 0xFF) goto fault_3; s->dat[s->num++] = (x); }
+#define PUSH16(s, x) { if((j = s->num) >= 0xFE) goto fault_3; k = (x); s->dat[j] = k >> 8; s->dat[j + 1] = k; s->num = j + 2; }
 #define PUSH(s, x) { if(bs) PUSH16(s, (x)) else PUSH8(s, (x)) }
-#define POP8(o) { if(!(j = *sp)) goto fault_2; o = src->dat[--j]; *sp = j; }
-#define POP16(o) { if((j = *sp) <= 1) goto fault_2; o = src->dat[j - 1]; o += src->dat[j - 2] << 8; *sp = j - 2; }
+#define POP8(o) { if(!(j = *snum)) goto fault_2; o = src->dat[--j]; *snum = j; }
+#define POP16(o) { if((j = *snum) <= 1) goto fault_2; o = src->dat[j - 1]; o += src->dat[j - 2] << 8; *snum = j - 2; }
 #define POP(o) { if(bs) POP16(o) else POP8(o) }
 #define POKE(x, y) { if(bs) { u->ram[(x)] = (y) >> 8; u->ram[(x) + 1] = (y); } else u->ram[(x)] = y; }
 #define PEEK16(o, x) { o = (u->ram[(x)] << 8) + u->ram[(x) + 1]; }
@@ -29,25 +29,25 @@ WITH REGARD TO THIS SOFTWARE.
 #define JUMP(x) { if(bs) pc = (x); else pc += (UxnI8)(x); }
 
 #define MODE(op, body)\
-	case 0x00|0x00|0x00|op: {enum{bs=0}; src = u->wst, dst = u->rst; sp = &src->ptr; body break;}\
-	case 0x00|0x00|0x20|op: {enum{bs=1}; src = u->wst, dst = u->rst; sp = &src->ptr; body break;}\
-	case 0x00|0x40|0x00|op: {enum{bs=0}; src = u->rst, dst = u->wst; sp = &src->ptr; body break;}\
-	case 0x00|0x40|0x20|op: {enum{bs=1}; src = u->rst, dst = u->wst; sp = &src->ptr; body break;}\
-	case 0x80|0x00|0x00|op: {enum{bs=0}; src = u->wst, dst = u->rst; kptr = src->ptr, sp = &kptr; body break;}\
-	case 0x80|0x00|0x20|op: {enum{bs=1}; src = u->wst, dst = u->rst; kptr = src->ptr, sp = &kptr; body break;}\
-	case 0x80|0x40|0x00|op: {enum{bs=0}; src = u->rst, dst = u->wst; kptr = src->ptr, sp = &kptr; body break;}\
-	case 0x80|0x40|0x20|op: {enum{bs=1}; src = u->rst, dst = u->wst; kptr = src->ptr, sp = &kptr; body break;}
+	case 0x00|0x00|0x00|op: {enum{bs=0}; src = u->wst, dst = u->rst; snum = &src->num; body break;}\
+	case 0x00|0x00|0x20|op: {enum{bs=1}; src = u->wst, dst = u->rst; snum = &src->num; body break;}\
+	case 0x00|0x40|0x00|op: {enum{bs=0}; src = u->rst, dst = u->wst; snum = &src->num; body break;}\
+	case 0x00|0x40|0x20|op: {enum{bs=1}; src = u->rst, dst = u->wst; snum = &src->num; body break;}\
+	case 0x80|0x00|0x00|op: {enum{bs=0}; src = u->wst, dst = u->rst; knum = src->num, snum = &knum; body break;}\
+	case 0x80|0x00|0x20|op: {enum{bs=1}; src = u->wst, dst = u->rst; knum = src->num, snum = &knum; body break;}\
+	case 0x80|0x40|0x00|op: {enum{bs=0}; src = u->rst, dst = u->wst; knum = src->num, snum = &knum; body break;}\
+	case 0x80|0x40|0x20|op: {enum{bs=1}; src = u->rst, dst = u->wst; knum = src->num, snum = &knum; body break;}
 
 unsigned int
 UxnExec(UxnCore *u, unsigned int limit)
 {
 	unsigned int a, b, c, j, k; UxnU16 pc = u->pc;
-	UxnU8 kptr, *sp; UxnStack *src, *dst;
+	UxnU8 knum, *snum; UxnStack *src, *dst;
 	while(limit) {
 		limit--;
 		switch(u->ram[pc++]) {
 		/* BRK */ case 0x00: u->fault = 1; goto done;
-		/* JCI */ case 0x20: sp = &u->wst->ptr, src = u->wst; POP8(b) if(b) goto JMI; pc += 2; break;
+		/* JCI */ case 0x20: snum = &u->wst->num, src = u->wst; POP8(b) if(b) goto JMI; pc += 2; break;
 		/* JMI */ case 0x40: JMI: PEEK16(a, pc) pc += a + 2; break;
 		/* JSI */ case 0x60: PUSH16(u->rst, pc + 2) goto JMI;
 		/* LIT */ case 0x80: a = u->ram[pc++]; PUSH8(u->wst, a); break;
