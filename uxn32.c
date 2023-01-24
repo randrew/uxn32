@@ -256,6 +256,7 @@ typedef struct EmuWindow
 	USHORT queue_count, queue_first;
 	ListLink work_link;
 	LONGLONG last_paint, instr_count;
+	MMRESULT mm_timer;
 
 	RECT viewport_rect;
 	LONG viewport_scale;
@@ -1077,6 +1078,19 @@ static void SetHostCursorVisible(EmuWindow *d, BOOL visible)
 	ShowCursor(visible);
 }
 
+static void CALLBACK EmuTimeProc(UINT uTimerID, UINT uMsg, DWORD_PTR dwUser, DWORD_PTR dw1, DWORD_PTR dw2)
+{
+	SendMessage(((EmuWindow *)dwUser)->hWnd, WM_TIMER, TimerID_Screen60hz, 0);
+	(void)uTimerID, (void)uMsg, (void)dw1, (void)dw2;
+}
+
+static void Set60hzTimerEnabled(EmuWindow *d, BOOL enabled)
+{
+	if (!d->mm_timer == !enabled) return;
+	if (enabled) d->mm_timer = timeSetEvent(16, 0, EmuTimeProc, (DWORD_PTR)d, TIME_PERIODIC);
+	else timeKillEvent(d->mm_timer), d->mm_timer = 0;
+}
+
 static void InvalidateUxnScreenRect(EmuWindow *d)
 {
 	if (d->viewport_rect.right && d->viewport_rect.bottom)
@@ -1115,7 +1129,7 @@ static void PauseVM(EmuWindow *d)
 	if (!d->running) return;
 	d->queue_count = 0;
 	d->running = 0;
-	KillTimer(d->hWnd, TimerID_Screen60hz);
+	Set60hzTimerEnabled(d, FALSE);
 	SetHostCursorVisible(d, TRUE);
 	ListRemove(&emus_needing_work, d, work_link);
 }
@@ -1125,7 +1139,7 @@ static void UnpauseVM(EmuWindow *d)
 	if (d->running) return;
 	d->queue_count = 0;
 	d->running = 1;
-	SetTimer(d->hWnd, TimerID_Screen60hz, 16, NULL);
+	Set60hzTimerEnabled(d, TRUE);
 	if (d->exec_state) ListPushBack(&emus_needing_work, d, work_link);
 	SynthesizeMouseMoveToCurrent(d); /* Runs async for now */
 	/* Syncing held keys isn't so easy... */
@@ -1253,7 +1267,7 @@ completed:
 	case EmuIn_DebugJump:
 		break;
 	case EmuIn_Start:
-		SetTimer(d->hWnd, TimerID_Screen60hz, 16, NULL);
+		Set60hzTimerEnabled(d, TRUE);
 		break;
 	case EmuIn_KeyChar:
 		d->box->device_memory[VV_CONTROL + 0x3] = 0;
@@ -2091,7 +2105,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		DestroyWindow(hwnd);
 		return 0;
 	case WM_DESTROY:
-		KillTimer(hwnd, TimerID_Screen60hz);
+		Set60hzTimerEnabled(d, FALSE);
 		SetHostCursorVisible(d, TRUE);
 		FreeUxnBox(d->box);
 		FreeUxnScreen(&d->screen);
