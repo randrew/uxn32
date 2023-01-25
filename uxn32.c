@@ -102,8 +102,8 @@ static LPWSTR *CmdLineArgs; static int CmdLineArgCount;
 
 static LONGLONG LongLongMulDiv(LONGLONG value, LONGLONG numer, LONGLONG denom)
 {
-    LONGLONG q = value / denom, r = value % denom;
-    return q * numer + r * numer / denom;
+	LONGLONG q = value / denom, r = value % denom;
+	return q * numer + r * numer / denom;
 }
 
 static LONGLONG TimeStampNow(void) { LARGE_INTEGER r; QueryPerformanceCounter(&r); return r.QuadPart; }
@@ -2050,8 +2050,8 @@ static LRESULT CALLBACK ConsoleWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		HeapFree(GetProcessHeap(), 0, d);
 		return 0;
 	case WM_SIZE:
-        MoveWindow(d->outHWnd, 0, 0, LOWORD(lParam), HIWORD(lParam) - 15, TRUE);
-        MoveWindow(d->inHWnd, 0, HIWORD(lParam) - 15, LOWORD(lParam), 15, TRUE);
+		MoveWindow(d->outHWnd, 0, 0, LOWORD(lParam), HIWORD(lParam) - 15, TRUE);
+		MoveWindow(d->inHWnd, 0, HIWORD(lParam) - 15, LOWORD(lParam), 15, TRUE);
 		return 0;
 	case WM_ACTIVATE:
 		if (wParam != WA_INACTIVE) SetFocus(d->inHWnd);
