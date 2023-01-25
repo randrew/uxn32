@@ -91,6 +91,30 @@ typedef ULONG_PTR DWORD_PTR, *PDWORD_PTR;
 typedef LPWSTR * WINAPI Type_CommandLineToArgvW(LPCWSTR lpCmdLine, int* pNumArgs);
 typedef LPWSTR WINAPI Type_GetCommandLineW(void);
 
+#ifdef ADAPTER_VBLANK
+typedef UINT D3DDDI_VIDEO_PRESENT_SOURCE_ID;
+typedef UINT D3DKMT_HANDLE;
+typedef struct _D3DKMT_OPENADAPTERFROMHDC
+{
+    HDC hDc;
+    D3DKMT_HANDLE hAdapter;
+    LUID AdapterLuid;
+    D3DDDI_VIDEO_PRESENT_SOURCE_ID VidPnSourceId;
+} D3DKMT_OPENADAPTERFROMHDC;
+typedef struct _D3DKMT_WAITFORVERTICALBLANKEVENT
+{
+    D3DKMT_HANDLE hAdapter;
+    D3DKMT_HANDLE hDevice;
+    D3DDDI_VIDEO_PRESENT_SOURCE_ID VidPnSourceId;
+} D3DKMT_WAITFORVERTICALBLANKEVENT;
+typedef BOOL WINAPI Type_EnumDisplayDevicesA(LPCSTR lpDevice, DWORD iDevNum, PDISPLAY_DEVICEA lpDisplayDevice, DWORD dwFlags);
+static Type_EnumDisplayDevicesA *Ptr_EnumDisplayDevicesA;
+typedef LONG WINAPI Type_D3DKMTOpenAdapterFromHdc(D3DKMT_OPENADAPTERFROMHDC* in_out);
+static Type_D3DKMTOpenAdapterFromHdc *Ptr_D3DKMTOpenAdapterFromHdc;
+typedef LONG WINAPI Type_D3DKMTWaitForVerticalBlankEvent(CONST D3DKMT_WAITFORVERTICALBLANKEVENT *in);
+static Type_D3DKMTWaitForVerticalBlankEvent *Ptr_D3DKMTWaitForVerticalBlankEvent;
+#endif
+
 static LARGE_INTEGER _perfcount_freq;
 static LONGLONG ExecutionTimeLimit;
 #define RepaintTimeLimit ExecutionTimeLimit
@@ -99,6 +123,7 @@ static LPCSTR EmuWinClass = TEXT("uxn_emu_win"), ConsoleWinClass = TEXT("uxn_con
 static LPCSTR BeetbugWinClass = TEXT("uxn_beetbug_win");
 static LPCSTR DefaultROMPath = TEXT("launcher.rom");
 static LPWSTR *CmdLineArgs; static int CmdLineArgCount;
+static HANDLE VBlankMutex;
 
 static LONGLONG LongLongMulDiv(LONGLONG value, LONGLONG numer, LONGLONG denom)
 {
@@ -141,9 +166,18 @@ static void _impl_ListRemove(LinkedList *list, ListLink *a)
 	else list->back = a->prev;
 	a->next = a->prev = NULL;
 }
+static void * _impl_ListFront(LinkedList *list, SIZE_T offset)
+{ return list->front ? (char *)list->front - offset : NULL; }
+static void * _impl_ListNext(ListLink *node, SIZE_T offset)
+{ return node->next ? (char *)node->next - offset : NULL; }
+// ^ Could move (a)->link_field to here instead of in macro using offset.
+
 #define ListPopFront(list, type, link_field) OUTER_OF(_impl_ListPopFront(list), type, link_field)
 #define ListPushBack(list, a, link_field) _impl_ListPushBack((list), &(a)->link_field)
 #define ListRemove(list, a, link_field) _impl_ListRemove((list), &(a->link_field))
+#define ListLinkUsed(list, a, link_field) ((a)->link_field.prev || (list)->front == &(a)->link_field)
+#define ListFront(list, type, link_field) ((type *)_impl_ListFront(list, OFFSET_OF(type, link_field)))
+#define ListNext(a, type, link_field) ((type *)_impl_ListNext(&(a)->link_field, OFFSET_OF(type, link_field)))
 
 enum {FromLeft, FromTop, FromRight, FromBottom};
 static void CutRect(RECT *in, int dir, int length, RECT *out)
@@ -254,7 +288,7 @@ typedef struct EmuWindow
 
 	EmuInEvent *queue_buffer;
 	USHORT queue_count, queue_first;
-	ListLink work_link;
+	ListLink work_link, vblank_link;
 	LONGLONG last_paint, instr_count;
 	MMRESULT mm_timer;
 
@@ -368,6 +402,25 @@ static BOOL LoadFileInto(LPCSTR path, char *dest, DWORD max_bytes, DWORD *bytes_
 	CloseHandle(hFile);
 	return TRUE;
 }
+
+#ifdef ADAPTER_VBLANK
+static BOOL GetStuffForBlanking(D3DKMT_WAITFORVERTICALBLANKEVENT *out)
+{
+	D3DKMT_OPENADAPTERFROMHDC oadfhdc; DISPLAY_DEVICE ddev;
+	int i = 0; BOOL result = 0;
+	if (!Ptr_D3DKMTOpenAdapterFromHdc || !Ptr_EnumDisplayDevicesA) return result;
+	ZeroMemory(&ddev, sizeof ddev); ddev.cb = sizeof ddev;
+	while (Ptr_EnumDisplayDevicesA(NULL, i++, &ddev, 0) && !(ddev.StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE));
+	if (!(oadfhdc.hDc = CreateDC(NULL, ddev.DeviceName, NULL, NULL))) return FALSE;
+	if ((result = Ptr_D3DKMTOpenAdapterFromHdc(&oadfhdc) >= 0))
+	{
+		out->hAdapter = oadfhdc.hAdapter;
+		out->VidPnSourceId = oadfhdc.VidPnSourceId;
+	}
+	DeleteDC(oadfhdc.hDc);
+	return result;
+}
+#endif
 
 static HFONT GetSmallFixedFont(void)
 {
@@ -1078,27 +1131,26 @@ static void SetHostCursorVisible(EmuWindow *d, BOOL visible)
 	ShowCursor(visible);
 }
 
-static void CALLBACK EmuTimeProc(UINT uTimerID, UINT uMsg, DWORD_PTR dwUser, DWORD_PTR dw1, DWORD_PTR dw2)
-{
-	SendMessage(((EmuWindow *)dwUser)->hWnd, WM_TIMER, TimerID_Screen60hz, 0);
-	(void)uTimerID, (void)uMsg, (void)dw1, (void)dw2;
-}
-
-static void Set60hzTimerEnabled(EmuWindow *d, BOOL enabled)
-{
-	if (!d->mm_timer == !enabled) return;
-	if (enabled) d->mm_timer = timeSetEvent(16, 0, EmuTimeProc, (DWORD_PTR)d, TIME_PERIODIC);
-	else timeKillEvent(d->mm_timer), d->mm_timer = 0;
-}
-
 static void InvalidateUxnScreenRect(EmuWindow *d)
 {
 	if (d->viewport_rect.right && d->viewport_rect.bottom)
 		InvalidateRect(d->hWnd, &d->viewport_rect, FALSE);
 }
 
-static LinkedList emus_needing_work;
+static LinkedList emus_needing_work, emus_needing_vblank;
 static int emu_window_count;
+
+static void Set60hzTimerEnabled(EmuWindow *d, BOOL enabled)
+{
+	if (WaitForSingleObject(VBlankMutex, INFINITE) != WAIT_OBJECT_0) goto thread_error;
+	if (ListLinkUsed(&emus_needing_vblank, d, vblank_link) == enabled) return;
+	if (enabled) ListPushBack(&emus_needing_vblank, d, vblank_link);
+	else ListRemove(&emus_needing_vblank, d, vblank_link);
+	if (!ReleaseMutex(VBlankMutex)) goto thread_error;
+	return;
+thread_error:
+	FatalBox("Critical error while handling thread mutex.");
+}
 
 static void ResetVM(EmuWindow *d)
 {
@@ -2400,11 +2452,61 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	return DefWindowProc(hwnd, msg, wparam, lparam);
 }
 
+static void SendVBlankMessages(void)
+{
+	EmuWindow *emu;
+	if (WaitForSingleObject(VBlankMutex, 5) != WAIT_OBJECT_0) return;
+	for (emu = ListFront(&emus_needing_vblank, EmuWindow, vblank_link); emu; emu = ListNext(emu, EmuWindow, vblank_link))
+	{
+		PostMessage(emu->hWnd, WM_TIMER, TimerID_Screen60hz, 0);
+	}
+	ReleaseMutex(VBlankMutex);
+}
+static LONGLONG fallback_sand, fallback_stamp;
+static void CALLBACK EmuTimeProc(UINT uTimerID, UINT uMsg, DWORD_PTR dwUser, DWORD_PTR dw1, DWORD_PTR dw2)
+{
+	LONGLONG delay;
+again:
+	while (fallback_sand - MicrosSince(fallback_stamp) >= 500) Sleep(0);
+	while (fallback_sand - MicrosSince(fallback_stamp) >= 0);
+	if (fallback_sand - MicrosSince(fallback_stamp) < -10)
+		DebugPrint("missed deadline by %d", (int)fallback_sand - MicrosSince(fallback_stamp));
+	SendVBlankMessages();
+	fallback_sand += 16667 - (LONGLONG)MicrosSince(fallback_stamp);
+	fallback_stamp = TimeStampNow();
+	delay = fallback_sand / 1000 - 2;
+	if (delay < 1) goto again;
+	timeSetEvent((UINT)delay, 0, EmuTimeProc, 0, TIME_ONESHOT);
+	(void)uTimerID, (void)uMsg, (void)dwUser, (void)dw1, (void)dw2;
+}
+
+static DWORD WINAPI VBlankThreadProc(void *d)
+{
+#ifdef ADAPTER_VBLANK
+	D3DKMT_WAITFORVERTICALBLANKEVENT wait_e;
+	if (!Ptr_D3DKMTWaitForVerticalBlankEvent) goto bad_method;
+	ZeroMemory(&wait_e, sizeof wait_e);
+	// goto bad_method;
+	if (!GetStuffForBlanking(&wait_e)) goto bad_method;
+	for (;;)
+	{
+		Ptr_D3DKMTWaitForVerticalBlankEvent(&wait_e);
+		SendVBlankMessages();
+	}
+bad_method:
+#endif
+	timeBeginPeriod(0);
+	fallback_stamp = TimeStampNow();
+	EmuTimeProc(0, 0, 0, 0, 0);
+	return 0;
+	(void)d;
+}
+
 int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
 {
 	WNDCLASSEX wc; HWND hWin, hParent;
-	MSG msg; HACCEL hAccel;
-	BOOL hide_menu = FALSE;
+	MSG msg; HACCEL hAccel; HANDLE hThread; HMODULE hMod;
+	DWORD thread_id; BOOL hide_menu = FALSE;
 	Type_CommandLineToArgvW *Ptr_CommandLineToArgvW;
 	Type_GetCommandLineW *Ptr_GetCommandLineW;
 	EmuWindow *emu = AllocZeroedOrFail(sizeof(EmuWindow));
@@ -2413,6 +2515,14 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	QueryPerformanceFrequency(&_perfcount_freq);
 	ExecutionTimeLimit = _perfcount_freq.QuadPart / 20;
 	MainInstance = instance;
+
+#ifdef ADAPTER_VBLANK
+	hMod = GetModuleHandle(TEXT("gdi32.dll"));
+	Ptr_D3DKMTWaitForVerticalBlankEvent = (Type_D3DKMTWaitForVerticalBlankEvent *)GetProcAddress(hMod, "D3DKMTWaitForVerticalBlankEvent");
+	Ptr_D3DKMTOpenAdapterFromHdc = (Type_D3DKMTOpenAdapterFromHdc *)GetProcAddress(hMod, "D3DKMTOpenAdapterFromHdc");
+	Ptr_EnumDisplayDevicesA = (Type_EnumDisplayDevicesA *)GetProcAddress(GetModuleHandle(TEXT("user32.dll")), "EnumDisplayDevicesA");
+#endif
+	(void)hMod;
 
 	/* Prepare any command line args for later use.
 	 * Windows 95 won't have the procedures for commandline args, so we'll load them only optionally, at runtime. */
@@ -2460,12 +2570,15 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	RegisterClassEx(&wc);
 	hAccel = LoadAccelerators(instance, (LPCSTR)IDC_UXN32);
 	InitCommonControls();
+	VBlankMutex = CreateMutex(0, FALSE, TEXT("VBlankMutex"));
 
 	hWin = CreateWindowForEmu(instance, emu);
 	if (hide_menu) SendMessage(hWin, WM_COMMAND, MAKEWPARAM(IDM_TOGGLEMENU, 0), 0);
 	/* ^ Hacky. Search for other use of IDM_TOGGLEMENU in this file to see other place we do this. When we clean this up, fix it in both places. */
 	ShowWindow(hWin, show_code);
 	SendMessage(hWin, UXNMSG_SendArgs, 0, 0); /* Send the cmd line args, if any */
+
+	hThread = CreateThread(NULL, 0, VBlankThreadProc, (void *)(SIZE_T)GetCurrentThreadId() /*user data*/, 0, &thread_id);
 
 	for (;;)
 	{
@@ -2490,5 +2603,6 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 		WaitMessage();
 	}
 quitting:
+	TerminateThread(hThread, 0);
 	return 0;
 }
