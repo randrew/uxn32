@@ -91,7 +91,8 @@ typedef ULONG_PTR DWORD_PTR, *PDWORD_PTR;
 typedef LPWSTR * WINAPI Type_CommandLineToArgvW(LPCWSTR lpCmdLine, int* pNumArgs);
 typedef LPWSTR WINAPI Type_GetCommandLineW(void);
 
-#ifdef ADAPTER_VBLANK
+#define ADAPTER_VBLANK 0
+#if ADAPTER_VBLANK
 typedef UINT D3DDDI_VIDEO_PRESENT_SOURCE_ID;
 typedef UINT D3DKMT_HANDLE;
 typedef struct _D3DKMT_OPENADAPTERFROMHDC
@@ -290,7 +291,6 @@ typedef struct EmuWindow
 	USHORT queue_count, queue_first;
 	ListLink work_link, vblank_link;
 	LONGLONG last_paint, instr_count;
-	MMRESULT mm_timer;
 
 	RECT viewport_rect;
 	LONG viewport_scale;
@@ -402,25 +402,6 @@ static BOOL LoadFileInto(LPCSTR path, char *dest, DWORD max_bytes, DWORD *bytes_
 	CloseHandle(hFile);
 	return TRUE;
 }
-
-#ifdef ADAPTER_VBLANK
-static BOOL GetStuffForBlanking(D3DKMT_WAITFORVERTICALBLANKEVENT *out)
-{
-	D3DKMT_OPENADAPTERFROMHDC oadfhdc; DISPLAY_DEVICE ddev;
-	int i = 0; BOOL result = 0;
-	if (!Ptr_D3DKMTOpenAdapterFromHdc || !Ptr_EnumDisplayDevicesA) return result;
-	ZeroMemory(&ddev, sizeof ddev); ddev.cb = sizeof ddev;
-	while (Ptr_EnumDisplayDevicesA(NULL, i++, &ddev, 0) && !(ddev.StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE));
-	if (!(oadfhdc.hDc = CreateDC(NULL, ddev.DeviceName, NULL, NULL))) return FALSE;
-	if ((result = Ptr_D3DKMTOpenAdapterFromHdc(&oadfhdc) >= 0))
-	{
-		out->hAdapter = oadfhdc.hAdapter;
-		out->VidPnSourceId = oadfhdc.VidPnSourceId;
-	}
-	DeleteDC(oadfhdc.hDc);
-	return result;
-}
-#endif
 
 static HFONT GetSmallFixedFont(void)
 {
@@ -2462,19 +2443,19 @@ static void SendVBlankMessages(void)
 	}
 	ReleaseMutex(VBlankMutex);
 }
-static LONGLONG fallback_sand, fallback_stamp;
+static LONGLONG mm_sand, mm_stamp;
 static void CALLBACK EmuTimeProc(UINT uTimerID, UINT uMsg, DWORD_PTR dwUser, DWORD_PTR dw1, DWORD_PTR dw2)
 {
 	LONGLONG delay;
 again:
-	while (fallback_sand - MicrosSince(fallback_stamp) >= 500) Sleep(0);
-	while (fallback_sand - MicrosSince(fallback_stamp) >= 0);
-	if (fallback_sand - MicrosSince(fallback_stamp) < -10)
-		DebugPrint("missed deadline by %d", (int)fallback_sand - MicrosSince(fallback_stamp));
+	while (mm_sand - MicrosSince(mm_stamp) >= 500) Sleep(0);
+	while (mm_sand - MicrosSince(mm_stamp) >= 0);
+	/* if (mm_sand - MicrosSince(mm_stamp) < -10)
+		DebugPrint("missed deadline by %d", (int)mm_sand - MicrosSince(mm_stamp)); */
 	SendVBlankMessages();
-	fallback_sand += 16667 - (LONGLONG)MicrosSince(fallback_stamp);
-	fallback_stamp = TimeStampNow();
-	delay = fallback_sand / 1000 - 2;
+	mm_sand += 16667 - (LONGLONG)MicrosSince(mm_stamp);
+	mm_stamp = TimeStampNow();
+	delay = mm_sand / 1000 - 2;
 	if (delay < 1) goto again;
 	timeSetEvent((UINT)delay, 0, EmuTimeProc, 0, TIME_ONESHOT);
 	(void)uTimerID, (void)uMsg, (void)dwUser, (void)dw1, (void)dw2;
@@ -2482,21 +2463,32 @@ again:
 
 static DWORD WINAPI VBlankThreadProc(void *d)
 {
-#ifdef ADAPTER_VBLANK
+#if ADAPTER_VBLANK
+	D3DKMT_OPENADAPTERFROMHDC oadfhdc; DISPLAY_DEVICE ddev;
+	int i = 0; BOOL result = 0;
 	D3DKMT_WAITFORVERTICALBLANKEVENT wait_e;
-	if (!Ptr_D3DKMTWaitForVerticalBlankEvent) goto bad_method;
+	if (!Ptr_D3DKMTWaitForVerticalBlankEvent || !Ptr_D3DKMTOpenAdapterFromHdc || !Ptr_EnumDisplayDevicesA) goto use_mm_timer;
 	ZeroMemory(&wait_e, sizeof wait_e);
-	// goto bad_method;
-	if (!GetStuffForBlanking(&wait_e)) goto bad_method;
+	ZeroMemory(&ddev, sizeof ddev); ddev.cb = sizeof ddev;
+	while (Ptr_EnumDisplayDevicesA(NULL, i++, &ddev, 0) && !(ddev.StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE));
+	if (!(oadfhdc.hDc = CreateDC(NULL, ddev.DeviceName, NULL, NULL))) return FALSE;
+	if ((result = Ptr_D3DKMTOpenAdapterFromHdc(&oadfhdc) >= 0))
+	{
+		wait_e.hAdapter = oadfhdc.hAdapter;
+		wait_e.VidPnSourceId = oadfhdc.VidPnSourceId;
+	}
+	DeleteDC(oadfhdc.hDc);
+	if (!result) goto use_mm_timer;;
+
 	for (;;)
 	{
 		Ptr_D3DKMTWaitForVerticalBlankEvent(&wait_e);
 		SendVBlankMessages();
 	}
-bad_method:
+use_mm_timer:
 #endif
 	timeBeginPeriod(0);
-	fallback_stamp = TimeStampNow();
+	mm_stamp = TimeStampNow();
 	EmuTimeProc(0, 0, 0, 0, 0);
 	return 0;
 	(void)d;
@@ -2516,7 +2508,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	ExecutionTimeLimit = _perfcount_freq.QuadPart / 20;
 	MainInstance = instance;
 
-#ifdef ADAPTER_VBLANK
+#if ADAPTER_VBLANK
 	hMod = GetModuleHandle(TEXT("gdi32.dll"));
 	Ptr_D3DKMTWaitForVerticalBlankEvent = (Type_D3DKMTWaitForVerticalBlankEvent *)GetProcAddress(hMod, "D3DKMTWaitForVerticalBlankEvent");
 	Ptr_D3DKMTOpenAdapterFromHdc = (Type_D3DKMTOpenAdapterFromHdc *)GetProcAddress(hMod, "D3DKMTOpenAdapterFromHdc");
