@@ -92,6 +92,7 @@ typedef LPWSTR * WINAPI Type_CommandLineToArgvW(LPCWSTR lpCmdLine, int* pNumArgs
 typedef LPWSTR WINAPI Type_GetCommandLineW(void);
 
 #define ADAPTER_VBLANK 0
+/* ^ If enabled, time the Uxn "screen" device vector using D3DKMTWaitForVerticalBlankEvent. */
 #if ADAPTER_VBLANK
 typedef UINT D3DDDI_VIDEO_PRESENT_SOURCE_ID;
 typedef UINT D3DKMT_HANDLE;
@@ -171,7 +172,7 @@ static void * _impl_ListFront(LinkedList *list, SIZE_T offset)
 { return list->front ? (char *)list->front - offset : NULL; }
 static void * _impl_ListNext(ListLink *node, SIZE_T offset)
 { return node->next ? (char *)node->next - offset : NULL; }
-// ^ Could move (a)->link_field to here instead of in macro using offset.
+/* ^ Could move (a)->link_field to here instead of in macro using offset. */
 
 #define ListPopFront(list, type, link_field) OUTER_OF(_impl_ListPopFront(list), type, link_field)
 #define ListPushBack(list, a, link_field) _impl_ListPushBack((list), &(a)->link_field)
@@ -431,7 +432,7 @@ static void DrawUxnSprite(UxnScreen *p, UxnU8 *layer_pixels, UxnU16 x, UxnU16 y,
 			ch = (c & 1) | ((c >> 7) & 2);
 			if (opaque || ch)
 			{
-				// TODO ok this has gotten pretty bloated... we should probably split this up into specialized subroutines for the different combination of options to speed it up.
+				/* TODO ok this has gotten pretty bloated... we should probably split this up into specialized subroutines for the different combination of options to speed it up. */
 				int x0 = (x + (flipx ? 7 - h : h)) & 0xFFFF, y0 = (y + (flipy ? 7 - v : v)) & 0xFFFF;
 				if (x0 < width && y0 < height)
 					layer_pixels[x0 + y0 * width] = SpriteBlendingTable[ch][color];
@@ -1624,7 +1625,7 @@ static void UpdateBeetbugStuff(HWND hWnd, BeetbugWin *d)
 	static const LPCSTR play_texts[] = {0, TEXT("Running"), TEXT("Suspended"), TEXT("Paused")};
 	BYTE new_play = d->emu->running ? 1 : d->emu->exec_state ? 2 : 3;
 	BOOL step_ctrls = new_play == 2; TCHAR buff[128]; int i;
-	// int top = ListView_GetTopIndex(d->hList), bot = top + ListView_GetCountPerPage(d->hList);
+	/* int top = ListView_GetTopIndex(d->hList), bot = top + ListView_GetCountPerPage(d->hList); */
 	/* TODO ust ListView_RedrawItems() instead? */
 	for (i = BB_AsmList; i <= BB_DevMem; i++) InvalidateRect(d->ctrls[i], NULL, FALSE); /* TODO only changed areas */
 	for (i = 0; i < 2; i++) InvalidateRect(hWnd, &d->rcWstLabel + i, FALSE);
