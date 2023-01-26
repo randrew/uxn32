@@ -252,8 +252,8 @@ typedef struct UxnDebugSymbols {
 	void *buffer;
 } UxnDebugSymbols;
 
-enum { TimerID_Screen60hz = 1, TimerID_InitAudio, TimerID_FlushConsole };
-enum { UXNMSG_ContinueExec = WM_USER, UXNMSG_BecomeClone, UXNMSG_LoadSymbols, UXNMSG_SendArgs };
+enum { TimerID_InitAudio = 1, TimerID_FlushConsole };
+enum { UXNMSG_ContinueExec = WM_USER, UXNMSG_BecomeClone, UXNMSG_LoadSymbols, UXNMSG_SendArgs, UXNMSG_Screen60hz };
 enum EmuIn
 {
 	EmuIn_KeyChar = 1,
@@ -2325,9 +2325,6 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	case WM_TIMER:
 		switch (wparam)
 		{
-		case TimerID_Screen60hz:
-			SendInputEvent(d, EmuIn_Screen, 0, 0, 0);
-			return 0;
 		case TimerID_InitAudio:
 			KillTimer(hwnd, TimerID_InitAudio);
 			/* In Windows XP VM, debugger attached with audio playing can cause program to freeze.
@@ -2433,6 +2430,9 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			}
 		return 0;
 	}
+	case UXNMSG_Screen60hz:
+		SendInputEvent(d, EmuIn_Screen, 0, 0, 0);
+		return 0;
 	}
 	return DefWindowProc(hwnd, msg, wparam, lparam);
 }
@@ -2446,7 +2446,7 @@ static BOOL SendVBlankMessages(void)
 	{
 		if (emu->exec_state == EmuIn_Screen) continue; /* Non-atomic read is OK */
 		/* ^ Try not to overwhelm it with 60hz timer events. Otherwise, user input will become unresponsive. */
-		PostMessage(emu->hWnd, WM_TIMER, TimerID_Screen60hz, 0);
+		PostMessage(emu->hWnd, UXNMSG_Screen60hz, 0, 0);
 	}
 	ReleaseMutex(VBlankMutex);
 	return result;
