@@ -1122,9 +1122,12 @@ static void InvalidateUxnScreenRect(EmuWindow *d)
 static LinkedList emus_needing_work, emus_needing_vblank;
 static int emu_window_count;
 
-static void Set60hzTimerEnabled(EmuWindow *d, BOOL enabled)
+/* Call this after changing d->running, or after the VV_SCREEN vector in Uxn RAM may changed. */
+/* Hmm kinda weird. Basically d->running is what's being passed as the 'enabled' param, except during the window delete event. We could just change this to not take a bool param and read from both d->running and screen vector location. */
+static void Update60hzTimerEnabled(EmuWindow *d, BOOL enabled)
 {
 	BOOL signal_resume;
+	enabled = enabled && GETVECTOR(d->box->device_memory + VV_SCREEN);
 	if (ListLinkUsed(&emus_needing_vblank, d, vblank_link) == enabled) return;
 	if (WaitForSingleObject(VBlankMutex, INFINITE) != WAIT_OBJECT_0) goto thread_error;
 	signal_resume = enabled && !emus_needing_vblank.front;
@@ -1166,7 +1169,7 @@ static void PauseVM(EmuWindow *d)
 	if (!d->running) return;
 	d->queue_count = 0;
 	d->running = 0;
-	Set60hzTimerEnabled(d, FALSE);
+	Update60hzTimerEnabled(d, FALSE);
 	SetHostCursorVisible(d, TRUE);
 	ListRemove(&emus_needing_work, d, work_link);
 }
@@ -1176,7 +1179,7 @@ static void UnpauseVM(EmuWindow *d)
 	if (d->running) return;
 	d->queue_count = 0;
 	d->running = 1;
-	Set60hzTimerEnabled(d, TRUE);
+	Update60hzTimerEnabled(d, TRUE);
 	if (d->exec_state) ListPushBack(&emus_needing_work, d, work_link);
 	SynthesizeMouseMoveToCurrent(d); /* Runs async for now */
 	/* Syncing held keys isn't so easy... */
@@ -1302,9 +1305,7 @@ completed:
 	case EmuIn_Screen:
 	case EmuIn_Console:
 	case EmuIn_DebugJump:
-		break;
 	case EmuIn_Start:
-		Set60hzTimerEnabled(d, TRUE);
 		break;
 	case EmuIn_KeyChar:
 		d->box->device_memory[VV_CONTROL + 0x3] = 0;
@@ -1315,6 +1316,8 @@ completed:
 	}
 	if (d->running) u->fault = 0;
 	d->exec_state = 0;
+	Update60hzTimerEnabled(d, d->running);
+	/* ^- Screen vector might have been changed between null and non-null, or, we need to enable it for the first time after the Start event. */
 residual:
 	more_work = d->exec_state || d->queue_count;
 	force_repaint = TimeStampNow() - d->last_paint > RepaintTimeLimit;
@@ -2142,7 +2145,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		DestroyWindow(hwnd);
 		return 0;
 	case WM_DESTROY:
-		Set60hzTimerEnabled(d, FALSE);
+		Update60hzTimerEnabled(d, FALSE);
 		SetHostCursorVisible(d, TRUE);
 		FreeUxnBox(d->box);
 		FreeUxnScreen(&d->screen);
