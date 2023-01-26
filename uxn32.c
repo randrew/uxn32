@@ -2501,7 +2501,7 @@ static DWORD WINAPI VBlankThreadProc(void *d)
 	for (;;)
 	{
 		if (Ptr_D3DKMTWaitForVerticalBlankEvent(&wait_e)) goto use_mm_timer;
-		if (!SendVBlankMessages())
+		if (!SendVBlankMessages()) /* Save energy if there were no receivers */
 		{
 			WaitForSingleObject(ResumeTimerEvent, INFINITE);
 			ResetEvent(ResumeTimerEvent);
@@ -2512,8 +2512,7 @@ use_mm_timer:
 	timeBeginPeriod(0);
 	mm_stamp = TimeStampNow();
 	EmuMMTimerProc(0, 0, 0, 0, 0);
-	return 0;
-	(void)d;
+	return 0; (void)d;
 }
 
 int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
