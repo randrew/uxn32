@@ -2444,6 +2444,7 @@ static BOOL SendVBlankMessages(void)
 	for (; emu; emu = ListNext(emu, EmuWindow, vblank_link))
 	{
 		if (emu->exec_state == EmuIn_Screen) continue; /* Non-atomic read is OK */
+		/* ^ Try not to overwhelm it with 60hz timer events. Otherwise, user input will become unresponsive. */
 		PostMessage(emu->hWnd, WM_TIMER, TimerID_Screen60hz, 0);
 	}
 	ReleaseMutex(VBlankMutex);
@@ -2500,7 +2501,11 @@ static DWORD WINAPI VBlankThreadProc(void *d)
 	for (;;)
 	{
 		Ptr_D3DKMTWaitForVerticalBlankEvent(&wait_e);
-		SendVBlankMessages();
+		if (!SendVBlankMessages())
+		{
+			WaitForSingleObject(ResumeTimerEvent, INFINITE);
+			ResetEvent(ResumeTimerEvent);
+		}
 	}
 use_mm_timer:
 #endif
