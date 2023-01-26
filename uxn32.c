@@ -124,7 +124,7 @@ static LPCSTR EmuWinClass = TEXT("uxn_emu_win"), ConsoleWinClass = TEXT("uxn_con
 static LPCSTR BeetbugWinClass = TEXT("uxn_beetbug_win");
 static LPCSTR DefaultROMPath = TEXT("launcher.rom");
 static LPWSTR *CmdLineArgs; static int CmdLineArgCount;
-static HANDLE VBlankMutex;
+static HANDLE VBlankMutex, ResumeTimerEvent;
 
 static LONGLONG LongLongMulDiv(LONGLONG value, LONGLONG numer, LONGLONG denom)
 {
@@ -1123,11 +1123,14 @@ static int emu_window_count;
 
 static void Set60hzTimerEnabled(EmuWindow *d, BOOL enabled)
 {
-	if (WaitForSingleObject(VBlankMutex, INFINITE) != WAIT_OBJECT_0) goto thread_error;
+	BOOL signal_resume;
 	if (ListLinkUsed(&emus_needing_vblank, d, vblank_link) == enabled) return;
+	if (WaitForSingleObject(VBlankMutex, INFINITE) != WAIT_OBJECT_0) goto thread_error;
+	signal_resume = enabled && !emus_needing_vblank.front;
 	if (enabled) ListPushBack(&emus_needing_vblank, d, vblank_link);
 	else ListRemove(&emus_needing_vblank, d, vblank_link);
 	if (!ReleaseMutex(VBlankMutex)) goto thread_error;
+	if (signal_resume) SetEvent(ResumeTimerEvent);
 	return;
 thread_error:
 	FatalBox("Critical error while handling thread mutex.");
@@ -2433,19 +2436,21 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	return DefWindowProc(hwnd, msg, wparam, lparam);
 }
 
-static void SendVBlankMessages(void)
+static BOOL SendVBlankMessages(void)
 {
-	EmuWindow *emu;
-	if (WaitForSingleObject(VBlankMutex, 5) != WAIT_OBJECT_0) return;
-	for (emu = ListFront(&emus_needing_vblank, EmuWindow, vblank_link); emu; emu = ListNext(emu, EmuWindow, vblank_link))
+	EmuWindow *emu; BOOL result;
+	if (WaitForSingleObject(VBlankMutex, 5) != WAIT_OBJECT_0) return FALSE;
+	result = !!(emu = ListFront(&emus_needing_vblank, EmuWindow, vblank_link));
+	for (; emu; emu = ListNext(emu, EmuWindow, vblank_link))
 	{
 		if (emu->exec_state == EmuIn_Screen) continue; /* Non-atomic read is OK */
 		PostMessage(emu->hWnd, WM_TIMER, TimerID_Screen60hz, 0);
 	}
 	ReleaseMutex(VBlankMutex);
+	return result;
 }
 static LONGLONG mm_sand, mm_stamp;
-static void CALLBACK EmuTimeProc(UINT uTimerID, UINT uMsg, DWORD_PTR dwUser, DWORD_PTR dw1, DWORD_PTR dw2)
+static void CALLBACK EmuMMTimerProc(UINT uTimerID, UINT uMsg, DWORD_PTR dwUser, DWORD_PTR dw1, DWORD_PTR dw2)
 {
 	LONGLONG delay;
 again:
@@ -2453,14 +2458,24 @@ again:
 	while (mm_sand - MicrosSince(mm_stamp) >= 0);
 	/* if (mm_sand - MicrosSince(mm_stamp) < -10)
 		DebugPrint("missed deadline by %d", (int)mm_sand - MicrosSince(mm_stamp)); */
-	SendVBlankMessages();
+on_resume:
+	if (!SendVBlankMessages()) /* Suspend (save energy) if there were no receivers */
+	{
+		timeEndPeriod(0);
+		WaitForSingleObject(ResumeTimerEvent, INFINITE);
+		ResetEvent(ResumeTimerEvent);
+		timeBeginPeriod(0);
+		mm_sand = 0;
+		mm_stamp = TimeStampNow();
+		goto on_resume;
+	}
 	mm_sand += 16667 - (LONGLONG)MicrosSince(mm_stamp);
+	mm_sand = MAX(mm_sand, 16667 * -3); /* Limit the amount of catchup */
 	mm_stamp = TimeStampNow();
 	delay = mm_sand / 1000 - 2;
 	if (delay < 1) goto again;
-	timeSetEvent((UINT)delay, 0, EmuTimeProc, 0, TIME_ONESHOT);
+	timeSetEvent((UINT)delay, 0, EmuMMTimerProc, 0, TIME_ONESHOT);
 	(void)uTimerID, (void)uMsg, (void)dwUser, (void)dw1, (void)dw2;
-	/* TODO if there's no guys in the list, go to sleep and wait for a SetEvent signal */
 }
 
 static DWORD WINAPI VBlankThreadProc(void *d)
@@ -2491,7 +2506,7 @@ use_mm_timer:
 #endif
 	timeBeginPeriod(0);
 	mm_stamp = TimeStampNow();
-	EmuTimeProc(0, 0, 0, 0, 0);
+	EmuMMTimerProc(0, 0, 0, 0, 0);
 	return 0;
 	(void)d;
 }
@@ -2565,6 +2580,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	hAccel = LoadAccelerators(instance, (LPCSTR)IDC_UXN32);
 	InitCommonControls();
 	VBlankMutex = CreateMutex(0, FALSE, TEXT("VBlankMutex"));
+	ResumeTimerEvent = CreateEvent(0, TRUE, FALSE, TEXT("ResumeTimerEvent"));
 
 	hWin = CreateWindowForEmu(instance, emu);
 	if (hide_menu) SendMessage(hWin, WM_COMMAND, MAKEWPARAM(IDM_TOGGLEMENU, 0), 0);
