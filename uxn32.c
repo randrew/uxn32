@@ -2439,6 +2439,7 @@ static void SendVBlankMessages(void)
 	if (WaitForSingleObject(VBlankMutex, 5) != WAIT_OBJECT_0) return;
 	for (emu = ListFront(&emus_needing_vblank, EmuWindow, vblank_link); emu; emu = ListNext(emu, EmuWindow, vblank_link))
 	{
+		if (emu->exec_state == EmuIn_Screen) continue; /* Non-atomic read is OK */
 		PostMessage(emu->hWnd, WM_TIMER, TimerID_Screen60hz, 0);
 	}
 	ReleaseMutex(VBlankMutex);
@@ -2459,6 +2460,7 @@ again:
 	if (delay < 1) goto again;
 	timeSetEvent((UINT)delay, 0, EmuTimeProc, 0, TIME_ONESHOT);
 	(void)uTimerID, (void)uMsg, (void)dwUser, (void)dw1, (void)dw2;
+	/* TODO if there's no guys in the list, go to sleep and wait for a SetEvent signal */
 }
 
 static DWORD WINAPI VBlankThreadProc(void *d)
