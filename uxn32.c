@@ -2500,7 +2500,7 @@ static DWORD WINAPI VBlankThreadProc(void *d)
 
 	for (;;)
 	{
-		Ptr_D3DKMTWaitForVerticalBlankEvent(&wait_e);
+		if (Ptr_D3DKMTWaitForVerticalBlankEvent(&wait_e)) goto use_mm_timer;
 		if (!SendVBlankMessages())
 		{
 			WaitForSingleObject(ResumeTimerEvent, INFINITE);
