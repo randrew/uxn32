@@ -890,11 +890,10 @@ static void FlushUxnConsole(ConWindow *con, HWND hWnd)
 
 static BOOL LoadROMIntoBox(UxnBox *box, LPCSTR filename)
 {
-	DWORD bytes_read, i; BY_HANDLE_FILE_INFORMATION info; BOOL result = FALSE;
+	DWORD bytes_read, i; BOOL result = FALSE;
 	// ResetStasher(box);
 	HANDLE hFile = CreateFile(filename, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (hFile == INVALID_HANDLE_VALUE) goto fail;
-	// if (!GetFileInformationByHandle(hFile, &info)) goto fail;
 	if (!ReadFile(hFile, GetStashMemory(box, 0) + UXN_ROM_OFFSET, UXN_RAM_SIZE - UXN_ROM_OFFSET, &bytes_read, NULL)) FatalBox("oh gno");
 	if (bytes_read < UXN_RAM_SIZE - UXN_ROM_OFFSET) goto ok;
 	for (i = 1;; i++)
@@ -1013,11 +1012,21 @@ static void UxnDeviceWrite_Cold(UxnBox *box, UINT address, UINT value)
 	case VV_SYSTEM:
 		switch (port)
 		{
-		// case 0x2: box->work_stack.num = (UxnU8)value; break;
 		case 0x3:
 		{
-			DWORD offset; DEVPEEK(imem, offset, 0x2);
-
+			UINT offset, i, limited;
+			struct { USHORT size, a_slot, a_offset, b_slot, b_offset; } params;
+			BYTE *ram, *a_mem, *b_mem;
+			DEVPEEK(imem, offset, 0x2);
+			if (offset > UXN_RAM_SIZE - (1 + sizeof params)) break;
+			for (ram = box->core.ram + 1 + offset, i = 0; i < sizeof params / sizeof(USHORT); i++, ram += 2)
+				((USHORT *)&params)[i] = GETVECTOR(ram);
+			limited = MIN(UXN_RAM_SIZE - params.a_offset, params.size);
+			limited = MIN(UXN_RAM_SIZE - params.b_offset, limited);
+			a_mem = GetStashMemory(box, params.a_slot);
+			b_mem = GetStashMemory(box, params.b_slot);
+			CopyMemory(b_mem + params.b_offset, a_mem + params.a_offset, limited);
+			// TODO overflow to next slot, will need up to 4 slots
 			break;
 		}
 
@@ -1469,7 +1478,7 @@ static void LoadROMFileAndStartVM(EmuWindow *d)
 		DWORD rom_size = SizeofResource(MainInstance, hInfo);
 		void *data = LockResource(LoadResource(MainInstance, hInfo));
 		if (!data) return;
-		// CopyMemory(d->box->core.ram + UXN_ROM_OFFSET, data, MIN(rom_size, UXN_RAM_SIZE - UXN_ROM_OFFSET)); FIXME
+		CopyMemory(d->box->core.ram + UXN_ROM_OFFSET, data, MIN(rom_size, UXN_RAM_SIZE - UXN_ROM_OFFSET));
 	}
 	d->running = 1;
 	SendInputEvent(d, EmuIn_Start, 0, 0, 0);
