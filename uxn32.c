@@ -1,3 +1,4 @@
+#include <excpt.h>
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include "resource.h"
@@ -11,6 +12,7 @@
 #include <mmsystem.h>
 
 #pragma warning(disable:4244) /* Noisy VC6 warning. Can't disable with flag */
+#define HOST_PAGE_SIZE 4096
 
 #if !defined(GWLP_WNDPROC)
 #define GetWindowLongPtrA   GetWindowLongA
@@ -204,12 +206,19 @@ static void CutRectForWindow(RECT *prect, int dir, int length, HWND window)
 	MoveWindowRect(window, &r, TRUE);
 }
 
+typedef struct UxnStash {
+	BYTE *memory;
+	ListLink link;
+} UxnStash;
 typedef struct UxnBox
 {
 	void *user;
 	UxnCore core;
 	UxnStack work_stack, ret_stack;
 	UxnU8 device_memory[256];
+
+	UxnStash *table;
+	LinkedList stashes;
 } UxnBox;
 typedef struct UxnVoice
 {
@@ -394,7 +403,48 @@ static void * AllocZeroedOrFail(SIZE_T bytes)
 	return result;
 }
 
-static BOOL LoadFileInto(LPCSTR path, char *dest, DWORD max_bytes, DWORD *bytes_read)
+static void ResetStasher(UxnBox *box)
+{
+	while (box->stashes.front)
+		VirtualFree(ListPopFront(&box->stashes, UxnStash, link)->memory, 0, MEM_RELEASE);
+	VirtualFree(box->table, sizeof(UxnStash) * (USHORT)-1, MEM_DECOMMIT);
+}
+
+#if 0
+static BYTE * PreallocStasher(UxnBox *box, UINT bytes)
+{ // todo move or fold into something
+	UINT stashes = bytes / UXN_RAM_SIZE + 1, i;
+	BYTE *mem = VirtualAlloc(NULL, UXN_RAM_SIZE * stashes, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+	VirtualAlloc(box->table, sizeof(UxnStash) * stashes, MEM_COMMIT, PAGE_READWRITE);
+	for (i = 0; i < stashes; i++)
+	{
+		box->table[i].memory = mem + UXN_RAM_SIZE * i;
+		ListPushBack(&box->stashes, &box->table[i], link);
+	}
+	return mem;
+}
+#endif
+
+static BYTE *GetStashMemory(UxnBox *box, USHORT slot)
+{
+	BYTE *memory;
+	__try { memory = box->table[slot].memory; }
+	__except(GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH)
+	{
+		if (!VirtualAlloc(&box->table[slot], HOST_PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE))
+			FatalBox("VirtualAlloc error while creating stash slot");
+		memory = NULL; /* necessary if we set it null above? */
+	}
+	if (!memory)
+	{
+		box->table[slot].memory = memory = VirtualAlloc(NULL, UXN_RAM_SIZE + UXN_RAM_PAD_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+		if (!memory) FatalBox("failed to allocate stash slot %x", (int)slot);
+		ListPushBack(&box->stashes, &box->table[slot], link);
+	}
+	return memory;
+}
+
+static BOOL LoadFileInto(LPCSTR path, BYTE *dest, DWORD max_bytes, DWORD *bytes_read)
 {
 	HANDLE hFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (hFile == INVALID_HANDLE_VALUE) return FALSE;
@@ -521,7 +571,7 @@ static void FileDevPathChange(EmuWindow *emu, UINT device, UxnFiler *f)
 	ResetFiler(f);
 	DEVPEEK(emu->box->device_memory + device, addr, 0x8);
 	avail = UXN_RAM_SIZE - addr;
-	in_mem = (char *)emu->box->core.ram + addr;
+	in_mem = (char *)GetStashMemory(emu->box, 0) + addr;
 	if (avail > MAX_PATH) avail = MAX_PATH;
 	for (i = 0;; i++)
 	{
@@ -718,6 +768,7 @@ static void WriteOutSynths(EmuWindow *d)
 	UxnWaveOut *wave_out = d->wave_out;
 	WAVEHDR *hdr = &wave_out->waveHdrs[wave_out->which_buffer];
 	SHORT *samples = wave_out->sampleBuffers[wave_out->which_buffer];
+	BYTE *ram = GetStashMemory(d->box, 0);
 	MMRESULT res; int i, still_running;
 	if (!wave_out->hWaveOut) return;
 	wave_out->which_buffer = 1 - wave_out->which_buffer;
@@ -726,7 +777,7 @@ static void WriteOutSynths(EmuWindow *d)
 	hdr->lpData = (LPSTR)samples;
 	ZeroMemory(samples, AUDIO_BUF_SAMPLES * 2 * sizeof(SHORT));
 	for (i = still_running = 0; i < UXN_VOICES; i++)
-		still_running |= VoiceRender(&d->synth_voices[i], d->box->core.ram, samples, samples + AUDIO_BUF_SAMPLES * 2);
+		still_running |= VoiceRender(&d->synth_voices[i], ram, samples, samples + AUDIO_BUF_SAMPLES * 2);
 	res = waveOutPrepareHeader(wave_out->hWaveOut, hdr, sizeof(WAVEHDR));
 	res = waveOutWrite(wave_out->hWaveOut, hdr, sizeof(WAVEHDR));
 }
@@ -804,7 +855,7 @@ static void DevOut_File(EmuWindow *emu, UINT device, UINT port)
 		DEVPEEK(imem, out_len, 0xA);
 		avail = UXN_RAM_SIZE - dst;
 		if (out_len > avail) out_len = avail;
-		out = (char *)box->core.ram + dst;
+		out = (char *)GetStashMemory(box, 0) + dst;
 	}
 	switch (port)
 	{
@@ -839,8 +890,19 @@ static void FlushUxnConsole(ConWindow *con, HWND hWnd)
 
 static BOOL LoadROMIntoBox(UxnBox *box, LPCSTR filename)
 {
-	DWORD bytes_read;
-	BOOL result = LoadFileInto(filename, (char *)(box + 1) + UXN_ROM_OFFSET, UXN_RAM_SIZE - UXN_ROM_OFFSET, &bytes_read);
+	DWORD bytes_read, i; BY_HANDLE_FILE_INFORMATION info; BOOL result = FALSE;
+	// ResetStasher(box);
+	HANDLE hFile = CreateFile(filename, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (hFile == INVALID_HANDLE_VALUE) goto fail;
+	// if (!GetFileInformationByHandle(hFile, &info)) goto fail;
+	if (!ReadFile(hFile, GetStashMemory(box, 0) + UXN_ROM_OFFSET, UXN_RAM_SIZE - UXN_ROM_OFFSET, &bytes_read, NULL)) FatalBox("oh gno");
+	if (bytes_read < UXN_RAM_SIZE - UXN_ROM_OFFSET) goto ok;
+	for (i = 1;; i++)
+	{
+		if (!ReadFile(hFile, GetStashMemory(box, (USHORT)i), UXN_RAM_SIZE, &bytes_read, NULL)) FatalBox("oh gno");
+		if (bytes_read == UXN_RAM_SIZE) goto ok;
+	}
+fail:
 	if (!result)
 	{
 		TCHAR tmp[MAX_PATH]; DWORD res = GetFullPathNameA(filename, MAX_PATH, tmp, NULL);
@@ -848,7 +910,9 @@ static BOOL LoadROMIntoBox(UxnBox *box, LPCSTR filename)
 		/* This error is annoying. Disable it until we think of something better. */
 		/* FmtBox(0, "ROM File Load Error", MB_OK | MB_ICONWARNING, "Tried and failed to load the ROM file:\n\n%s\n\nDoes it exist?", tmp); */
 	}
+done:
 	return result;
+ok: result = TRUE; goto done;
 }
 
 static UxnU8 UxnDeviceRead(UxnCore *u, UINT address)
@@ -949,11 +1013,17 @@ static void UxnDeviceWrite_Cold(UxnBox *box, UINT address, UINT value)
 	case VV_SYSTEM:
 		switch (port)
 		{
-		case 0x2: box->work_stack.num = (UxnU8)value; break;
-		case 0x3: box->ret_stack.num = (UxnU8)value; break;
+		// case 0x2: box->work_stack.num = (UxnU8)value; break;
+		case 0x3:
+		{
+			DWORD offset; DEVPEEK(imem, offset, 0x2);
+
+			break;
+		}
+
 		case 0x5: /* Set window title. Limit to 256 chars. */
 		{
-			BYTE *ram = box->core.ram; DWORD offset, i, n;
+			BYTE *ram = GetStashMemory(box, 0); DWORD offset, i, n;
 			for (DEVPEEK(imem, offset, 0x4), i = offset, n = 0; i < UXN_RAM_SIZE && n++ < 256;)
 				if (!ram[i++]) { SetWindowTextA(emu->hWnd, (CHAR *)ram + offset); break; }
 			break;
@@ -1043,12 +1113,11 @@ static void UxnDeviceWrite(UxnCore *u, UINT address, UINT value)
 
 static void InitEmuWindow(EmuWindow *d, HWND hWnd)
 {
-	char *main_ram;
-	UxnBox *box = (UxnBox *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(UxnBox) + UXN_RAM_SIZE + UXN_RAM_PAD_SIZE);
+	UxnBox *box = (UxnBox *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(UxnBox));
 	if (!box) OutOfMemory();
-	main_ram = (char *)(box + 1);
 	box->user = d;
-	box->core.ram = (UxnU8 *)main_ram;
+	box->table = VirtualAlloc(NULL, sizeof(UxnStash) * (USHORT)-1, MEM_RESERVE, PAGE_NOACCESS);
+	box->core.ram = GetStashMemory(box, 0);
 	box->core.wst = &box->work_stack;
 	box->core.rst = &box->ret_stack;
 	box->core.dei = UxnDeviceRead;
@@ -1063,6 +1132,7 @@ static void InitEmuWindow(EmuWindow *d, HWND hWnd)
 
 static void FreeUxnBox(UxnBox *box)
 {
+	// VirtualFree(box->table, ); // TODO
 	HeapFree(GetProcessHeap(), 0, box);
 }
 
@@ -1145,7 +1215,7 @@ static void ResetVM(EmuWindow *d)
 	ZeroMemory(&d->box->work_stack, sizeof(UxnStack) * 2); /* optional for quick reload */
 	ZeroMemory(d->box->device_memory, sizeof d->box->device_memory); /* optional for quick reload */
 	DEVPOKE2(d->box->device_memory, VV_SCREEN + 0x2, d->screen.width, d->screen.height); /* Restore this in case ROM reads it */
-	ZeroMemory((char *)(d->box + 1), UXN_RAM_SIZE + UXN_RAM_PAD_SIZE); /* zero RAM and the padding byte */
+	// ZeroMemory(d->box->core.ram, UXN_RAM_SIZE + UXN_RAM_PAD_SIZE); /* zero RAM and the padding byte */ FIXME
 	ZeroMemory(d->screen.palette, sizeof d->screen.palette); /* optional for quick reload */
 	ZeroMemory(d->screen.bg, d->screen.width * d->screen.height * 2);
 	ResetFiler(&d->filers[0]); ResetFiler(&d->filers[1]);
@@ -1399,7 +1469,7 @@ static void LoadROMFileAndStartVM(EmuWindow *d)
 		DWORD rom_size = SizeofResource(MainInstance, hInfo);
 		void *data = LockResource(LoadResource(MainInstance, hInfo));
 		if (!data) return;
-		CopyMemory(d->box->core.ram + UXN_ROM_OFFSET, data, MIN(rom_size, UXN_RAM_SIZE - UXN_ROM_OFFSET));
+		// CopyMemory(d->box->core.ram + UXN_ROM_OFFSET, data, MIN(rom_size, UXN_RAM_SIZE - UXN_ROM_OFFSET)); FIXME
 	}
 	d->running = 1;
 	SendInputEvent(d, EmuIn_Start, 0, 0, 0);
@@ -1901,7 +1971,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			NMLVDISPINFO *inf = (NMLVDISPINFO *)lParam; BYTE *base;
 			if (!inf->item.pszText) return FALSE;
 			if (wParam == BB_AsmList)
-				base = d->emu->box->core.ram;
+				base = GetStashMemory(d->emu->box, 0);
 			else if (wParam == BB_WrkStack || wParam == BB_RetStack)
 				base = (&d->emu->box->core.wst)[wParam - BB_WrkStack]->mem;
 			else return FALSE;
@@ -1917,8 +1987,9 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			switch (wParam)
 			{
 			case BB_AsmList:
-				iItem = wsprintf(buff, "%c %04X %02X ", core->pc == addr ? '>' : ' ', (UINT)addr, (UINT)core->ram[addr]);
-				iItem += DecodeUxnOpcode(buff + iItem, (BYTE)core->ram[addr]);
+				mem = GetStashMemory(d->emu->box, 0);
+				iItem = wsprintf(buff, "%c %04X %02X ", core->pc == addr ? '>' : ' ', (UINT)addr, (UINT)mem[addr]);
+				iItem += DecodeUxnOpcode(buff + iItem, mem[addr]);
 				if ((sym = FindSymbolForAddress(&d->symbols, addr)) < d->symbols.count && d->symbols.addresses[sym] == addr)
 				{
 					while (iItem < 17) buff[iItem++] = ' ';
@@ -1926,7 +1997,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				}
 				break;
 			case BB_HexList:
-				addr *= 8; mem = core->ram + addr;
+				addr *= 8; mem = GetStashMemory(d->emu->box, 0) + addr;
 				wsprintf(buff, "%04X  %02X%02X %02X%02X %02X%02X %02X%02X", addr,
 					(UINT)mem[0], (UINT)mem[1], (UINT)mem[2], (UINT)mem[3],
 					(UINT)mem[4], (UINT)mem[5], (UINT)mem[6], (UINT)mem[7]);
@@ -2404,7 +2475,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		d->exec_state = b->exec_state;
 		CopyMemory(&d->box->work_stack, &b->box->work_stack, sizeof(UxnStack) * 2);
 		CopyMemory(d->box->device_memory, b->box->device_memory, sizeof d->box->device_memory);
-		CopyMemory((char *)(d->box + 1), (char *)(b->box + 1), UXN_RAM_SIZE + UXN_RAM_PAD_SIZE);
+		// CopyMemory(d->box->core.ram, d->box->core.ram, UXN_RAM_SIZE + UXN_RAM_PAD_SIZE); FIXME
 		/* ^ We also copy that weird padding byte. It might be important to the Uxn program. Who knows! */
 		CopyMemory(d->screen.palette, b->screen.palette, sizeof d->screen.palette);
 		SetUxnScreenSize(&d->screen, b->screen.width, b->screen.height);
