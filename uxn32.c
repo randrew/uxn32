@@ -898,7 +898,7 @@ static BOOL LoadROMIntoBox(UxnBox *box, LPCSTR filename)
 	for (i = 1;; i++)
 	{
 		if (!ReadFile(hFile, GetStashMemory(box, (USHORT)i), UXN_RAM_SIZE, &bytes_read, NULL)) FatalBox("oh gno");
-		if (bytes_read == UXN_RAM_SIZE) goto ok;
+		if (bytes_read < UXN_RAM_SIZE) goto ok;
 	}
 fail:
 	if (!result)
