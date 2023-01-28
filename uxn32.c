@@ -408,6 +408,8 @@ static void ResetStasher(UxnBox *box)
 		VirtualFree(ListPopFront(&box->stashes, UxnStash, link)->memory, 0, MEM_RELEASE);
 	VirtualFree(box->table, sizeof(UxnStash) * (USHORT)-1, MEM_DECOMMIT);
 }
+static void FreeStasher(UxnBox *box)
+{ ResetStasher(box); VirtualFree(box->table, 0, MEM_RELEASE); }
 
 #if 0
 static BYTE * PreallocStasher(UxnBox *box, UINT bytes)
@@ -441,6 +443,17 @@ static BYTE *GetStashMemory(UxnBox *box, USHORT slot)
 		ListPushBack(&box->stashes, &box->table[slot], link);
 	}
 	return memory;
+}
+
+static void CopyStasher(UxnBox *dst, UxnBox *src)
+{
+	UxnStash *s; SIZE_T i;
+	ResetStasher(dst);
+	for (s = ListFront(&src->stashes, UxnStash, link); s; s = ListNext(s, UxnStash, link))
+	{
+		i = ((SIZE_T)src->table - (SIZE_T)s) / sizeof(UxnStash);
+		CopyMemory(GetStashMemory(dst, i), s->memory, UXN_RAM_SIZE);
+	}
 }
 
 static BOOL LoadFileInto(LPCSTR path, BYTE *dest, DWORD max_bytes, DWORD *bytes_read)
@@ -1140,7 +1153,7 @@ static void InitEmuWindow(EmuWindow *d, HWND hWnd)
 
 static void FreeUxnBox(UxnBox *box)
 {
-	// VirtualFree(box->table, ); // TODO
+	FreeStasher(box);
 	HeapFree(GetProcessHeap(), 0, box);
 }
 
@@ -2483,6 +2496,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		d->exec_state = b->exec_state;
 		CopyMemory(&d->box->work_stack, &b->box->work_stack, sizeof(UxnStack) * 2);
 		CopyMemory(d->box->device_memory, b->box->device_memory, sizeof d->box->device_memory);
+		CopyStasher(d->box, b->box);
 		// CopyMemory(d->box->core.ram, d->box->core.ram, UXN_RAM_SIZE + UXN_RAM_PAD_SIZE); FIXME
 		/* ^ We also copy that weird padding byte. It might be important to the Uxn program. Who knows! */
 		CopyMemory(d->screen.palette, b->screen.palette, sizeof d->screen.palette);
