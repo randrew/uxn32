@@ -66,6 +66,7 @@ typedef ULONG_PTR DWORD_PTR, *PDWORD_PTR;
 #define UXN_SAMPLE_RATE 44100
 #define UXN_VOICES 4
 
+#define UXN_FAULT_STASHER 253
 #define UXN_FAULT_DEBUG 254
 #define UXN_FAULT_QUIT 255
 
@@ -1017,19 +1018,27 @@ static void UxnDeviceWrite_Cold(UxnBox *box, UINT address, UINT value)
 		{
 		case 0x3:
 		{
-			UINT offset, i, limited;
-			struct { USHORT size, a_slot, a_offset, b_slot, b_offset; } params;
+			UINT offset, i /*, limited*/;
+			struct { USHORT size, a_slot, a_offset, b_slot, b_offset; } params = {0};
 			BYTE *ram, *a_mem, *b_mem;
 			DEVPEEK(imem, offset, 0x2);
-			if (offset > UXN_RAM_SIZE - (1 + sizeof params)) break;
+			if (offset > UXN_RAM_SIZE - (1 + sizeof params)) goto stasher_fault;
 			for (ram = box->core.ram + 1 + offset, i = 0; i < sizeof params / sizeof(USHORT); i++, ram += 2)
 				((USHORT *)&params)[i] = GETVECTOR(ram);
+#if 1 /* Fault instead of limit size */
+			if (params.a_offset + params.size > UXN_RAM_SIZE) goto stasher_fault;
+			if (params.b_offset + params.size > UXN_RAM_SIZE) goto stasher_fault;
+#else
 			limited = MIN(UXN_RAM_SIZE - params.a_offset, params.size);
 			limited = MIN(UXN_RAM_SIZE - params.b_offset, limited);
+#endif
 			a_mem = GetStashMemory(box, params.a_slot);
 			b_mem = GetStashMemory(box, params.b_slot);
-			CopyMemory(b_mem + params.b_offset, a_mem + params.a_offset, limited);
+			CopyMemory(b_mem + params.b_offset, a_mem + params.a_offset, params.size);
 			// TODO overflow to next slot, will need up to 4 slots
+			break;
+		stasher_fault:
+			box->core.fault = UXN_FAULT_STASHER;
 			break;
 		}
 
@@ -1751,6 +1760,7 @@ static void UpdateBeetbugStuff(HWND hWnd, BeetbugWin *d)
 		case UXN_FAULT_STACK_OVERFLOW: text = TEXT("Stack overflow"); break;
 		case UXN_FAULT_DIVIDE_BY_ZERO: text = TEXT("Division by zero"); break;
 		/* case 127: text = TEXT("Stack debris"); break; */ /* TODO search debris */
+		case UXN_FAULT_STASHER: text = TEXT("Stasher fault"); break;
 		case UXN_FAULT_DEBUG: text = TEXT("Debug device break"); break;
 		case UXN_FAULT_QUIT: text = TEXT("Program requested exit"); break;
 		}
