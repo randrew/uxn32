@@ -1240,6 +1240,7 @@ static void ResetVM(EmuWindow *d)
 	DEVPOKE2(d->box->device_memory, VV_SCREEN + 0x2, d->screen.width, d->screen.height); /* Restore this in case ROM reads it */
 	// ZeroMemory(d->box->core.ram, UXN_RAM_SIZE + UXN_RAM_PAD_SIZE); /* zero RAM and the padding byte */ FIXME
 	ResetStasher(d->box);
+	d->box->core.ram = GetStashMemory(d->box, 0);
 	ZeroMemory(d->screen.palette, sizeof d->screen.palette); /* optional for quick reload */
 	ZeroMemory(d->screen.bg, d->screen.width * d->screen.height * 2);
 	ResetFiler(&d->filers[0]); ResetFiler(&d->filers[1]);
@@ -2500,6 +2501,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		CopyMemory(&d->box->work_stack, &b->box->work_stack, sizeof(UxnStack) * 2);
 		CopyMemory(d->box->device_memory, b->box->device_memory, sizeof d->box->device_memory);
 		CopyStasher(d->box, b->box);
+		d->box->core.ram = GetStashMemory(d->box, 0);
 		// CopyMemory(d->box->core.ram, d->box->core.ram, UXN_RAM_SIZE + UXN_RAM_PAD_SIZE); FIXME
 		/* ^ We also copy that weird padding byte. It might be important to the Uxn program. Who knows! */
 		CopyMemory(d->screen.palette, b->screen.palette, sizeof d->screen.palette);
