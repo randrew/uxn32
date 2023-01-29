@@ -11,8 +11,12 @@
 #include <mmsystem.h>
 
 #pragma warning(disable:4244) /* Noisy VC6 warning. Can't disable with flag */
-#define HOST_PAGE_SIZE 4096
+#if defined(_MSC_VER) || defined(_WIN64) /* SEH doesn't work in 32-bit GCC or Winelib */
+#define USE_SEH 1
+#else
 #define USE_SEH 0
+#endif
+#define HOST_PAGE_SIZE 4096
 
 #if !defined(GWLP_WNDPROC)
 #define GetWindowLongPtrA   GetWindowLongA
@@ -415,21 +419,6 @@ static void ResetStasher(UxnBox *box)
 }
 static void FreeStasher(UxnBox *box)
 { ResetStasher(box); VirtualFree(box->table, 0, MEM_RELEASE); }
-
-#if 0
-static BYTE * PreallocStasher(UxnBox *box, UINT bytes)
-{ // todo move or fold into something
-	UINT stashes = bytes / UXN_RAM_SIZE + 1, i;
-	BYTE *mem = VirtualAlloc(NULL, UXN_RAM_SIZE * stashes, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-	VirtualAlloc(box->table, sizeof(UxnStash) * stashes, MEM_COMMIT, PAGE_READWRITE);
-	for (i = 0; i < stashes; i++)
-	{
-		box->table[i].memory = mem + UXN_RAM_SIZE * i;
-		ListPushBack(&box->stashes, &box->table[i], link);
-	}
-	return mem;
-}
-#endif
 
 static BYTE *GetStashMemory(UxnBox *box, USHORT slot)
 {
