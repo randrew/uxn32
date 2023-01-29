@@ -11,13 +11,6 @@
 #include <mmsystem.h>
 
 #pragma warning(disable:4244) /* Noisy VC6 warning. Can't disable with flag */
-#if defined(_MSC_VER) || defined(_WIN64) /* SEH doesn't work in 32-bit GCC or Winelib */
-#define USE_SEH 1
-#else
-#define USE_SEH 0
-#endif
-#define HOST_PAGE_SIZE 4096
-
 #if !defined(GWLP_WNDPROC)
 #define GetWindowLongPtrA   GetWindowLongA
 #define GetWindowLongPtrW   GetWindowLongW
@@ -59,6 +52,8 @@ typedef ULONG_PTR DWORD_PTR, *PDWORD_PTR;
 #else
 #define DEBUG_CHECK(a) (!(a) ? DebugBreak() : (void)0)
 #endif
+
+#define HOST_PAGE_SIZE 4096
 
 #define UXN_DEFAULT_WIDTH (64 * 8)
 #define UXN_DEFAULT_HEIGHT (40 * 8)
@@ -214,6 +209,7 @@ typedef struct UxnStash {
 	BYTE *memory;
 	ListLink link;
 } UxnStash;
+enum { StashMetadataHostPages = ((USHORT)-1 + 1) * sizeof(UxnStash) / HOST_PAGE_SIZE};
 typedef struct UxnBox
 {
 	void *user;
@@ -222,6 +218,7 @@ typedef struct UxnBox
 	UxnU8 device_memory[256];
 
 	UxnStash *table;
+	UINT commit_mask[StashMetadataHostPages / 8 / sizeof(UINT)];
 	LinkedList stashes;
 } UxnBox;
 typedef struct UxnVoice
@@ -409,36 +406,32 @@ static void * AllocZeroedOrFail(SIZE_T bytes)
 
 static void ResetStasher(UxnBox *box)
 {
-	while (box->stashes.front)
-		VirtualFree(ListPopFront(&box->stashes, UxnStash, link)->memory, 0, MEM_RELEASE);
-#if USE_SEH
+	UxnStash *s;
+	for (s = ListFront(&box->stashes, UxnStash, link); s; s = ListNext(s, UxnStash, link))
+		VirtualFree(s->memory, 0, MEM_RELEASE);
+	ZeroMemory(&box->stashes, sizeof box->stashes);
+	ZeroMemory(box->commit_mask, sizeof box->commit_mask);
 	VirtualFree(box->table, sizeof(UxnStash) * (USHORT)-1, MEM_DECOMMIT);
-#else
-	ZeroMemory(box->table, sizeof(UxnStash) * (USHORT)-1);
-#endif
 }
 static void FreeStasher(UxnBox *box)
 { ResetStasher(box); VirtualFree(box->table, 0, MEM_RELEASE); }
 
-static BYTE *GetStashMemory(UxnBox *box, USHORT slot)
+static BYTE * GetStashMemory(UxnBox *box, USHORT slot)
 {
 	BYTE *memory;
-#if USE_SEH
-	__try { memory = box->table[slot].memory; }
-	__except(GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH)
+	UINT a =   slot    * sizeof(UxnStash)      / HOST_PAGE_SIZE,
+	     b = ((slot+1) * sizeof(UxnStack) - 1) / HOST_PAGE_SIZE;
+	for (; a <= b; a++)
 	{
-		if (!VirtualAlloc(&box->table[slot], HOST_PAGE_SIZE, MEM_COMMIT, PAGE_READWRITE))
-			FatalBox("VirtualAlloc error while creating stash slot");
-		memory = NULL; /* necessary if we set it null above? */
+		UINT index = (UINT)a >> 5, bit = 1 << ((UINT)a & 31), piece;
+		if ((piece = box->commit_mask[index]) & bit) continue;
+		box->commit_mask[index] = piece | bit;
+		VirtualAlloc((BYTE *)box->table + a * HOST_PAGE_SIZE, 1, MEM_COMMIT, PAGE_READWRITE);
 	}
-#else
-	memory = box->table[slot].memory;
-#endif
-	if (!memory)
+	if (!(memory = box->table[slot].memory))
 	{
 		box->table[slot].memory = memory = VirtualAlloc(NULL, UXN_RAM_SIZE + UXN_RAM_PAD_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-		if (!memory) FatalBox("failed to allocate stash slot %x", (int)slot);
-		ListPushBack(&box->stashes, &box->table[slot], link);
+		if (memory) ListPushBack(&box->stashes, &box->table[slot], link);
 	}
 	return memory;
 }
@@ -1135,11 +1128,7 @@ static void InitEmuWindow(EmuWindow *d, HWND hWnd)
 	UxnBox *box = (UxnBox *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(UxnBox));
 	if (!box) OutOfMemory();
 	box->user = d;
-#if USE_SEH
 	box->table = VirtualAlloc(NULL, sizeof(UxnStash) * (USHORT)-1, MEM_RESERVE, PAGE_NOACCESS);
-#else
-	box->table = VirtualAlloc(NULL, sizeof(UxnStash) * (USHORT)-1, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-#endif
 	box->core.ram = GetStashMemory(box, 0);
 	box->core.wst = &box->work_stack;
 	box->core.rst = &box->ret_stack;
@@ -1238,7 +1227,6 @@ static void ResetVM(EmuWindow *d)
 	ZeroMemory(&d->box->work_stack, sizeof(UxnStack) * 2); /* optional for quick reload */
 	ZeroMemory(d->box->device_memory, sizeof d->box->device_memory); /* optional for quick reload */
 	DEVPOKE2(d->box->device_memory, VV_SCREEN + 0x2, d->screen.width, d->screen.height); /* Restore this in case ROM reads it */
-	// ZeroMemory(d->box->core.ram, UXN_RAM_SIZE + UXN_RAM_PAD_SIZE); /* zero RAM and the padding byte */ FIXME
 	ResetStasher(d->box);
 	d->box->core.ram = GetStashMemory(d->box, 0);
 	ZeroMemory(d->screen.palette, sizeof d->screen.palette); /* optional for quick reload */
