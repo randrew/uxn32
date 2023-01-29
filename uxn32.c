@@ -409,8 +409,12 @@ static void * AllocZeroedOrFail(SIZE_T bytes)
 
 static void ResetStasher(UxnBox *box)
 {
-	while (box->stashes.front)
-		VirtualFree(ListPopFront(&box->stashes, UxnStash, link)->memory, 0, MEM_RELEASE);
+	while (box->stashes.front) // TODO i don't actually need to pop them, i'm going to nuke the memory anyway
+		// VirtualFree(ListPopFront(&box->stashes, UxnStash, link)->memory, 0, MEM_RELEASE);
+	{
+		if (!UnmapViewOfFile(ListPopFront(&box->stashes, UxnStash, link)->memory)) FatalBox("asdfasdf");
+
+	}
 #if USE_SEH
 	VirtualFree(box->table, sizeof(UxnStash) * (USHORT)-1, MEM_DECOMMIT);
 #else
@@ -436,11 +440,24 @@ static BYTE *GetStashMemory(UxnBox *box, USHORT slot)
 #endif
 	if (!memory)
 	{
-		box->table[slot].memory = memory = VirtualAlloc(NULL, UXN_RAM_SIZE + UXN_RAM_PAD_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-		if (!memory) FatalBox("failed to allocate stash slot %x", (int)slot);
-		ListPushBack(&box->stashes, &box->table[slot], link);
+		HANDLE h; int tries = 100; void *a, *b;
+		if (!(h = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, UXN_RAM_SIZE, NULL))) goto done;
+		while (tries--)
+		{
+			box->table[slot].memory = memory = VirtualAlloc(NULL, UXN_RAM_SIZE * 2, MEM_RESERVE, PAGE_READWRITE);
+			if (!memory) goto close;
+			if (!VirtualFree(memory, 0, MEM_RELEASE)) goto fatal;
+			if (!(a = MapViewOfFileEx(h, FILE_MAP_ALL_ACCESS, 0, 0, UXN_RAM_SIZE, memory))) continue;
+			if (!(b = MapViewOfFileEx(h, FILE_MAP_ALL_ACCESS, 0, 0, UXN_RAM_SIZE, memory + UXN_RAM_SIZE)))
+			{ UnmapViewOfFile(a); continue; }
+			ListPushBack(&box->stashes, &box->table[slot], link);
+			goto done;
+		}
+fatal:	FatalBox("Win32 error while juggling MapViewOfFileEx memory");
+close:	CloseHandle(h);
+		// TODO store handle
 	}
-	return memory;
+done: return memory;
 }
 
 static void CopyStasher(UxnBox *dst, UxnBox *src)
