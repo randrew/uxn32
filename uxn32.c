@@ -449,7 +449,7 @@ static void CopyStasher(UxnBox *dst, UxnBox *src)
 	ResetStasher(dst);
 	for (s = ListFront(&src->stashes, UxnStash, link); s; s = ListNext(s, UxnStash, link))
 	{
-		i = ((SIZE_T)src->table - (SIZE_T)s) / sizeof(UxnStash);
+		i = ((SIZE_T)s - (SIZE_T)src->table) / sizeof(UxnStash);
 		CopyMemory(GetStashMemory(dst, i), s->memory, UXN_RAM_SIZE);
 	}
 }
