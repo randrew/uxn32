@@ -443,7 +443,7 @@ static void CopyStasher(UxnBox *dst, UxnBox *src)
 	for (s = ListFront(&src->stashes, UxnStash, link); s; s = ListNext(s, UxnStash, link))
 	{
 		i = ((SIZE_T)s - (SIZE_T)src->table) / sizeof(UxnStash);
-		CopyMemory(GetStashMemory(dst, i), s->memory, UXN_RAM_SIZE);
+		CopyMemory(GetStashMemory(dst, i), s->memory, UXN_RAM_SIZE + UXN_RAM_PAD_SIZE);
 	}
 }
 
@@ -2490,7 +2490,6 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		CopyMemory(d->box->device_memory, b->box->device_memory, sizeof d->box->device_memory);
 		CopyStasher(d->box, b->box);
 		d->box->core.ram = GetStashMemory(d->box, 0);
-		// CopyMemory(d->box->core.ram, d->box->core.ram, UXN_RAM_SIZE + UXN_RAM_PAD_SIZE); FIXME
 		/* ^ We also copy that weird padding byte. It might be important to the Uxn program. Who knows! */
 		CopyMemory(d->screen.palette, b->screen.palette, sizeof d->screen.palette);
 		SetUxnScreenSize(&d->screen, b->screen.width, b->screen.height);
