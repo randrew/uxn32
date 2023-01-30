@@ -127,6 +127,7 @@ static LPCSTR EmuWinClass = TEXT("uxn_emu_win"), ConsoleWinClass = TEXT("uxn_con
 static LPCSTR BeetbugWinClass = TEXT("uxn_beetbug_win");
 static LPCSTR DefaultROMPath = TEXT("launcher.rom");
 static LPWSTR *CmdLineArgs; static int CmdLineArgCount;
+static BOOL BreakOnInitVector;
 static HANDLE VBlankMutex, ResumeTimerEvent;
 
 static LONGLONG LongLongMulDiv(LONGLONG value, LONGLONG numer, LONGLONG denom)
@@ -1451,9 +1452,7 @@ static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT
 	d->exec_state = type;
 	if (*pc) { d->last_event = type; d->instr_count = 0; }
 	/* ^- To make the debugger UI useful, don't update these if the program vector is empty */
-#ifndef NDEBUG
-	if (type == EmuIn_Start && IsWindowVisible(d->beetbugHWnd)) { PauseVM(d); ShowBeetbugInstruction(d, *pc); return; }
-#endif
+	if (type == EmuIn_Start && BreakOnInitVector) { PauseVM(d); ShowBeetbugInstruction(d, *pc); return; }
 	RunUxn(d, 0, TRUE);
 }
 
@@ -2629,7 +2628,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 		(Ptr_CommandLineToArgvW = (Type_CommandLineToArgvW *)GetProcAddress(GetModuleHandle(TEXT("shell32.dll")), "CommandLineToArgvW")) &&
 		(CmdLineArgs = Ptr_CommandLineToArgvW(Ptr_GetCommandLineW(), &CmdLineArgCount)))
 	{
-		LPWSTR arg; void **opt, *options[] = {L"hidemenu", &hide_menu, 0};
+		LPWSTR arg; void **opt, *options[] = {L"hidemenu", &hide_menu, L"break", &BreakOnInitVector, 0};
 		while (CmdLineArgs += 1, CmdLineArgCount -= 1)
 		{
 			if ((arg = *CmdLineArgs, lstrlenW(arg)) < 2 || (arg[0] != L'/' && arg[0] != L'-')) break;
