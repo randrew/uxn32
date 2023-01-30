@@ -87,7 +87,7 @@ typedef ULONG_PTR DWORD_PTR, *PDWORD_PTR;
 #define DEVPOKE(d, a, v) ((d)[(a)] = (v) >> 8, (d)[(a) + 1] = (v))
 #define DEVPEEK2(d, o1, o2, a) (DEVPEEK(d, o1, a), DEVPEEK(d, o2, (a) + 2))
 #define DEVPOKE2(d, a, v1, v2) (DEVPOKE(d, a, v1), DEVPOKE(d, (a) + 2, v2))
-#define GETVECTOR(d) ((d)[0] << 8 | (d)[1])
+#define GET_16BIT(d) ((d)[0] << 8 | (d)[1])
 #define DEVINDEX(device, base) (((device) - (base)) >> 4)
 
 typedef LPWSTR * WINAPI Type_CommandLineToArgvW(LPCWSTR lpCmdLine, int* pNumArgs);
@@ -1024,7 +1024,7 @@ static void UxnDeviceWrite_Cold(UxnBox *box, UINT address, UINT value)
 			DEVPEEK(imem, offset, 0x2);
 			if (offset > UXN_RAM_SIZE - (1 + sizeof params)) goto stasher_fault;
 			for (ram = box->core.ram + 1 + offset, i = 0; i < sizeof params / sizeof(USHORT); i++, ram += 2)
-				((USHORT *)&params)[i] = GETVECTOR(ram);
+				((USHORT *)&params)[i] = GET_16BIT(ram);
 #if 1 /* Fault instead of limit size */
 			if (params.a_offset + params.size > UXN_RAM_SIZE) goto stasher_fault;
 			if (params.b_offset + params.size > UXN_RAM_SIZE) goto stasher_fault;
@@ -1216,7 +1216,7 @@ static int emu_window_count;
 /* This function is a bit tricky. It reads from d->running and Uxn device RAM. Call it if either changed. e.g. when (un)pausing, or after a vector finishes. If you're about to destroy or free an EmuWindow, you also need to make sure it's removed from vblank linked list, so set d->running to false and then call this function. */
 static void Update60hzTimerEnabled(EmuWindow *d)
 {
-	BOOL signal_resume, enabled = d->running && GETVECTOR(d->box->device_memory + VV_SCREEN);
+	BOOL signal_resume, enabled = d->running && GET_16BIT(d->box->device_memory + VV_SCREEN);
 	if (ListLinkUsed(&emus_needing_vblank, d, vblank_link) == enabled) return;
 	if (WaitForSingleObject(VBlankMutex, INFINITE) != WAIT_OBJECT_0) goto thread_error;
 	signal_resume = enabled && !emus_needing_vblank.front;
@@ -1423,7 +1423,7 @@ static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT
 	{
 	case EmuIn_KeyChar:
 		devmem[VV_CONTROL + 3] = bits;
-		*pc = GETVECTOR(devmem + VV_CONTROL);
+		*pc = GET_16BIT(devmem + VV_CONTROL);
 		break;
 	case EmuIn_CtrlDown: devmem[VV_CONTROL + 2] |=  bits; goto run_ctrl;
 	case EmuIn_CtrlUp:   devmem[VV_CONTROL + 2] &= ~bits; goto run_ctrl;
@@ -1433,7 +1433,7 @@ static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT
 		if (devmem[VV_CONTROL + 2] == bits) { *pc = 0; break; }
 		devmem[VV_CONTROL + 2] = bits;
 	run_ctrl:
-		*pc = GETVECTOR(devmem + VV_CONTROL);
+		*pc = GET_16BIT(devmem + VV_CONTROL);
 		break;
 	case EmuIn_MouseDown:
 		devmem[VV_MOUSE + 6] |= bits; goto mouse_xy;
@@ -1441,18 +1441,18 @@ static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT
 		devmem[VV_MOUSE + 6] &= ~bits;
 	mouse_xy:
 		DEVPOKE2(devmem + VV_MOUSE, 0x2, x, y);
-		*pc = GETVECTOR(devmem + VV_MOUSE);
+		*pc = GET_16BIT(devmem + VV_MOUSE);
 		break;
 	case EmuIn_Wheel:
 		DEVPOKE2(devmem + VV_MOUSE, 0xA, x, y);
-		*pc = GETVECTOR(devmem + VV_MOUSE);
+		*pc = GET_16BIT(devmem + VV_MOUSE);
 		break;
 	case EmuIn_Screen:
-		*pc = GETVECTOR(devmem + VV_SCREEN);
+		*pc = GET_16BIT(devmem + VV_SCREEN);
 		break;
 	case EmuIn_Console:
 		devmem[VV_CONSOLE + 0x2] = bits;
-		*pc = GETVECTOR(devmem + VV_CONSOLE);
+		*pc = GET_16BIT(devmem + VV_CONSOLE);
 		break;
 	case EmuIn_DebugJump: break; /* Should not happen -- only set by debugger */
 	case EmuIn_Start:
@@ -2349,7 +2349,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	{
 		POINT mouse; BOOL mouse_in_uxn;
 		mouse.x = GET_X_LPARAM(lparam); mouse.y = GET_Y_LPARAM(lparam);
-		mouse_in_uxn = PtInRect(&d->viewport_rect, mouse) && d->running && GETVECTOR(d->box->device_memory + VV_MOUSE);
+		mouse_in_uxn = PtInRect(&d->viewport_rect, mouse) && d->running && GET_16BIT(d->box->device_memory + VV_MOUSE);
 		/* TODO Vector check is slightly wrong -- it doesn't, but should, check when the mouse vector has been changed in uxn code without the mouse moving. Test repro: launch something with launcher.rom and don't move the mouse. (If you clicked instead of using keyboard, don't release the click button.) */
 		SetHostCursorVisible(d, !mouse_in_uxn);
 		if (!mouse_in_uxn) break;
