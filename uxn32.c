@@ -1018,28 +1018,18 @@ static void UxnDeviceWrite_Cold(UxnBox *box, UINT address, UINT value)
 		{
 		case 0x3:
 		{
-			UINT offset, i /*, limited*/;
+			UINT offset, i; BYTE *ram;
 			struct { USHORT size, a_slot, a_offset, b_slot, b_offset; } params = {0};
-			BYTE *ram, *a_mem, *b_mem;
 			DEVPEEK(imem, offset, 0x2);
 			if (offset > UXN_RAM_SIZE - (1 + sizeof params)) goto stasher_fault;
 			for (ram = box->core.ram + 1 + offset, i = 0; i < sizeof params / sizeof(USHORT); i++, ram += 2)
 				((USHORT *)&params)[i] = GET_16BIT(ram);
-#if 1 /* Fault instead of limit size */
-			if (params.a_offset + params.size > UXN_RAM_SIZE) goto stasher_fault;
-			if (params.b_offset + params.size > UXN_RAM_SIZE) goto stasher_fault;
-#else
-			limited = MIN(UXN_RAM_SIZE - params.a_offset, params.size);
-			limited = MIN(UXN_RAM_SIZE - params.b_offset, limited);
-#endif
-			a_mem = GetStashMemory(box, params.a_slot);
-			b_mem = GetStashMemory(box, params.b_slot);
-			CopyMemory(b_mem + params.b_offset, a_mem + params.a_offset, params.size);
-			// TODO overflow to next slot, will need up to 4 slots
+			if (params.a_offset + params.size > UXN_RAM_SIZE ||
+			    params.b_offset + params.size > UXN_RAM_SIZE) goto stasher_fault;
+			CopyMemory(GetStashMemory(box, params.b_slot) + params.b_offset,
+			           GetStashMemory(box, params.a_slot) + params.a_offset, params.size);
 			break;
-		stasher_fault:
-			box->core.fault = UXN_FAULT_STASHER;
-			break;
+			stasher_fault: box->core.fault = UXN_FAULT_STASHER; break;
 		}
 
 		case 0x5: /* Set window title. Limit to 256 chars. */
