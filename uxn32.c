@@ -220,7 +220,6 @@ enum { StashMetadataHostPages = ((USHORT)-1 + 1) * sizeof(UxnStashPtr) / HOST_PA
 #define STASH_MetaToRAM(footer) ((BYTE *)footer - UXN_RAM_SIZE)
 typedef struct UxnBox
 {
-	void *user;
 	UxnCore core;
 	UxnStack work_stack, ret_stack;
 	UxnU8 device_memory[256];
@@ -297,7 +296,7 @@ typedef struct EmuInEvent
 
 typedef struct EmuWindow
 {
-	UxnBox *box;
+	UxnBox box;
 	HWND hWnd, consoleHWnd, beetbugHWnd;
 	HMENU hHiddenMenu;
 	HBITMAP hBMP;
@@ -585,9 +584,9 @@ static void FileDevPathChange(EmuWindow *emu, UINT device, UxnFiler *f)
 	DWORD addr, i, avail;
 	char tmp[MAX_PATH + 1], *in_mem;
 	ResetFiler(f);
-	DEVPEEK(emu->box->device_memory + device, addr, 0x8);
+	DEVPEEK(emu->box.device_memory + device, addr, 0x8);
 	avail = UXN_RAM_SIZE - addr;
-	in_mem = (char *)GetStashMemory(emu->box, 0) + addr;
+	in_mem = (char *)GetStashMemory(&emu->box, 0) + addr;
 	if (avail > MAX_PATH) avail = MAX_PATH;
 	for (i = 0;; i++)
 	{
@@ -784,7 +783,7 @@ static void WriteOutSynths(EmuWindow *d)
 	UxnWaveOut *wave_out = d->wave_out;
 	WAVEHDR *hdr = &wave_out->waveHdrs[wave_out->which_buffer];
 	SHORT *samples = wave_out->sampleBuffers[wave_out->which_buffer];
-	BYTE *ram = GetStashMemory(d->box, 0);
+	BYTE *ram = GetStashMemory(&d->box, 0);
 	MMRESULT res; int i, still_running;
 	if (!wave_out->hWaveOut) return;
 	wave_out->which_buffer = 1 - wave_out->which_buffer;
@@ -840,7 +839,7 @@ static void InitWaveOutAudio(EmuWindow *d)
 
 static void DevOut_Audio(EmuWindow *emu, UINT device, UINT port)
 {
-	UxnU8 *imem = emu->box->device_memory + device;
+	UxnU8 *imem = emu->box.device_memory + device;
 	UxnVoice *voice = &emu->synth_voices[DEVINDEX(device, VV_AUDIO0)];
 	UxnU16 adsr;
 	if (port != 0xF) return;
@@ -858,7 +857,7 @@ static void DevOut_Audio(EmuWindow *emu, UINT device, UINT port)
 static void DevOut_File(EmuWindow *emu, UINT device, UINT port)
 {
 	DWORD result = 0, /* next inits suppress msvc warning */ out_len = 0; char *out = 0;
-	UxnBox *box = emu->box; UxnU8 *imem = box->device_memory + device;
+	UxnU8 *imem = emu->box.device_memory + device;
 	UxnFiler *f = &emu->filers[DEVINDEX(device, VV_FILE0)];
 	switch (port) /* These need write location and size */
 	{
@@ -871,7 +870,7 @@ static void DevOut_File(EmuWindow *emu, UINT device, UINT port)
 		DEVPEEK(imem, out_len, 0xA);
 		avail = UXN_RAM_SIZE - dst;
 		if (out_len > avail) out_len = avail;
-		out = (char *)GetStashMemory(box, 0) + dst;
+		out = (char *)GetStashMemory(&emu->box, 0) + dst;
 	}
 	switch (port)
 	{
@@ -933,7 +932,7 @@ file_error:
 static UxnU8 UxnDeviceRead(UxnCore *u, UINT address)
 {
 	UxnBox *box = OUTER_OF(u, UxnBox, core);
-	EmuWindow *emu = (EmuWindow *)box->user;
+	EmuWindow *emu = OUTER_OF(box, EmuWindow, box);
 	UINT device = address & 0xF0, port = address & 0x0F;
 	UxnU8 *imem = box->device_memory + device;
 
@@ -997,7 +996,7 @@ static UxnU8 UxnDeviceRead(UxnCore *u, UINT address)
 
 static void UxnDeviceWrite_Cold(UxnBox *box, UINT address, UINT value)
 {
-	EmuWindow *emu = (EmuWindow *)box->user;
+	EmuWindow *emu = OUTER_OF(box, EmuWindow, box);
 	UINT device = address & 0xF0, port = address & 0x0F;
 	UxnU8 *imem = box->device_memory + device;
 	if (address == VV_SCREEN + 0x5)
@@ -1097,7 +1096,7 @@ static void UxnDeviceWrite_Cold(UxnBox *box, UINT address, UINT value)
 static void UxnDeviceWrite(UxnCore *u, UINT address, UINT value)
 {
 	UxnBox *box = OUTER_OF(u, UxnBox, core);
-	UxnScreen *screen = &((EmuWindow *)box->user)->screen;
+	UxnScreen *screen = &OUTER_OF(box, EmuWindow, box)->screen;
 	UINT device = address & 0xF0;
 	UxnU8 *devmem = box->device_memory, *imem = devmem + device;
 	devmem[address] = value;
@@ -1136,27 +1135,18 @@ static void UxnDeviceWrite(UxnCore *u, UINT address, UINT value)
 
 static void InitEmuWindow(EmuWindow *d, HWND hWnd)
 {
-	UxnBox *box = (UxnBox *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(UxnBox));
-	if (!box) OutOfMemory();
-	box->user = d;
+	UxnBox *box = &d->box;
 	box->table = VirtualAlloc(NULL, sizeof(UxnStashPtr) * (USHORT)-1, MEM_RESERVE, PAGE_NOACCESS);
 	box->core.ram = GetStashMemory(box, 0);
 	box->core.wst = &box->work_stack;
 	box->core.rst = &box->ret_stack;
 	box->core.dei = UxnDeviceRead;
 	box->core.deo = UxnDeviceWrite;
-	d->box = box;
 	d->host_cursor = TRUE;
 	d->hWnd = hWnd; /* TODO cleanup reorder these assignments */
 	d->viewport_scale = 1;
 	SetUxnScreenSize(&d->screen, UXN_DEFAULT_WIDTH, UXN_DEFAULT_HEIGHT);
 	d->filers[0].hFile = d->filers[0].hFind = d->filers[1].hFile = d->filers[1].hFind = INVALID_HANDLE_VALUE;
-}
-
-static void FreeUxnBox(UxnBox *box)
-{
-	FreeStasher(box);
-	HeapFree(GetProcessHeap(), 0, box);
 }
 
 static void SetUpBitmapInfo(BITMAPINFO *bmi, int width, int height)
@@ -1218,7 +1208,7 @@ static int emu_window_count;
 /* This function is a bit tricky. It reads from d->running and Uxn device RAM. Call it if either changed. e.g. when (un)pausing, or after a vector finishes. If you're about to destroy or free an EmuWindow, you also need to make sure it's removed from vblank linked list, so set d->running to false and then call this function. */
 static void Update60hzTimerEnabled(EmuWindow *d)
 {
-	BOOL signal_resume, enabled = d->running && GET_16BIT(d->box->device_memory + VV_SCREEN);
+	BOOL signal_resume, enabled = d->running && GET_16BIT(d->box.device_memory + VV_SCREEN);
 	if (ListLinkUsed(&emus_needing_vblank, d, vblank_link) == enabled) return;
 	if (WaitForSingleObject(VBlankMutex, INFINITE) != WAIT_OBJECT_0) goto thread_error;
 	signal_resume = enabled && !emus_needing_vblank.front;
@@ -1233,13 +1223,13 @@ thread_error:
 
 static void ResetVM(EmuWindow *d)
 {
-	d->box->core.fault = 0;
+	d->box.core.fault = 0;
 	d->exec_state = 0;
-	ZeroMemory(&d->box->work_stack, sizeof(UxnStack) * 2); /* optional for quick reload */
-	ZeroMemory(d->box->device_memory, sizeof d->box->device_memory); /* optional for quick reload */
-	DEVPOKE2(d->box->device_memory, VV_SCREEN + 0x2, d->screen.width, d->screen.height); /* Restore this in case ROM reads it */
-	ResetStasher(d->box);
-	d->box->core.ram = GetStashMemory(d->box, 0);
+	ZeroMemory(&d->box.work_stack, sizeof(UxnStack) * 2); /* optional for quick reload */
+	ZeroMemory(d->box.device_memory, sizeof d->box.device_memory); /* optional for quick reload */
+	DEVPOKE2(d->box.device_memory, VV_SCREEN + 0x2, d->screen.width, d->screen.height); /* Restore this in case ROM reads it */
+	ResetStasher(&d->box);
+	d->box.core.ram = GetStashMemory(&d->box, 0);
 	ZeroMemory(d->screen.palette, sizeof d->screen.palette); /* optional for quick reload */
 	ZeroMemory(d->screen.bg, d->screen.width * d->screen.height * 2);
 	ResetFiler(&d->filers[0]); ResetFiler(&d->filers[1]);
@@ -1295,7 +1285,7 @@ static void BeetbugAutoScrollStacks(BeetbugWin *dbg)
 	for (i = BB_WrkStack; i <= BB_RetStack; i++)
 	{
 		top = ListView_GetTopIndex(dbg->ctrls[i]);
-		s = (&dbg->emu->box->core.wst)[i - BB_WrkStack]->num; /* actually points to 1 past the last value */
+		s = (&dbg->emu->box.core.wst)[i - BB_WrkStack]->num; /* actually points to 1 past the last value */
 		if (s-- == 0 || (s >= top && s < top + pp)) continue;
 		ListView_EnsureVisible(dbg->ctrls[i], MAX(0, s - pp), FALSE);
 		ListView_EnsureVisible(dbg->ctrls[i], MIN(255, s + pad), FALSE);
@@ -1324,13 +1314,13 @@ static void ShowBeetbugInstruction(EmuWindow *emu, USHORT address)
 static void RunUxn(EmuWindow *d, UINT steps, BOOL initial)
 {
 	UINT res, use_steps = steps ? steps : 100000;  /* about 1900 usecs on good hardware */
-	UxnCore *u = &d->box->core; LONGLONG t_a, t_delta;
+	UxnCore *u = &d->box.core; LONGLONG t_a, t_delta;
 	int instr_interrupts = 0, more_work, force_repaint;
 	if (initial && !u->pc) goto completed;
 	t_a = TimeStampNow();
 	for (;;)
 	{
-		res = UxnExec(&d->box->core, use_steps);
+		res = UxnExec(&d->box.core, use_steps);
 		instr_interrupts++;
 		t_delta = TimeStampNow() - t_a;
 		d->instr_count += use_steps - res;
@@ -1340,7 +1330,7 @@ static void RunUxn(EmuWindow *d, UINT steps, BOOL initial)
 	if (u->fault)
 	{
 		UINT last_addr = ((UINT)u->pc - 1) % UXN_RAM_SIZE, last_op = u->ram[last_addr], fault_handler;
-		DEVPEEK(d->box->device_memory, fault_handler, 0x0);
+		DEVPEEK(d->box.device_memory, fault_handler, 0x0);
 		if (fault_handler && u->fault <= UXN_FAULT_DIVIDE_BY_ZERO)
 		{
 			u->wst->num = 4;
@@ -1398,10 +1388,10 @@ completed:
 	case EmuIn_Start:
 		break;
 	case EmuIn_KeyChar:
-		d->box->device_memory[VV_CONTROL + 0x3] = 0;
+		d->box.device_memory[VV_CONTROL + 0x3] = 0;
 		break;
 	case EmuIn_Wheel:
-		DEVPOKE2(d->box->device_memory, VV_MOUSE + 0xA, 0, 0);
+		DEVPOKE2(d->box.device_memory, VV_MOUSE + 0xA, 0, 0);
 		break;
 	}
 	if (d->running) u->fault = 0;
@@ -1418,7 +1408,7 @@ residual:
 
 static void ApplyInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT y)
 {
-	UxnU16 *pc = &d->box->core.pc; UxnU8 *devmem = d->box->device_memory;
+	UxnU16 *pc = &d->box.core.pc; UxnU8 *devmem = d->box.device_memory;
 	switch ((enum EmuIn)type)
 	{
 	case EmuIn_KeyChar:
@@ -1482,14 +1472,14 @@ static void SendInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT 
 
 static void LoadROMFileAndStartVM(EmuWindow *d)
 {
-	if (!LoadROMIntoBox(d->box, d->rom_path))
+	if (!LoadROMIntoBox(&d->box, d->rom_path))
 	{
 		/* Can't load ROM file? Load a small ROM to display an error screen. */
 		HRSRC hInfo = FindResource(MainInstance, MAKEINTRESOURCE(IDR_FLUMMOX), TEXT("ROM"));
 		DWORD rom_size = SizeofResource(MainInstance, hInfo);
 		void *data = LockResource(LoadResource(MainInstance, hInfo));
 		if (!data) return;
-		CopyMemory(d->box->core.ram + UXN_ROM_OFFSET, data, MIN(rom_size, UXN_RAM_SIZE - UXN_ROM_OFFSET));
+		CopyMemory(d->box.core.ram + UXN_ROM_OFFSET, data, MIN(rom_size, UXN_RAM_SIZE - UXN_ROM_OFFSET));
 	}
 	d->running = 1;
 	SendInputEvent(d, EmuIn_Start, 0, 0, 0);
@@ -1736,9 +1726,9 @@ static void UpdateBeetbugStuff(HWND hWnd, BeetbugWin *d)
 		SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 1,
 			(LPARAM)event_texts[d->sbar_input_event = d->emu->last_event]);
 	}
-	if (d->sbar_pc != d->emu->box->core.pc)
+	if (d->sbar_pc != d->emu->box.core.pc)
 	{
-		wsprintf(buff, "PC: %04X", (UINT)(d->sbar_pc = d->emu->box->core.pc));
+		wsprintf(buff, "PC: %04X", (UINT)(d->sbar_pc = d->emu->box.core.pc));
 		SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 2, (LPARAM)buff);
 	}
 	if (d->sbar_instrcount != d->emu->instr_count)
@@ -1748,10 +1738,10 @@ static void UpdateBeetbugStuff(HWND hWnd, BeetbugWin *d)
 		wsprintf(buff, "Ops: %u", u);
 		SendMessage(d->ctrls[BB_Status], SB_SETTEXT, 3, (LPARAM)buff);
 	}
-	if (d->sbar_fault != d->emu->box->core.fault)
+	if (d->sbar_fault != d->emu->box.core.fault)
 	{
 		LPCSTR text = NULL;
-		switch (d->sbar_fault = d->emu->box->core.fault)
+		switch (d->sbar_fault = d->emu->box.core.fault)
 		{
 		case UXN_FAULT_DONE: text = TEXT("Break"); break;
 		case UXN_FAULT_STACK_UNDERFLOW: text = TEXT("Stack underflow"); break;
@@ -1772,7 +1762,7 @@ static void UpdateBeetbugStuff(HWND hWnd, BeetbugWin *d)
 	}
 	for (i = 0; i < 2; i++)
 	{
-		int p = (&d->emu->box->core.wst)[i]->num;
+		int p = (&d->emu->box.core.wst)[i]->num;
 		BOOL ok_push = p < 255, ok_pop = p > 0;
 		if (IsWindowEnabled(d->ctrls[BB_PushStackBtn0 + i]) != ok_push)
 			EnableWindow(d->ctrls[BB_PushStackBtn0 + i], ok_push);
@@ -1908,7 +1898,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			FillRect(hDC, &rTmp, (HBRUSH)(COLOR_3DFACE + 1));
 			if (i < 2)
 			{
-				wsprintf(buff, "%s %02X", st_labels[i], (UINT)(&d->emu->box->core.wst)[i]->num);
+				wsprintf(buff, "%s %02X", st_labels[i], (UINT)(&d->emu->box.core.wst)[i]->num);
 				str = buff;
 			}
 			else str = TEXT("DEVICE MEMORY");
@@ -1938,7 +1928,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		{
 			NMLVCUSTOMDRAW *cdraw = (NMLVCUSTOMDRAW *)lParam; RECT r; UxnStack *stack;
 			if (wParam != BB_WrkStack && wParam != BB_RetStack) break;
-			stack = (&d->emu->box->core.wst)[wParam - BB_WrkStack];
+			stack = (&d->emu->box.core.wst)[wParam - BB_WrkStack];
 			switch (cdraw->nmcd.dwDrawStage)
 			{
 			case CDDS_PREPAINT:
@@ -1992,23 +1982,23 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			NMLVDISPINFO *inf = (NMLVDISPINFO *)lParam; BYTE *base;
 			if (!inf->item.pszText) return FALSE;
 			if (wParam == BB_AsmList)
-				base = GetStashMemory(d->emu->box, 0);
+				base = GetStashMemory(&d->emu->box, 0);
 			else if (wParam == BB_WrkStack || wParam == BB_RetStack)
-				base = (&d->emu->box->core.wst)[wParam - BB_WrkStack]->mem;
+				base = (&d->emu->box.core.wst)[wParam - BB_WrkStack]->mem;
 			else return FALSE;
 			if (!EncodeUxnOpcode(inf->item.pszText, base + inf->item.iItem)) return FALSE;
 			return TRUE;
 		}
 		case LVN_GETDISPINFO:
 		{
-			TCHAR buff[256]; UxnCore *core = &d->emu->box->core; LV_DISPINFO *di = (LV_DISPINFO *)lParam;
+			TCHAR buff[256]; UxnCore *core = &d->emu->box.core; LV_DISPINFO *di = (LV_DISPINFO *)lParam;
 			UINT iItem = di->item.iItem, addr = iItem, sym; BYTE *mem; UxnStack *stack;
 			if (!(di->item.mask & LVIF_TEXT)) return 0;
 			buff[0] = 0;
 			switch (wParam)
 			{
 			case BB_AsmList:
-				mem = GetStashMemory(d->emu->box, 0);
+				mem = GetStashMemory(&d->emu->box, 0);
 				iItem = wsprintf(buff, "%c %04X %02X ", core->pc == addr ? '>' : ' ', (UINT)addr, (UINT)mem[addr]);
 				iItem += DecodeUxnOpcode(buff + iItem, mem[addr]);
 				if ((sym = FindSymbolForAddress(&d->symbols, addr)) < d->symbols.count && d->symbols.addresses[sym] == addr)
@@ -2018,7 +2008,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				}
 				break;
 			case BB_HexList:
-				addr *= 8; mem = GetStashMemory(d->emu->box, 0) + addr;
+				addr *= 8; mem = GetStashMemory(&d->emu->box, 0) + addr;
 				wsprintf(buff, "%04X  %02X%02X %02X%02X %02X%02X %02X%02X", addr,
 					(UINT)mem[0], (UINT)mem[1], (UINT)mem[2], (UINT)mem[3],
 					(UINT)mem[4], (UINT)mem[5], (UINT)mem[6], (UINT)mem[7]);
@@ -2028,7 +2018,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				wsprintf(buff, "%02X", (UINT)stack->mem[addr]);
 				break;
 			case BB_DevMem:
-				addr *= 8; mem = d->emu->box->device_memory + addr;
+				addr *= 8; mem = d->emu->box.device_memory + addr;
 				wsprintf(buff, "%02X  %02X%02X %02X%02X %02X%02X %02X%02X", addr,
 					(UINT)mem[0], (UINT)mem[1], (UINT)mem[2], (UINT)mem[3],
 					(UINT)mem[4], (UINT)mem[5], (UINT)mem[6], (UINT)mem[7]);
@@ -2057,7 +2047,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 				{
 					if (GetKeyState(VK_CONTROL) & 0x8000) /* experimental feature: jump pc to address */
 					{
-						d->emu->box->core.pc = addr;
+						d->emu->box.core.pc = addr;
 						if (!d->emu->exec_state)
 						{
 							PauseVM(d->emu); /* temp hacks, might remove this feature later, dunno */
@@ -2079,7 +2069,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			{
 				enum {Flags = LVIS_SELECTED | LVIS_FOCUSED}; int i;
 				int push = idm <= BB_PushStackBtn1, iList = idm - (push ? BB_PushStackBtn0 : BB_PopStackBtn0);
-				HWND hList = d->ctrls[BB_WrkStack + iList]; UxnStack *stack = (&d->emu->box->core.wst)[iList];
+				HWND hList = d->ctrls[BB_WrkStack + iList]; UxnStack *stack = (&d->emu->box.core.wst)[iList];
 				if (stack->num == (push ? 255 : 0)) break;
 				i = push ? stack->num++ : --stack->num - 1; if (i < 0) i = 0;
 				ListView_SetItemState(hList, i, Flags, Flags);
@@ -2092,10 +2082,10 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			}
 		if ((idm == IDM_STEP || idm == IDM_BIGSTEP) && !d->emu->running && d->emu->exec_state)
 		{
-			d->emu->box->core.fault = 0;
+			d->emu->box.core.fault = 0;
 			RunUxn(d->emu, idm == IDM_STEP ? 1 : 100, FALSE);
 			UpdateBeetbugStuff(hWnd, d);
-			ShowBeetbugInstruction(d->emu, d->emu->box->core.pc);
+			ShowBeetbugInstruction(d->emu, d->emu->box.core.pc);
 			return 0;
 		}
 		break;
@@ -2237,7 +2227,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	case WM_DESTROY:
 		d->running = FALSE, Update60hzTimerEnabled(d); /* it reads d->running */
 		SetHostCursorVisible(d, TRUE);
-		FreeUxnBox(d->box);
+		FreeStasher(&d->box);
 		FreeUxnScreen(&d->screen);
 		ResetFiler(&d->filers[0]);
 		ResetFiler(&d->filers[1]);
@@ -2347,7 +2337,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	{
 		POINT mouse; BOOL mouse_in_uxn;
 		mouse.x = GET_X_LPARAM(lparam); mouse.y = GET_Y_LPARAM(lparam);
-		mouse_in_uxn = PtInRect(&d->viewport_rect, mouse) && d->running && GET_16BIT(d->box->device_memory + VV_MOUSE);
+		mouse_in_uxn = PtInRect(&d->viewport_rect, mouse) && d->running && GET_16BIT(d->box.device_memory + VV_MOUSE);
 		/* TODO Vector check is slightly wrong -- it doesn't, but should, check when the mouse vector has been changed in uxn code without the mouse moving. Test repro: launch something with launcher.rom and don't move the mouse. (If you clicked instead of using keyboard, don't release the click button.) */
 		SetHostCursorVisible(d, !mouse_in_uxn);
 		if (!mouse_in_uxn) break;
@@ -2449,7 +2439,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			return 0;
 		case IDM_RELOAD: ReloadFromROMFile(d); return 0;
 		case IDM_CLOSEWINDOW: PostMessage(hwnd, WM_CLOSE, 0, 0); return 0;
-		case IDM_PAUSE: if (d->running) PauseVM(d); else d->box->core.fault = 0, UnpauseVM(d); return 0;
+		case IDM_PAUSE: if (d->running) PauseVM(d); else d->box.core.fault = 0, UnpauseVM(d); return 0;
 		case IDM_STEP: case IDM_BIGSTEP:
 			if (!d->running && d->exec_state)
 			{
@@ -2491,13 +2481,13 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	case UXNMSG_BecomeClone:
 	{
 		EmuWindow *b = (EmuWindow *)wparam;
-		d->box->core.pc = b->box->core.pc;
-		d->box->core.fault = b->box->core.fault;
+		d->box.core.pc = b->box.core.pc;
+		d->box.core.fault = b->box.core.fault;
 		d->exec_state = b->exec_state;
-		CopyMemory(&d->box->work_stack, &b->box->work_stack, sizeof(UxnStack) * 2);
-		CopyMemory(d->box->device_memory, b->box->device_memory, sizeof d->box->device_memory);
-		CopyStasher(d->box, b->box);
-		d->box->core.ram = GetStashMemory(d->box, 0);
+		CopyMemory(&d->box.work_stack, &b->box.work_stack, sizeof(UxnStack) * 2);
+		CopyMemory(d->box.device_memory, b->box.device_memory, sizeof d->box.device_memory);
+		CopyStasher(&d->box, &b->box);
+		d->box.core.ram = GetStashMemory(&d->box, 0);
 		/* ^ We also copy that weird padding byte. It might be important to the Uxn program. Who knows! */
 		CopyMemory(d->screen.palette, b->screen.palette, sizeof d->screen.palette);
 		SetUxnScreenSize(&d->screen, b->screen.width, b->screen.height);
