@@ -207,7 +207,8 @@ static void CutRectForWindow(RECT *prect, int dir, int length, HWND window)
 	MoveWindowRect(window, &r, TRUE);
 }
 
-typedef struct UxnStashTrailer {
+typedef struct UxnStashTrailer
+{
 	BYTE secret_byte[UXN_RAM_PAD_SIZE]; /* Uxn VM can read and write this byte (1 byte after 64k main RAM) */
 	USHORT slot;
 	ListLink link;
@@ -261,8 +262,8 @@ typedef struct UxnFiler
 		FileDevState_Writing
 	} state;
 } UxnFiler;
-
-typedef struct UxnDebugSymbols {
+typedef struct UxnDebugSymbols
+{
 	UINT count;
 	USHORT *addresses;
 	CHAR **strings;
@@ -320,7 +321,6 @@ typedef struct EmuWindow
 	BYTE needs_audio; /* 3 states, 0: not needed, 1: plz init, 2: init started */
 	TCHAR rom_path[MAX_PATH];
 } EmuWindow;
-
 typedef struct ConWindow
 {
 	HWND outHWnd, inHWnd;
@@ -328,7 +328,6 @@ typedef struct ConWindow
 	CHAR buffer[256];
 	BYTE has_newline;
 } ConWindow;
-
 enum
 {
 	BB_AsmList = 0, BB_HexList, BB_WrkStack, BB_RetStack, BB_DevMem,
@@ -337,8 +336,8 @@ enum
 	BB_JumpEdit,
 	BB_MAX
 };
-
-typedef struct BeetbugWin {
+typedef struct BeetbugWin
+{
 	EmuWindow *emu;
 	HWND ctrls[BB_MAX];
 	USHORT sbar_pc, sbar_fault, sbar_flashing;
