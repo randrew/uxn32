@@ -212,6 +212,7 @@ typedef struct UxnStashTrailer {
 	USHORT slot;
 	ListLink link;
 } UxnStashTrailer;
+/* The trailer is put after the 64k of RAM given by VirtualAlloc in another 4k page. Mostly wasted. Could use HeapAlloc(), but would make big holes. Maybe that's OK? Also worth revisiting this if we ever get rid of that 1 extra byte. */
 typedef BYTE *UxnStashPtr;
 enum { StashMetadataHostPages = ((USHORT)-1 + 1) * sizeof(UxnStashPtr) / HOST_PAGE_SIZE};
 #define STASH_RAMToMeta(ram) ((UxnStashTrailer *)(ram + UXN_RAM_SIZE))
@@ -904,30 +905,30 @@ static void FlushUxnConsole(ConWindow *con, HWND hWnd)
 	con->count = 0;
 }
 
+/* TODO handle different types of failures */
 static BOOL LoadROMIntoBox(UxnBox *box, LPCSTR filename)
 {
-	DWORD bytes_read, i; BOOL result = FALSE;
-	// ResetStasher(box);
+	DWORD skip, to_read, bytes_read, i; BOOL result = FALSE;
 	HANDLE hFile = CreateFile(filename, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	if (hFile == INVALID_HANDLE_VALUE) goto fail;
-	if (!ReadFile(hFile, GetStashMemory(box, 0) + UXN_ROM_OFFSET, UXN_RAM_SIZE - UXN_ROM_OFFSET, &bytes_read, NULL)) FatalBox("oh gno");
-	if (bytes_read < UXN_RAM_SIZE - UXN_ROM_OFFSET) goto ok;
-	for (i = 1;; i++)
+	if (hFile == INVALID_HANDLE_VALUE) goto file_error;
+	for (i = 0;; i++)
 	{
-		if (!ReadFile(hFile, GetStashMemory(box, (USHORT)i), UXN_RAM_SIZE, &bytes_read, NULL)) FatalBox("oh gno");
-		if (bytes_read < UXN_RAM_SIZE) goto ok;
+		/* Stash 0 loads at 0x100, stash 1 and later load at 0x0 */
+		skip = i ? 0 : UXN_ROM_OFFSET, to_read = UXN_RAM_SIZE - skip;
+		if (!ReadFile(hFile, GetStashMemory(box, (USHORT)i) + skip, to_read, &bytes_read, NULL)) goto file_error;
+		if (bytes_read < to_read) break;
 	}
-fail:
-	if (!result)
-	{
-		TCHAR tmp[MAX_PATH]; DWORD res = GetFullPathNameA(filename, MAX_PATH, tmp, NULL);
-		if (res == 0 || res >= MAX_PATH) tmp[0] = 0;
-		/* This error is annoying. Disable it until we think of something better. */
-		/* FmtBox(0, "ROM File Load Error", MB_OK | MB_ICONWARNING, "Tried and failed to load the ROM file:\n\n%s\n\nDoes it exist?", tmp); */
-	}
+	result = TRUE;
 done:
+	if (hFile != INVALID_HANDLE_VALUE) CloseHandle(hFile);
 	return result;
-ok: result = TRUE; goto done;
+file_error:
+#if 0
+	TCHAR tmp[MAX_PATH]; DWORD res = GetFullPathNameA(filename, MAX_PATH, tmp, NULL);
+	if (res == 0 || res >= MAX_PATH) tmp[0] = 0;
+	FmtBox(0, "ROM File Load Error", MB_OK | MB_ICONWARNING, "Tried and failed to load the ROM file:\n\n%s\n\nDoes it exist?", tmp);
+#endif
+	goto done;
 }
 
 static UxnU8 UxnDeviceRead(UxnCore *u, UINT address)
@@ -1299,7 +1300,6 @@ static void BeetbugAutoScrollStacks(BeetbugWin *dbg)
 		if (s-- == 0 || (s >= top && s < top + pp)) continue;
 		ListView_EnsureVisible(dbg->ctrls[i], MAX(0, s - pp), FALSE);
 		ListView_EnsureVisible(dbg->ctrls[i], MIN(255, s + pad), FALSE);
-
 	}
 }
 
