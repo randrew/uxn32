@@ -207,17 +207,17 @@ static void CutRectForWindow(RECT *prect, int dir, int length, HWND window)
 	MoveWindowRect(window, &r, TRUE);
 }
 
-typedef struct UxnStashTrailer
+typedef struct UxnStashFooter
 {
 	BYTE secret_byte[UXN_RAM_PAD_SIZE]; /* Uxn VM can read and write this byte (1 byte after 64k main RAM) */
 	USHORT slot;
 	ListLink link;
-} UxnStashTrailer;
-/* The trailer is put after the 64k of RAM given by VirtualAlloc in another 4k page. Mostly wasted. Could use HeapAlloc(), but would make big holes. Maybe that's OK? Also worth revisiting this if we ever get rid of that 1 extra byte. */
+} UxnStashFooter;
+/* The footer is put after the 64k of RAM given by VirtualAlloc in another 4k page. Mostly wasted. Could use HeapAlloc(), but would make big holes. Maybe that's OK? Also worth revisiting this if we ever get rid of that 1 extra byte. */
 typedef BYTE *UxnStashPtr;
 enum { StashMetadataHostPages = ((USHORT)-1 + 1) * sizeof(UxnStashPtr) / HOST_PAGE_SIZE};
-#define STASH_RAMToMeta(ram) ((UxnStashTrailer *)(ram + UXN_RAM_SIZE))
-#define STASH_MetaToRAM(trailer) ((BYTE *)trailer - UXN_RAM_SIZE)
+#define STASH_RAMToMeta(ram) ((UxnStashFooter *)(ram + UXN_RAM_SIZE))
+#define STASH_MetaToRAM(footer) ((BYTE *)footer - UXN_RAM_SIZE)
 typedef struct UxnBox
 {
 	void *user;
@@ -412,9 +412,9 @@ static void * AllocZeroedOrFail(SIZE_T bytes)
 
 static void ResetStasher(UxnBox *box)
 {
-	UxnStashTrailer *s, *n;
-	for (s = ListFront(&box->stashes, UxnStashTrailer, link); s; s = n)
-		n = ListNext(s, UxnStashTrailer, link), VirtualFree(STASH_MetaToRAM(s), 0, MEM_RELEASE);
+	UxnStashFooter *s, *n;
+	for (s = ListFront(&box->stashes, UxnStashFooter, link); s; s = n)
+		n = ListNext(s, UxnStashFooter, link), VirtualFree(STASH_MetaToRAM(s), 0, MEM_RELEASE);
 	ZeroMemory(&box->stashes, sizeof box->stashes);
 	ZeroMemory(box->commit_mask, sizeof box->commit_mask);
 	VirtualFree(box->table, sizeof(UxnStashPtr) * (USHORT)-1, MEM_DECOMMIT);
@@ -445,8 +445,8 @@ static BYTE * GetStashMemory(UxnBox *box, USHORT slot)
 #endif
 	if (!(memory = box->table[slot]))
 	{
-		UxnStashTrailer *s;
-		box->table[slot] = memory = VirtualAlloc(NULL, UXN_RAM_SIZE + sizeof(UxnStashTrailer), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+		UxnStashFooter *s;
+		box->table[slot] = memory = VirtualAlloc(NULL, UXN_RAM_SIZE + sizeof(UxnStashFooter), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 		if (memory) s = STASH_RAMToMeta(memory), s->slot = slot, ListPushBack(&box->stashes, s, link);
 	}
 	return memory;
@@ -454,9 +454,9 @@ static BYTE * GetStashMemory(UxnBox *box, USHORT slot)
 
 static void CopyStasher(UxnBox *dst, UxnBox *src)
 {
-	UxnStashTrailer *s;
+	UxnStashFooter *s;
 	ResetStasher(dst);
-	for (s = ListFront(&src->stashes, UxnStashTrailer, link); s; s = ListNext(s, UxnStashTrailer, link))
+	for (s = ListFront(&src->stashes, UxnStashFooter, link); s; s = ListNext(s, UxnStashFooter, link))
 		CopyMemory(GetStashMemory(dst, s->slot), STASH_MetaToRAM(s), UXN_RAM_SIZE + UXN_RAM_PAD_SIZE);
 }
 
