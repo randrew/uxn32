@@ -1133,22 +1133,6 @@ static void UxnDeviceWrite(UxnCore *u, UINT address, UINT value)
 	UxnDeviceWrite_Cold(box, address, value);
 }
 
-static void InitEmuWindow(EmuWindow *d, HWND hWnd)
-{
-	UxnBox *box = &d->box;
-	box->table = VirtualAlloc(NULL, sizeof(UxnStashPtr) * (USHORT)-1, MEM_RESERVE, PAGE_NOACCESS);
-	box->core.ram = GetStashMemory(box, 0);
-	box->core.wst = &box->work_stack;
-	box->core.rst = &box->ret_stack;
-	box->core.dei = UxnDeviceRead;
-	box->core.deo = UxnDeviceWrite;
-	d->host_cursor = TRUE;
-	d->hWnd = hWnd; /* TODO cleanup reorder these assignments */
-	d->viewport_scale = 1;
-	SetUxnScreenSize(&d->screen, UXN_DEFAULT_WIDTH, UXN_DEFAULT_HEIGHT);
-	d->filers[0].hFile = d->filers[0].hFind = d->filers[1].hFile = d->filers[1].hFind = INVALID_HANDLE_VALUE;
-}
-
 static void SetUpBitmapInfo(BITMAPINFO *bmi, int width, int height)
 {
 	ZeroMemory(bmi, sizeof(BITMAPINFO));
@@ -2213,11 +2197,23 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	{
 	case WM_CREATE:
 	{
+		UxnBox *box;
 		d = ((CREATESTRUCT *)lparam)->lpCreateParams;
 		emu_window_count++;
 		SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)d);
 		DragAcceptFiles(hwnd, TRUE);
-		InitEmuWindow(d, hwnd);
+		box = &d->box;
+		box->table = VirtualAlloc(NULL, sizeof(UxnStashPtr) * (USHORT)-1, MEM_RESERVE, PAGE_NOACCESS);
+		box->core.ram = GetStashMemory(box, 0);
+		box->core.wst = &box->work_stack;
+		box->core.rst = &box->ret_stack;
+		box->core.dei = UxnDeviceRead;
+		box->core.deo = UxnDeviceWrite;
+		d->host_cursor = TRUE;
+		d->hWnd = hwnd; /* TODO cleanup reorder these assignments */
+		d->viewport_scale = 1;
+		SetUxnScreenSize(&d->screen, UXN_DEFAULT_WIDTH, UXN_DEFAULT_HEIGHT);
+		d->filers[0].hFile = d->filers[0].hFind = d->filers[1].hFile = d->filers[1].hFind = INVALID_HANDLE_VALUE;
 		if (lstrlen(d->rom_path)) LoadROMFileAndStartVM(d);
 		return 0;
 	}
