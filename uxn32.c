@@ -207,11 +207,15 @@ static void CutRectForWindow(RECT *prect, int dir, int length, HWND window)
 	MoveWindowRect(window, &r, TRUE);
 }
 
-typedef struct UxnStash {
-	BYTE *memory;
+typedef struct UxnStashTrailer {
+	BYTE secret_byte[UXN_RAM_PAD_SIZE]; /* Uxn VM can read and write this byte (1 byte after 64k main RAM) */
+	USHORT slot;
 	ListLink link;
-} UxnStash;
-enum { StashMetadataHostPages = ((USHORT)-1 + 1) * sizeof(UxnStash) / HOST_PAGE_SIZE};
+} UxnStashTrailer;
+typedef BYTE *UxnStashPtr;
+enum { StashMetadataHostPages = ((USHORT)-1 + 1) * sizeof(UxnStashPtr) / HOST_PAGE_SIZE};
+#define STASH_RAMToMeta(ram) ((UxnStashTrailer *)(ram + UXN_RAM_SIZE))
+#define STASH_MetaToRAM(trailer) ((BYTE *)trailer - UXN_RAM_SIZE)
 typedef struct UxnBox
 {
 	void *user;
@@ -219,7 +223,7 @@ typedef struct UxnBox
 	UxnStack work_stack, ret_stack;
 	UxnU8 device_memory[256];
 
-	UxnStash *table;
+	UxnStashPtr *table;
 	UINT commit_mask[StashMetadataHostPages / 8 / sizeof(UINT)];
 	LinkedList stashes;
 } UxnBox;
@@ -408,12 +412,12 @@ static void * AllocZeroedOrFail(SIZE_T bytes)
 
 static void ResetStasher(UxnBox *box)
 {
-	UxnStash *s;
-	for (s = ListFront(&box->stashes, UxnStash, link); s; s = ListNext(s, UxnStash, link))
-		VirtualFree(s->memory, 0, MEM_RELEASE);
+	UxnStashTrailer *s, *n;
+	for (s = ListFront(&box->stashes, UxnStashTrailer, link); s; s = n)
+		n = ListNext(s, UxnStashTrailer, link), VirtualFree(STASH_MetaToRAM(s), 0, MEM_RELEASE);
 	ZeroMemory(&box->stashes, sizeof box->stashes);
 	ZeroMemory(box->commit_mask, sizeof box->commit_mask);
-	VirtualFree(box->table, sizeof(UxnStash) * (USHORT)-1, MEM_DECOMMIT);
+	VirtualFree(box->table, sizeof(UxnStashPtr) * (USHORT)-1, MEM_DECOMMIT);
 }
 static void FreeStasher(UxnBox *box)
 { ResetStasher(box); VirtualFree(box->table, 0, MEM_RELEASE); }
@@ -421,32 +425,39 @@ static void FreeStasher(UxnBox *box)
 static BYTE * GetStashMemory(UxnBox *box, USHORT slot)
 {
 	BYTE *memory;
-	UINT a =   slot    * sizeof(UxnStash)      / HOST_PAGE_SIZE,
-	     b = ((slot+1) * sizeof(UxnStack) - 1) / HOST_PAGE_SIZE;
+#if 0 /* If UxnStashPtr does not evenly divide HOST_PAGE_SIZE */
+	UINT a =   slot    * sizeof(UxnStashPtr)      / HOST_PAGE_SIZE,
+	     b = ((slot+1) * sizeof(UxnStashPtr) - 1) / HOST_PAGE_SIZE;
 	for (; a <= b; a++)
 	{
-		UINT index = (UINT)a >> 5, bit = 1 << ((UINT)a & 31), piece;
+		UINT index = a >> 5, bit = 1 << (a & 31), piece;
 		if ((piece = box->commit_mask[index]) & bit) continue;
 		box->commit_mask[index] = piece | bit;
 		VirtualAlloc((BYTE *)box->table + a * HOST_PAGE_SIZE, 1, MEM_COMMIT, PAGE_READWRITE);
 	}
-	if (!(memory = box->table[slot].memory))
+#else
+	UINT a = slot * sizeof(UxnStashPtr) / HOST_PAGE_SIZE, index = a >> 5, bit = 1 << (a & 31), piece;
+	if (!((piece = box->commit_mask[index]) & bit))
 	{
-		box->table[slot].memory = memory = VirtualAlloc(NULL, UXN_RAM_SIZE + UXN_RAM_PAD_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-		if (memory) ListPushBack(&box->stashes, &box->table[slot], link);
+		box->commit_mask[index] = piece | bit;
+		VirtualAlloc((BYTE *)box->table + a * HOST_PAGE_SIZE, 1, MEM_COMMIT, PAGE_READWRITE);
+	}
+#endif
+	if (!(memory = box->table[slot]))
+	{
+		UxnStashTrailer *s;
+		box->table[slot] = memory = VirtualAlloc(NULL, UXN_RAM_SIZE + sizeof(UxnStashTrailer), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+		if (memory) s = STASH_RAMToMeta(memory), s->slot = slot, ListPushBack(&box->stashes, s, link);
 	}
 	return memory;
 }
 
 static void CopyStasher(UxnBox *dst, UxnBox *src)
 {
-	UxnStash *s; SIZE_T i;
+	UxnStashTrailer *s;
 	ResetStasher(dst);
-	for (s = ListFront(&src->stashes, UxnStash, link); s; s = ListNext(s, UxnStash, link))
-	{
-		i = ((SIZE_T)s - (SIZE_T)src->table) / sizeof(UxnStash);
-		CopyMemory(GetStashMemory(dst, i), s->memory, UXN_RAM_SIZE + UXN_RAM_PAD_SIZE);
-	}
+	for (s = ListFront(&src->stashes, UxnStashTrailer, link); s; s = ListNext(s, UxnStashTrailer, link))
+		CopyMemory(GetStashMemory(dst, s->slot), STASH_MetaToRAM(s), UXN_RAM_SIZE + UXN_RAM_PAD_SIZE);
 }
 
 static BOOL LoadFileInto(LPCSTR path, BYTE *dest, DWORD max_bytes, DWORD *bytes_read)
@@ -1128,7 +1139,7 @@ static void InitEmuWindow(EmuWindow *d, HWND hWnd)
 	UxnBox *box = (UxnBox *)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(UxnBox));
 	if (!box) OutOfMemory();
 	box->user = d;
-	box->table = VirtualAlloc(NULL, sizeof(UxnStash) * (USHORT)-1, MEM_RESERVE, PAGE_NOACCESS);
+	box->table = VirtualAlloc(NULL, sizeof(UxnStashPtr) * (USHORT)-1, MEM_RESERVE, PAGE_NOACCESS);
 	box->core.ram = GetStashMemory(box, 0);
 	box->core.wst = &box->work_stack;
 	box->core.rst = &box->ret_stack;
