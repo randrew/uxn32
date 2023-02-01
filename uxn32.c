@@ -129,6 +129,7 @@ static LPCSTR DefaultROMPath = TEXT("launcher.rom");
 static LPWSTR *CmdLineArgs; static int CmdLineArgCount;
 static BOOL BreakOnInitVector;
 static HANDLE VBlankMutex, ResumeTimerEvent;
+static HANDLE ProcessHeap;
 
 static LONGLONG LongLongMulDiv(LONGLONG value, LONGLONG numer, LONGLONG denom)
 {
@@ -402,15 +403,15 @@ static void DebugBox(char const *fmt, ...)
 #endif
 
 static void * HeapAlloc0(SIZE_T bytes)
-{ return HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, bytes); }
-
+{ return HeapAlloc(ProcessHeap, HEAP_ZERO_MEMORY, bytes); }
+static BOOL HeapFree0(void * mem)
+{ return HeapFree(ProcessHeap, 0, mem); }
 static void * HeapAlloc0OrDie(SIZE_T bytes)
 {
-	void *result = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, bytes);
+	void *result = HeapAlloc(ProcessHeap, HEAP_ZERO_MEMORY, bytes);
 	if (!result) OutOfMemory();
 	return result;
 }
-static BOOL HeapFree0(void * mem) { return HeapFree(GetProcessHeap(), 0, mem); }
 
 static void ResetStasher(UxnBox *box)
 {
@@ -510,9 +511,9 @@ static void DrawUxnSprite(UxnScreen *p, UxnU8 *layer_pixels, UxnU16 x, UxnU16 y,
 static void SetUxnScreenSize(UxnScreen *p, DWORD width, DWORD height)
 {
 	DWORD one_size = width * height, two_size = one_size * 2;
-	HANDLE hHeap = GetProcessHeap(); BOOL reallocing = p->bg != NULL;
+	BOOL reallocing = p->bg != NULL;
 	/* TODO pad for simd */
-	UxnU8 *buff = reallocing ? HeapReAlloc(hHeap, 0, p->bg, two_size) : HeapAlloc(hHeap, HEAP_ZERO_MEMORY, two_size);
+	UxnU8 *buff = reallocing ? HeapReAlloc(ProcessHeap, 0, p->bg, two_size) : HeapAlloc(ProcessHeap, HEAP_ZERO_MEMORY, two_size);
 	if (!buff) OutOfMemory();
 	if (reallocing) ZeroMemory(buff, two_size);
 	p->bg = buff;
@@ -2602,12 +2603,14 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	DWORD thread_id; static /* <- C89 */ BOOL hide_menu = FALSE;
 	Type_CommandLineToArgvW *Ptr_CommandLineToArgvW;
 	Type_GetCommandLineW *Ptr_GetCommandLineW;
-	EmuWindow *emu = HeapAlloc0OrDie(sizeof(EmuWindow));
+	EmuWindow *emu;
 	(void)command_line; (void)prev_instance;
-	CopyMemory(emu->rom_path, DefaultROMPath, (lstrlen(DefaultROMPath) + 1) * sizeof(TCHAR));
 	QueryPerformanceFrequency(&_perfcount_freq);
 	ExecutionTimeLimit = _perfcount_freq.QuadPart / 20;
 	MainInstance = instance;
+	ProcessHeap = GetProcessHeap();
+	emu = HeapAlloc0OrDie(sizeof(EmuWindow));
+	CopyMemory(emu->rom_path, DefaultROMPath, (lstrlen(DefaultROMPath) + 1) * sizeof(TCHAR));
 
 #if ADAPTER_VBLANK
 	hMod = GetModuleHandle(TEXT("gdi32.dll"));
