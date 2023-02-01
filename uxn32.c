@@ -213,7 +213,7 @@ typedef struct UxnStashFooter
 	USHORT slot;
 	ListLink link;
 } UxnStashFooter;
-/* The footer is put after the 64k of RAM given by VirtualAlloc in another 4k page. Mostly wasted. Could use HeapAlloc(), but would make big holes. Maybe that's OK? Also worth revisiting this if we ever get rid of that 1 extra byte. */
+/* The footer is put after the 64k of RAM. Currently using HeapAlloc, but a pool allocator would be better. */
 typedef BYTE *UxnStashPtr;
 enum { StashMetadataHostPages = ((USHORT)-1 + 1) * sizeof(UxnStashPtr) / HOST_PAGE_SIZE};
 #define STASH_RAMToMeta(ram) ((UxnStashFooter *)(ram + UXN_RAM_SIZE))
