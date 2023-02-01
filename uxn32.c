@@ -401,18 +401,22 @@ static void DebugBox(char const *fmt, ...)
 }
 #endif
 
-static void * AllocZeroedOrFail(SIZE_T bytes)
+static void * HeapAlloc0(SIZE_T bytes)
+{ return HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, bytes); }
+
+static void * HeapAlloc0OrDie(SIZE_T bytes)
 {
 	void *result = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, bytes);
 	if (!result) OutOfMemory();
 	return result;
 }
+static BOOL HeapFree0(void * mem) { return HeapFree(GetProcessHeap(), 0, mem); }
 
 static void ResetStasher(UxnBox *box)
 {
 	UxnStashFooter *s, *n;
 	for (s = ListFront(&box->stashes, UxnStashFooter, link); s; s = n)
-		n = ListNext(s, UxnStashFooter, link), HeapFree(GetProcessHeap(), 0, STASH_MetaToRAM(s));
+		n = ListNext(s, UxnStashFooter, link), HeapFree0(STASH_MetaToRAM(s));
 	ZeroMemory(&box->stashes, sizeof box->stashes);
 	ZeroMemory(box->commit_mask, sizeof box->commit_mask);
 	VirtualFree(box->table, sizeof(UxnStashPtr) * (USHORT)-1, MEM_DECOMMIT);
@@ -441,7 +445,7 @@ static BYTE * GetStashMemory(UxnBox *box, USHORT slot)
 	if (!(memory = box->table[slot]))
 	{
 		UxnStashFooter *s;
-		box->table[slot] = memory = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, UXN_RAM_SIZE + sizeof(UxnStashFooter));
+		box->table[slot] = memory = HeapAlloc0(UXN_RAM_SIZE + sizeof(UxnStashFooter));
 		if (memory) s = STASH_RAMToMeta(memory), s->slot = slot, ListPushBack(&box->stashes, s, link);
 	}
 	return memory;
@@ -519,7 +523,7 @@ static void SetUxnScreenSize(UxnScreen *p, DWORD width, DWORD height)
 
 static void FreeUxnScreen(UxnScreen *p)
 {
-	if (p->bg) HeapFree(GetProcessHeap(), 0, p->bg);
+	if (p->bg) HeapFree0(p->bg);
 }
 
 static void RefitEmuWindow(EmuWindow *d)
@@ -814,8 +818,8 @@ static void InitWaveOutAudio(EmuWindow *d)
 	MMRESULT mmRes;
 	WAVEFORMATEX pcm; /* PCMWAVEFORMAT will not work on 64-bit due to padding, MS docs are fucked */
 	DEBUG_CHECK(d->wave_out == 0);
-	d->wave_out = AllocZeroedOrFail(sizeof(UxnWaveOut));
-	d->wave_out->sampleBuffers[0] = AllocZeroedOrFail(AUDIO_BUF_SAMPLES * 2 * sizeof(SHORT) * 2);
+	d->wave_out = HeapAlloc0OrDie(sizeof(UxnWaveOut));
+	d->wave_out->sampleBuffers[0] = HeapAlloc0OrDie(AUDIO_BUF_SAMPLES * 2 * sizeof(SHORT) * 2);
 	d->wave_out->sampleBuffers[1] = d->wave_out->sampleBuffers[0] + AUDIO_BUF_SAMPLES * 2;
 	ZeroMemory(&pcm, sizeof pcm);
 	pcm.wFormatTag = WAVE_FORMAT_PCM;
@@ -1444,7 +1448,7 @@ static void SendInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT 
 	{
 		EmuInEvent *evt;
 		if (d->queue_count == QUEUE_CAP) return; /* it's too crowded here anyway */
-		if (!d->queue_buffer) d->queue_buffer = AllocZeroedOrFail(QUEUE_CAP * sizeof(EmuInEvent));
+		if (!d->queue_buffer) d->queue_buffer = HeapAlloc0OrDie(QUEUE_CAP * sizeof(EmuInEvent));
 		evt = d->queue_buffer + (d->queue_first + d->queue_count++) % QUEUE_CAP;
 		evt->type = type; evt->bits = bits; evt->x = x; evt->y = y;
 	}
@@ -1525,7 +1529,7 @@ static HWND CreateWindowForEmu(HINSTANCE hInst, EmuWindow *emu)
 
 static void CloneWindow(EmuWindow *a)
 {
-	EmuWindow *emu = AllocZeroedOrFail(sizeof(EmuWindow));
+	EmuWindow *emu = HeapAlloc0OrDie(sizeof(EmuWindow));
 	HWND hWnd = CreateWindowForEmu(MainInstance, emu);
 	ShowWindow(hWnd, SW_SHOW);
 	PostMessage(hWnd, UXNMSG_BecomeClone, (WPARAM)a, 0);
@@ -1619,7 +1623,7 @@ static BOOL LoadUxnDebugSymbols(LPCTSTR path, UxnDebugSymbols *out)
 	HANDLE hFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (hFile == INVALID_HANDLE_VALUE) return FALSE;
 	if ((file_size = GetFileSize(hFile, NULL)) == 0xFFFFFFFF) goto fail;
-	buff = AllocZeroedOrFail(file_size);
+	buff = HeapAlloc0OrDie(file_size);
 	if (!ReadFile(hFile, buff, file_size, &bytes_read, NULL) || bytes_read != file_size) goto fail;
 	for (entry_count = i = 0; i < file_size; entry_count++) /* Find number of entries */
 	{
@@ -1632,7 +1636,7 @@ static BOOL LoadUxnDebugSymbols(LPCTSTR path, UxnDebugSymbols *out)
 	if (entry_count > (UINT)-1 / (sizeof(CHAR *) * 2)) goto fail; /* Some reasonable upper limit */
 	addrs_size = entry_count * sizeof(USHORT) + sizeof(CHAR *) - 1 & ~(sizeof(CHAR *) - 1);
 	/* ^ Size needed to hold array of 16-bit addresses, plus pointer-aligning padding. */
-	addresses = entry_count ? AllocZeroedOrFail(addrs_size + entry_count * sizeof(CHAR *)) : NULL;
+	addresses = entry_count ? HeapAlloc0OrDie(addrs_size + entry_count * sizeof(CHAR *)) : NULL;
 	/* ^ Buffer for: array of 16-bit addresses + pad to pointer + array of char pointers */
 	strings = (CHAR **)((BYTE *)addresses + addrs_size); /* The char pointers array */
 	for (i = e = 0; e < entry_count; e++) /* Set the values in the addresses and char pointers arrays */
@@ -1655,14 +1659,14 @@ done:
 	CloseHandle(hFile);
 	return result;
 fail:
-	HeapFree(GetProcessHeap(), 0, buff);
+	HeapFree0(buff);
 	goto done;
 }
 
 static void FreeUxnDebugSymbols(UxnDebugSymbols *s)
 {
-	HeapFree(GetProcessHeap(), 0, s->buffer);
-	HeapFree(GetProcessHeap(), 0, s->addresses);
+	HeapFree0(s->buffer);
+	HeapFree0(s->addresses);
 }
 
 /* Returns the index (0 through UINT_MAX-1) for the symbol whose address that's equal to or earlier than 'address'.
@@ -1773,7 +1777,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 			              /* Stacks */ 25, 25, /* Device mem */ 20 + 130},
 			rows[] = {UXN_RAM_SIZE, UXN_RAM_SIZE / 8, 255, 255, 256 / 8},
 			status_parts[] = {70, 140, 200, 300, -1};
-		d = AllocZeroedOrFail(sizeof *d);
+		d = HeapAlloc0OrDie(sizeof *d);
 		SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)d);
 		d->emu = ((CREATESTRUCT *)lParam)->lpCreateParams;
 		ZeroMemory(&col, sizeof col);
@@ -1822,7 +1826,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		return 0;
 	case WM_DESTROY:
 		FreeUxnDebugSymbols(&d->symbols);
-		HeapFree(GetProcessHeap(), 0, d);
+		HeapFree0(d);
 		break;
 	case WM_SIZE:
 	{
@@ -2124,7 +2128,7 @@ static LRESULT CALLBACK ConsoleWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	case WM_CREATE:
 	{
 		HWND hwTmp; int i; HFONT hFont = GetSmallFixedFont();
-		d = AllocZeroedOrFail(sizeof *d);
+		d = HeapAlloc0OrDie(sizeof *d);
 		SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)d);
 		d->outHWnd = CreateWindowEx(
 			WS_EX_STATICEDGE, EditWinClass, NULL,
@@ -2147,7 +2151,7 @@ static LRESULT CALLBACK ConsoleWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		return 0;
 	case WM_DESTROY:
 		KillTimer(hWnd, TimerID_FlushConsole);
-		HeapFree(GetProcessHeap(), 0, d);
+		HeapFree0(d);
 		return 0;
 	case WM_SIZE:
 		MoveWindow(d->outHWnd, 0, 0, LOWORD(lParam), HIWORD(lParam) - 15, TRUE);
@@ -2234,10 +2238,10 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 				waveOutPause(d->wave_out->hWaveOut);
 				waveOutClose(d->wave_out->hWaveOut);
 			}
-			HeapFree(GetProcessHeap(), 0, d->wave_out);
+			HeapFree0(d->wave_out);
 		}
 		ListRemove(&emus_needing_work, d, work_link);
-		HeapFree(GetProcessHeap(), 0, d);
+		HeapFree0(d);
 		if (!--emu_window_count) PostQuitMessage(0);
 		return 0;
 	case WM_PAINT:
@@ -2598,7 +2602,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	DWORD thread_id; static /* <- C89 */ BOOL hide_menu = FALSE;
 	Type_CommandLineToArgvW *Ptr_CommandLineToArgvW;
 	Type_GetCommandLineW *Ptr_GetCommandLineW;
-	EmuWindow *emu = AllocZeroedOrFail(sizeof(EmuWindow));
+	EmuWindow *emu = HeapAlloc0OrDie(sizeof(EmuWindow));
 	(void)command_line; (void)prev_instance;
 	CopyMemory(emu->rom_path, DefaultROMPath, (lstrlen(DefaultROMPath) + 1) * sizeof(TCHAR));
 	QueryPerformanceFrequency(&_perfcount_freq);
