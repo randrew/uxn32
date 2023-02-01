@@ -2600,7 +2600,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 {
 	WNDCLASSEX wc; HWND hWin, hParent;
 	MSG msg; HACCEL hAccel; HANDLE hThread; HMODULE hMod;
-	DWORD thread_id; BOOL hide_menu = FALSE;
+	DWORD thread_id; static /* <- C89 */ BOOL hide_menu = FALSE;
 	Type_CommandLineToArgvW *Ptr_CommandLineToArgvW;
 	Type_GetCommandLineW *Ptr_GetCommandLineW;
 	EmuWindow *emu = AllocZeroedOrFail(sizeof(EmuWindow));
@@ -2624,7 +2624,10 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 		(Ptr_CommandLineToArgvW = (Type_CommandLineToArgvW *)GetProcAddress(GetModuleHandle(TEXT("shell32.dll")), "CommandLineToArgvW")) &&
 		(CmdLineArgs = Ptr_CommandLineToArgvW(Ptr_GetCommandLineW(), &CmdLineArgCount)))
 	{
-		LPWSTR arg; void **opt, *options[] = {L"hidemenu", &hide_menu, L"break", &BreakOnInitVector, 0};
+		LPCWSTR arg; void const **opt, *options[] ={
+			L"hidemenu", &hide_menu,
+			L"break", &BreakOnInitVector,
+		0};
 		while (CmdLineArgs += 1, CmdLineArgCount -= 1)
 		{
 			if ((arg = *CmdLineArgs, lstrlenW(arg)) < 2 || (arg[0] != L'/' && arg[0] != L'-')) break;
