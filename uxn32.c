@@ -218,12 +218,11 @@ typedef BYTE *UxnStashPtr;
 enum { StashMetadataHostPages = ((USHORT)-1 + 1) * sizeof(UxnStashPtr) / HOST_PAGE_SIZE};
 #define STASH_RAMToMeta(ram) ((UxnStashFooter *)(ram + UXN_RAM_SIZE))
 #define STASH_MetaToRAM(footer) ((BYTE *)footer - UXN_RAM_SIZE)
-typedef struct UxnBox
+typedef struct UxnBox /* CPU + memory only */
 {
 	UxnCore core;
 	UxnStack work_stack, ret_stack;
 	UxnU8 device_memory[256];
-
 	UxnStashPtr *table;
 	UINT commit_mask[StashMetadataHostPages / 8 / sizeof(UINT)];
 	LinkedList stashes;
@@ -418,9 +417,6 @@ static void ResetStasher(UxnBox *box)
 	ZeroMemory(box->commit_mask, sizeof box->commit_mask);
 	VirtualFree(box->table, sizeof(UxnStashPtr) * (USHORT)-1, MEM_DECOMMIT);
 }
-static void FreeStasher(UxnBox *box)
-{ ResetStasher(box); VirtualFree(box->table, 0, MEM_RELEASE); }
-
 static BYTE * GetStashMemory(UxnBox *box, USHORT slot)
 {
 	BYTE *memory;
@@ -434,7 +430,7 @@ static BYTE * GetStashMemory(UxnBox *box, USHORT slot)
 		box->commit_mask[index] = piece | bit;
 		VirtualAlloc((BYTE *)box->table + a * HOST_PAGE_SIZE, 1, MEM_COMMIT, PAGE_READWRITE);
 	}
-#else
+#else /* If UxnStashPtr evenly divides HOST_PAGE_SIZE */
 	UINT a = slot * sizeof(UxnStashPtr) / HOST_PAGE_SIZE, index = a >> 5, bit = 1 << (a & 31), piece;
 	if (!((piece = box->commit_mask[index]) & bit))
 	{
@@ -457,6 +453,7 @@ static void CopyStasher(UxnBox *dst, UxnBox *src)
 	ResetStasher(dst);
 	for (s = ListFront(&src->stashes, UxnStashFooter, link); s; s = ListNext(s, UxnStashFooter, link))
 		CopyMemory(GetStashMemory(dst, s->slot), STASH_MetaToRAM(s), UXN_RAM_SIZE + UXN_RAM_PAD_SIZE);
+	dst->core.ram = GetStashMemory(dst, 0);
 }
 
 static BOOL LoadFileInto(LPCSTR path, BYTE *dest, DWORD max_bytes, DWORD *bytes_read)
@@ -2223,7 +2220,8 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	case WM_DESTROY:
 		d->running = FALSE, Update60hzTimerEnabled(d); /* it reads d->running */
 		SetHostCursorVisible(d, TRUE);
-		FreeStasher(&d->box);
+		ResetStasher(&d->box);
+		VirtualFree(d->box.table, 0, MEM_RELEASE);
 		FreeUxnScreen(&d->screen);
 		ResetFiler(&d->filers[0]);
 		ResetFiler(&d->filers[1]);
@@ -2483,8 +2481,6 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		CopyMemory(&d->box.work_stack, &b->box.work_stack, sizeof(UxnStack) * 2);
 		CopyMemory(d->box.device_memory, b->box.device_memory, sizeof d->box.device_memory);
 		CopyStasher(&d->box, &b->box);
-		d->box.core.ram = GetStashMemory(&d->box, 0);
-		/* ^ We also copy that weird padding byte. It might be important to the Uxn program. Who knows! */
 		CopyMemory(d->screen.palette, b->screen.palette, sizeof d->screen.palette);
 		SetUxnScreenSize(&d->screen, b->screen.width, b->screen.height);
 		d->viewport_scale = b->viewport_scale;
