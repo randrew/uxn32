@@ -781,7 +781,7 @@ static void WriteOutSynths(EmuWindow *d)
 	WAVEHDR *hdr = &wave_out->waveHdrs[wave_out->which_buffer];
 	SHORT *samples = wave_out->sampleBuffers[wave_out->which_buffer];
 	BYTE *ram = GetStashMemory(&d->box, 0);
-	MMRESULT res; int i, still_running;
+	int i, still_running; MMRESULT res; (void)res;
 	if (!wave_out->hWaveOut) return;
 	wave_out->which_buffer = 1 - wave_out->which_buffer;
 	ZeroMemory(hdr, sizeof(WAVEHDR));
@@ -1296,13 +1296,12 @@ static void RunUxn(EmuWindow *d, UINT steps, BOOL initial)
 {
 	UINT res, use_steps = steps ? steps : 100000;  /* about 1900 usecs on good hardware */
 	UxnCore *u = &d->box.core; LONGLONG t_a, t_delta;
-	int instr_interrupts = 0, more_work, force_repaint;
+	int more_work, force_repaint;
 	if (initial && !u->pc) goto completed;
 	t_a = TimeStampNow();
 	for (;;)
 	{
 		res = UxnExec(&d->box.core, use_steps);
-		instr_interrupts++;
 		t_delta = TimeStampNow() - t_a;
 		d->instr_count += use_steps - res;
 		if (u->fault) break;
