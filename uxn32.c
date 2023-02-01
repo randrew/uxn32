@@ -412,7 +412,7 @@ static void ResetStasher(UxnBox *box)
 {
 	UxnStashFooter *s, *n;
 	for (s = ListFront(&box->stashes, UxnStashFooter, link); s; s = n)
-		n = ListNext(s, UxnStashFooter, link), VirtualFree(STASH_MetaToRAM(s), 0, MEM_RELEASE);
+		n = ListNext(s, UxnStashFooter, link), HeapFree(GetProcessHeap(), 0, STASH_MetaToRAM(s));
 	ZeroMemory(&box->stashes, sizeof box->stashes);
 	ZeroMemory(box->commit_mask, sizeof box->commit_mask);
 	VirtualFree(box->table, sizeof(UxnStashPtr) * (USHORT)-1, MEM_DECOMMIT);
@@ -441,7 +441,7 @@ static BYTE * GetStashMemory(UxnBox *box, USHORT slot)
 	if (!(memory = box->table[slot]))
 	{
 		UxnStashFooter *s;
-		box->table[slot] = memory = VirtualAlloc(NULL, UXN_RAM_SIZE + sizeof(UxnStashFooter), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+		box->table[slot] = memory = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, UXN_RAM_SIZE + sizeof(UxnStashFooter));
 		if (memory) s = STASH_RAMToMeta(memory), s->slot = slot, ListPushBack(&box->stashes, s, link);
 	}
 	return memory;
