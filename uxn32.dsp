@@ -102,6 +102,10 @@ SOURCE=.\uxn32.rc
 
 SOURCE=.\uxn_core.c
 # End Source File
+# Begin Source File
+
+SOURCE=.\uxn_lz.c
+# End Source File
 # End Group
 # Begin Group "Header Files"
 

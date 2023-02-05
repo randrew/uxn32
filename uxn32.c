@@ -185,6 +185,10 @@ static void * _impl_ListNext(ListLink *node, SIZE_T offset)
 #define ListFront(list, type, link_field) ((type *)_impl_ListFront(list, OFFSET_OF(type, link_field)))
 #define ListNext(a, type, link_field) ((type *)_impl_ListNext(&(a)->link_field, OFFSET_OF(type, link_field)))
 
+/* From uxn_lz.c. They return -1 on failure.*/
+int uxn_lz_compress(void *output, int output_size, const void *input, int input_size);
+int uxn_lz_decompress(void *output, int output_size, const void *input, int input_size);
+
 enum {FromLeft, FromTop, FromRight, FromBottom};
 static void CutRect(RECT *in, int dir, int length, RECT *out)
 {
