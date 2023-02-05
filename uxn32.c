@@ -55,6 +55,9 @@ typedef ULONG_PTR DWORD_PTR, *PDWORD_PTR;
 
 #define HOST_PAGE_SIZE 4096
 
+#ifndef SINGULAR_MODE
+#define SINGULAR_MODE 0
+#endif
 #define UXN_DEFAULT_WIDTH (64 * 8)
 #define UXN_DEFAULT_HEIGHT (40 * 8)
 #define UXN_RAM_SIZE 0x10000u
@@ -1461,7 +1464,7 @@ static void SendInputEvent(EmuWindow *d, BYTE type, BYTE bits, USHORT x, USHORT 
 
 static void LoadROMFileAndStartVM(EmuWindow *d)
 {
-	if (!LoadROMIntoBox(&d->box, d->rom_path))
+	if (!lstrlen(d->rom_path) || !LoadROMIntoBox(&d->box, d->rom_path))
 	{
 		/* Can't load ROM file? Load a small ROM to display an error screen. */
 		HRSRC hInfo = FindResource(MainInstance, MAKEINTRESOURCE(IDR_FLUMMOX), TEXT("ROM"));
@@ -2206,7 +2209,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		d = ((CREATESTRUCT *)lparam)->lpCreateParams;
 		emu_window_count++;
 		SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)d);
-		DragAcceptFiles(hwnd, TRUE);
+		DragAcceptFiles(hwnd, !SINGULAR_MODE);
 		box = &d->box;
 		box->table = VirtualAlloc(NULL, sizeof(UxnStashPtr) * (USHORT)-1, MEM_RESERVE, PAGE_NOACCESS);
 		box->core.ram = GetStashMemory(box, 0);
@@ -2219,7 +2222,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		d->viewport_scale = 1;
 		SetUxnScreenSize(&d->screen, UXN_DEFAULT_WIDTH, UXN_DEFAULT_HEIGHT);
 		d->filers[0].hFile = d->filers[0].hFind = d->filers[1].hFile = d->filers[1].hFind = INVALID_HANDLE_VALUE;
-		if (lstrlen(d->rom_path)) LoadROMFileAndStartVM(d);
+		LoadROMFileAndStartVM(d);
 		return 0;
 	}
 	case WM_CLOSE:
@@ -2439,7 +2442,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			d->viewport_scale = d->viewport_scale == 1 ? 2 : 1;
 			RefitEmuWindow(d);
 			return 0;
-		case IDM_RELOAD: ReloadFromROMFile(d); return 0;
+		case IDM_RELOAD: if (!SINGULAR_MODE) ReloadFromROMFile(d); return 0;
 		case IDM_CLOSEWINDOW: PostMessage(hwnd, WM_CLOSE, 0, 0); return 0;
 		case IDM_PAUSE: if (d->running) PauseVM(d); else d->box.core.fault = 0, UnpauseVM(d); return 0;
 		case IDM_STEP: case IDM_BIGSTEP:
@@ -2604,7 +2607,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 {
 	WNDCLASSEX wc; HWND hWin, hParent;
 	MSG msg; HACCEL hAccel; HANDLE hThread; HMODULE hMod;
-	DWORD thread_id; static /* <- C89 */ BOOL hide_menu = FALSE;
+	DWORD thread_id; static /* <- C89 */ BOOL hide_menu = SINGULAR_MODE;
 	Type_CommandLineToArgvW *Ptr_CommandLineToArgvW;
 	Type_GetCommandLineW *Ptr_GetCommandLineW;
 	EmuWindow *emu;
@@ -2614,7 +2617,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	MainInstance = instance;
 	ProcessHeap = GetProcessHeap();
 	emu = HeapAlloc0OrDie(sizeof(EmuWindow));
-	CopyMemory(emu->rom_path, DefaultROMPath, (lstrlen(DefaultROMPath) + 1) * sizeof(TCHAR));
+	if (!SINGULAR_MODE) CopyMemory(emu->rom_path, DefaultROMPath, (lstrlen(DefaultROMPath) + 1) * sizeof(TCHAR));
 
 #if ADAPTER_VBLANK
 	hMod = GetModuleHandle(TEXT("gdi32.dll"));
@@ -2645,7 +2648,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 			}
 			break; next_arg:;
 		}
-		if (CmdLineArgCount) /* Next argument will be the ROM file to load, if any */
+		if (!SINGULAR_MODE && CmdLineArgCount) /* Next argument will be the ROM file to load, if any */
 		{
 			if (!WideCharToMultiByte(CP_ACP, 0, CmdLineArgs[0], -1, emu->rom_path, sizeof emu->rom_path, NULL, NULL))
 				FatalBox("The command line argument for the file path was too long, or contained characters that couldn't be handled by this program.");
