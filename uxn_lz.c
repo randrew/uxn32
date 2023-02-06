@@ -106,7 +106,7 @@ uxn_lz_decompress_stream(struct uxn_lz_decompress_t *a)
 	switch (a->state)
 	{
 case 0:
-	while (a->avail_in)
+	for (; a->avail_in; a->state = 0)
 	{
 		a->copy_num = *a->next_in++;
 		a->avail_in--;
