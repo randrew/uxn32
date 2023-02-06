@@ -116,21 +116,20 @@ case 0:
 			if (a->copy_num & 0x40)
 			{
 case 1:
-				if (!a->avail_in) { a->state = 1; goto need_more_input; }
+				if (!a->avail_in) { a->state = 1; goto need_more; }
 				a->avail_in--;
 				a->copy_num = *a->next_in++ | a->copy_num << 8 & 0x3FFF;
 			}
 			a->copy_num += MinMatchLength;
 case 2:
-			if (!a->avail_in) { a->state = 2; goto need_more_input; }
+			if (!a->avail_in) { a->state = 2; goto need_more; }
 			a->avail_in--;
 			a->dict_read_pos = *a->next_in++ + 1;
 			if (a->dict_read_pos > a->dict_len) return -1; /* Malformed */
 			a->dict_read_pos = a->dict_write_pos - a->dict_read_pos;
-			a->state = 3;
 case 3:
 			do {
-				if (!a->avail_out) goto need_more_output;
+				if (!a->avail_out) { a->state = 3; goto need_more; }
 				*a->next_out++ = a->dict[a->dict_write_pos++] = a->dict[a->dict_read_pos++];
 				a->avail_out--;
 				if (a->dict_len < 256) a->dict_len++;
@@ -139,11 +138,9 @@ case 3:
 		else /* Literal */
 		{
 			a->copy_num++;
-			a->state = 4;
 case 4:
 			do {
-				if (!a->avail_in) goto need_more_input;
-				if (!a->avail_out) goto need_more_output;
+				if (!a->avail_in || !a->avail_out) { a->state = 4; goto need_more; }
 				*a->next_out++ = a->dict[a->dict_write_pos++] = *a->next_in++;
 				a->avail_in--, a->avail_out--;
 				if (a->dict_len < 256) a->dict_len++;
@@ -151,6 +148,5 @@ case 4:
 		}
 	}
 	}
-need_more_input: need_more_output:
-	return 0;
+	need_more: return 0;
 }
