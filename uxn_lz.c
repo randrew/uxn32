@@ -101,7 +101,7 @@ uxn_lz_decompress(void *output, int output_size, const void *input, int input_si
 }
 
 int
-uxn_lz_decompress_stream(uxn_lz_decompress_t *a)
+uxn_lz_decompress_stream(struct uxn_lz_decompress_t *a)
 {
 	switch (a->state)
 	{
