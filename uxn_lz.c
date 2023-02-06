@@ -105,7 +105,7 @@ uxn_lz_decompress_stream(struct uxn_lz_decompress_t *a)
 {
 	switch (a->state)
 	{
-	case 0:
+case 0:
 	while (a->avail_in)
 	{
 		a->copy_num = *a->next_in++;
@@ -125,32 +125,29 @@ case 2:
 			if (!a->avail_in) { a->state = 2; goto need_more_input; }
 			a->avail_in--;
 			a->dict_read_pos = *a->next_in++ + 1;
-			if (a->dict_read_pos > a->dict_len)
-				return -1;
+			if (a->dict_read_pos > a->dict_len) return -1; /* Malformed */
 			a->dict_read_pos = (a->dict_write_pos + 256 - a->dict_read_pos) % 256;
 			a->state = 3;
-case 3: loop_dict_copy:
-			if (!a->avail_out) goto need_more_output;
-			*a->next_out++ = a->dict[a->dict_write_pos] = a->dict[a->dict_read_pos];
-			a->avail_out--;
-			a->dict_write_pos = (a->dict_write_pos + 1) % 256;
-			a->dict_read_pos = (a->dict_read_pos + 1) % 256;
-			if (a->dict_len < 256) a->dict_len++;
-			if (--a->copy_num) goto loop_dict_copy;
+case 3:
+			do {
+				if (!a->avail_out) goto need_more_output;
+				*a->next_out++ = a->dict[a->dict_write_pos++] = a->dict[a->dict_read_pos++];
+				a->avail_out--;
+				if (a->dict_len < 256) a->dict_len++;
+			} while (--a->copy_num);
 		}
 		else /* Literal */
 		{
 			a->copy_num++;
 			a->state = 4;
-case 4: loop_literal_copy:
-			if (!a->avail_in) goto need_more_input;
-			if (!a->avail_out) goto need_more_output;
-			*a->next_out++ = a->dict[a->dict_write_pos] = *a->next_in++;
-			a->dict_write_pos = (a->dict_write_pos + 1) % 256;
-			a->avail_in--;
-			a->avail_out--;
-			if (a->dict_len < 256) a->dict_len++;
-			if (--a->copy_num) goto loop_literal_copy;
+case 4:
+			do {
+				if (!a->avail_in) goto need_more_input;
+				if (!a->avail_out) goto need_more_output;
+				*a->next_out++ = a->dict[a->dict_write_pos++] = *a->next_in++;
+				a->avail_in--, a->avail_out--;
+				if (a->dict_len < 256) a->dict_len++;
+			} while (--a->copy_num);
 		}
 	}
 	}
