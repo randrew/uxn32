@@ -126,7 +126,7 @@ case 2:
 			a->avail_in--;
 			a->dict_read_pos = *a->next_in++ + 1;
 			if (a->dict_read_pos > a->dict_len) return -1; /* Malformed */
-			a->dict_read_pos = (a->dict_write_pos + 256 - a->dict_read_pos) % 256;
+			a->dict_read_pos = a->dict_write_pos - a->dict_read_pos;
 			a->state = 3;
 case 3:
 			do {
