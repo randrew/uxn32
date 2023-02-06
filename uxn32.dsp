@@ -118,6 +118,10 @@ SOURCE=.\resource.h
 
 SOURCE=.\uxn_core.h
 # End Source File
+# Begin Source File
+
+SOURCE=.\uxn_lz.h
+# End Source File
 # End Group
 # Begin Group "Resource Files"
 
