@@ -65,7 +65,7 @@ done_search:
 }
 
 int
-uxn_lz_decompress(void *output, int output_size, const void *input, int input_size)
+uxn_lz_expand(void *output, int output_size, const void *input, int input_size)
 {
 	int num, offset, written = 0;
 	unsigned char *out = output;
@@ -101,7 +101,7 @@ uxn_lz_decompress(void *output, int output_size, const void *input, int input_si
 }
 
 int
-uxn_lz_decompress_stream(struct uxn_lz_decompress_t *a)
+uxn_lz_expand_stream(struct uxn_lz_expand_t *a)
 {
 	switch (a->state)
 	{

@@ -3,9 +3,9 @@
  * Returns the number of bytes written to output on success. */
 
 int uxn_lz_compress(void *output, int output_size, const void *input, int input_size);
-int uxn_lz_decompress(void *output, int output_size, const void *input, int input_size);
+int uxn_lz_expand(void *output, int output_size, const void *input, int input_size);
 
-struct uxn_lz_decompress_t {
+struct uxn_lz_expand_t {
 	unsigned char *next_in, *next_out;
 	int avail_in, avail_out;
 
@@ -13,4 +13,4 @@ struct uxn_lz_decompress_t {
 	unsigned char dict_read_pos, dict_write_pos, dict[256];
 };
 
-int uxn_lz_decompress_stream(struct uxn_lz_decompress_t *a);
+int uxn_lz_expand_stream(struct uxn_lz_expand_t *a);
