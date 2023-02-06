@@ -74,7 +74,6 @@ uxn_lz_decompress(void *output, int output_size, const void *input, int input_si
 	const unsigned char *from, *in = input;
 	while (input_size)
 	{
-		if ((input_size -= 1) < 0) goto malformed;
 		num = *in++;
 		if (num > 127) /* Dictionary */
 		{
