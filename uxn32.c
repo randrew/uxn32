@@ -1541,10 +1541,17 @@ static void LoadROMFileAndStartVM(EmuWindow *d)
 	{
 		/* Can't load ROM file? Load a small ROM to display an error screen. */
 		HRSRC hInfo = FindResource(MainInstance, MAKEINTRESOURCE(IDR_FLUMMOX), TEXT("ROM"));
-		DWORD rom_size = SizeofResource(MainInstance, hInfo);
-		void *data = LockResource(LoadResource(MainInstance, hInfo));
+		DWORD i, skip, to_copy, rom_size = SizeofResource(MainInstance, hInfo);
+		BYTE *data = LockResource(LoadResource(MainInstance, hInfo));
 		if (!data) return;
-		CopyMemory(d->box.core.ram + UXN_ROM_OFFSET, data, MIN(rom_size, UXN_RAM_SIZE - UXN_ROM_OFFSET));
+		for (i = 0;; i++)
+		{
+			/* TODO copied from LoadROMIntoBox. Remove when we are on the new file loading system. */
+			skip = i ? 0 : UXN_ROM_OFFSET, to_copy = MIN(UXN_RAM_SIZE - skip, rom_size);
+			if (!to_copy) break;
+			CopyMemory(GetStashMemory(&d->box, (USHORT)i) + skip, data, to_copy);
+			data += to_copy, rom_size -= to_copy;
+		}
 	}
 	d->running = 1;
 	SendInputEvent(d, EmuIn_Start, 0, 0, 0);
