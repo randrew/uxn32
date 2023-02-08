@@ -2,6 +2,7 @@
 #define NOMINMAX
 #include "resource.h"
 #include "uxn_core.h"
+#include "uxn_lz.h"
 #include <windows.h>
 #include <windowsx.h>
 #include <shellapi.h>
@@ -472,6 +473,82 @@ static BOOL LoadFileInto(LPCSTR path, BYTE *dest, DWORD max_bytes, DWORD *bytes_
 		FatalBox("Read error while reading file %s", path);
 	CloseHandle(hFile);
 	return TRUE;
+}
+
+/* TODO streaming decompress */
+static BOOL LoadUxnFile(UxnBox *box, BYTE *file_data, UINT file_size)
+{
+	BYTE version, flags; BOOL ok = TRUE, use_checksum = FALSE;
+	UINT file_checksum = 0, calc_checksum = UXN_HASH_SEED, i, tmp; BYTE *mem;
+	if (file_size < 5) return FALSE;
+	file_size -= 5;
+	if (*file_data++ != 'u' || *file_data++ != 'x' || *file_data++ != 'n') return FALSE;
+	version = *file_data++;
+	if (version != 0) return FALSE;
+	flags = *file_data++;
+	if ((use_checksum = flags & 0x1)) /* Checksum enabled */
+	{
+		if (file_size < 4) return FALSE;
+		CopyMemory(&file_checksum, file_data, 4);
+		file_size -= 4, file_data += 4;
+	}
+	if (flags & 0x2) /* Compression enabled */
+	{
+		UINT unzipped_size, total = 0;
+		struct uxn_lz_expand_t stream;
+		if (file_size < 4) return FALSE;
+		CopyMemory(&unzipped_size, file_data, 4);
+		file_size -= 4, file_data += 4;
+		if (unzipped_size > 0x7FFFFFFF) return FALSE;
+		ZeroMemory(&stream, sizeof stream);
+		stream.next_in = file_data;
+		stream.avail_in = (int)file_size;
+		for (i = 0; stream.avail_in || !stream.avail_out;)
+		{
+			stream.next_out = mem = GetStashMemory(box, i++);
+			stream.avail_out = UXN_RAM_SIZE;
+			if (uxn_lz_expand_stream(&stream))
+			{
+				ok = FALSE;
+				break;
+			}
+			tmp = UXN_RAM_SIZE - stream.avail_out;
+			total += tmp;
+			if (use_checksum) calc_checksum = uxn_hash(calc_checksum, mem, tmp);
+		}
+		if (stream.avail_in || stream.state || total != unzipped_size)
+		{
+			ok = FALSE;
+		}
+	}
+	else
+	{
+		if (use_checksum) calc_checksum = uxn_hash(calc_checksum, file_data, file_size);
+		for (i = 0;; i++)
+		{
+			UINT start = i * UXN_RAM_SIZE;
+			if (start >= file_size) break;
+			CopyMemory(GetStashMemory(box, i), file_data + start, MIN(file_size - start, UXN_RAM_SIZE));
+		}
+	}
+	if (use_checksum) ok = ok && file_checksum == calc_checksum;
+	return ok;
+}
+
+static BOOL LoadUxnFileByPath(UxnBox *box, LPCSTR path)
+{
+	BY_HANDLE_FILE_INFORMATION info; BOOL ok; void *data = NULL;
+	HANDLE hMap, hFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (hFile == INVALID_HANDLE_VALUE) return FALSE;
+	hMap = CreateFileMappingA(hFile, NULL, PAGE_READONLY, 0, 0, NULL);
+	if (!(ok = GetFileInformationByHandle(hFile, &info))) goto cleanup;
+	if (!(data = MapViewOfFile(hMap, FILE_MAP_READ, 0, 0, 0))) goto cleanup;
+	// if (!(ok = ))
+	ok = LoadUxnFile(box, data, info.nFileSizeLow);
+cleanup:
+	if (data) UnmapViewOfFile(data);
+	if (hMap) CloseHandle(hMap);
+	return (BOOL)ok;
 }
 
 static HFONT GetSmallFixedFont(void)
@@ -2599,6 +2676,116 @@ use_mm_timer:
 	return 0; (void)d;
 }
 
+static void * CopyFileIntoHeapMemory(LPCSTR path, UINT *out_size)
+{
+	BY_HANDLE_FILE_INFORMATION info; void *data = NULL;
+	HANDLE hFile = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	*out_size = 0;
+	if (hFile == INVALID_HANDLE_VALUE) return NULL;
+	if (!GetFileInformationByHandle(hFile, &info)) goto cleanup;
+	data = HeapAlloc0OrDie(info.nFileSizeLow);
+	if (!ReadFile(hFile, data, info.nFileSizeLow, NULL, NULL))
+		FatalBox("Read error while reading file %s", path);
+	*out_size = info.nFileSizeLow;
+cleanup:
+	CloseHandle(hFile);
+	return data;
+}
+
+static BOOL ConvertToUxnFormat(LPCSTR out_path, LPCSTR in_path)
+{
+	// LoadFileInto()
+	ProcessHeap = GetProcessHeap();
+	UINT file_size, hash; DWORD written;
+	BYTE *raw = CopyFileIntoHeapMemory(in_path, &file_size);
+	hash = uxn_hash(UXN_HASH_SEED, raw, file_size);
+	BYTE *cool = HeapAlloc0OrDie(file_size + 13);
+	int comp_size = uxn_lz_compress(cool + 13, file_size, raw, file_size);
+	if (comp_size < 0) DebugPrint("fail to compress");
+	cool[0] = 'u', cool[1] = 'x', cool[2] = 'n';
+	cool[3] = 0; /* Version tag */
+	cool[4] = 0x3; /* Flags */
+	CopyMemory(cool + 5, &hash, 4);
+	CopyMemory(cool + 9, &file_size, 4);
+	HANDLE hFileOut = CreateFileA(out_path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (hFileOut == INVALID_HANDLE_VALUE) DebugPrint("no file out");
+	if (!WriteFile(hFileOut, cool, comp_size + 13, &written, NULL)) DebugPrint("bad write");
+	CloseHandle(hFileOut);
+	return TRUE;
+}
+
+int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
+{
+	UxnBox box;
+	ZeroMemory(&box, sizeof box);
+	box.table = VirtualAlloc(NULL, sizeof(UxnStashPtr) * (USHORT)-1, MEM_RESERVE, PAGE_NOACCESS);
+	ConvertToUxnFormat("big_oquonie.uxn", "big oquonie.rom");
+	if (LoadUxnFileByPath(&box, "big_oquonie.uxn"))
+	{
+		DebugPrint("load ok");
+	}
+	else
+	{
+		DebugPrint("load uxn error");
+	}
+	(void)instance; (void)prev_instance; (void)command_line; (void)show_code;
+	return 0;
+}
+
+#if 0
+#define IN_SIZE 1000
+#define OUT_SIZE 1000
+int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
+{
+	BYTE *input, *bufa, *bufb;
+	DWORD input_size; SIZE_T compressed_size, decompressed_size;
+	struct uxn_lz_expand_t stream;
+	int cool_size;
+	ZeroMemory(&stream, sizeof stream);
+	ProcessHeap = GetProcessHeap();
+
+	input = HeapAlloc0(5000000);
+	bufa = HeapAlloc0(5000000), bufb = HeapAlloc0(5000000);
+	if (!LoadFileInto("big oquonie.rom", input, 5000000, &input_size)) ExitProcess(0);
+	compressed_size = uxn_lz_compress((BYTE *)bufa, 5000000, (BYTE *)input, input_size);
+
+	// decompressed_size = uxn_lz_expand((BYTE *)bufb, 5000000, (BYTE *)bufa, compressed_size);
+	// int true_avail =
+	cool_size = compressed_size;
+	decompressed_size = 0;
+	stream.next_in = bufa;
+	// stream.avail_in = cool_size;
+	stream.next_out = bufb;
+
+	for (;;) {
+		stream.avail_out = OUT_SIZE;
+		if (!stream.avail_in) {
+			stream.avail_in = MIN(cool_size, IN_SIZE);
+			cool_size = MAX(0, cool_size - IN_SIZE);
+		}
+		if (!stream.avail_in && !stream.state) break;
+		if (uxn_lz_expand_stream(&stream)) DebugPrint("oh no");
+		decompressed_size += OUT_SIZE - stream.avail_out;
+	}
+
+	// if (uxn_lz_expand_stream(&stream)) DebugPrint("oh no");
+	// decompressed_size = total;
+
+	if (decompressed_size == input_size && memcmp(bufb, input, input_size) == 0) DebugPrint("same contents");
+	DebugPrint("done");
+
+	// HANDLE hFile = CreateFile("compressed.bin", GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	// WriteFile(hFile, bufa, (DWORD)compressed_size, NULL, 0);
+	// CloseHandle(hFile);
+	(void)instance; (void)prev_instance; (void)command_line; (void)show_code;
+	return 0;
+}
+#endif
+
+
+
+
+#if 0
 int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
 {
 	WNDCLASSEX wc; HWND hWin, hParent;
@@ -2709,3 +2896,4 @@ quitting:
 	TerminateThread(hThread, 0);
 	return 0;
 }
+#endif

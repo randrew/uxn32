@@ -150,3 +150,15 @@ case 4:
 	}
 	need_more: return 0;
 }
+
+unsigned int uxn_hash(unsigned int seed, void *bytes, unsigned int bytes_size)
+{
+	unsigned int x = seed >> 16, y = seed, c;
+	unsigned char *in = bytes, *end = in + bytes_size;
+	for (; in != end; in++) {
+		c = *in << 8 | *in;
+		x = x * 0x2443 + c;
+		y = y * 0x118d + c;
+	}
+	return x << 16 | (y & 0xFFFF);
+}

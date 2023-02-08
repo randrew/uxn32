@@ -14,3 +14,7 @@ struct uxn_lz_expand_t {
 };
 
 int uxn_lz_expand_stream(struct uxn_lz_expand_t *a);
+
+#define UXN_HASH_SEED 0x1234ABCD
+
+unsigned int uxn_hash(unsigned int seed, void *bytes, unsigned int bytes_size);
