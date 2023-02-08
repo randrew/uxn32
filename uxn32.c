@@ -503,7 +503,7 @@ static BOOL LoadUxnFile(UxnBox *box, BYTE *file_data, UINT file_size)
 		ZeroMemory(&stream, sizeof stream);
 		stream.next_in = file_data;
 		stream.avail_in = (int)file_size;
-		for (i = 0; stream.avail_in || !stream.avail_out;)
+		for (i = 0; stream.avail_in || stream.copy_num;)
 		{
 			stream.next_out = mem = GetStashMemory(box, i++);
 			stream.avail_out = UXN_RAM_SIZE;
@@ -516,7 +516,7 @@ static BOOL LoadUxnFile(UxnBox *box, BYTE *file_data, UINT file_size)
 			total += tmp;
 			if (use_checksum) calc_checksum = uxn_hash(calc_checksum, mem, tmp);
 		}
-		if (stream.avail_in || stream.state || total != unzipped_size)
+		if (stream.state || total != unzipped_size)
 		{
 			ok = FALSE;
 		}
