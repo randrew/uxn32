@@ -1476,8 +1476,8 @@ static void LoadROMFileAndStartVM(EmuWindow *d)
 			/* TODO copied from LoadROMIntoBox. Remove when we are on the new file loading system. */
 			skip = i ? 0 : UXN_ROM_OFFSET, to_copy = MIN(UXN_RAM_SIZE - skip, rom_size);
 			if (!to_copy) break;
-			rom_size -= to_copy;
-			CopyMemory(GetStashMemory(&d->box, (USHORT)i) + skip, data + i * UXN_RAM_SIZE, to_copy);
+			CopyMemory(GetStashMemory(&d->box, (USHORT)i) + skip, data, to_copy);
+			data += to_copy, rom_size -= to_copy;
 		}
 	}
 	d->running = 1;
