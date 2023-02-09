@@ -475,7 +475,6 @@ static BOOL LoadFileInto(LPCSTR path, BYTE *dest, DWORD max_bytes, DWORD *bytes_
 	return TRUE;
 }
 
-/* TODO streaming decompress */
 static BOOL LoadUxnFile(UxnBox *box, BYTE *file_data, UINT file_size)
 {
 	BYTE version, flags; BOOL ok = TRUE, use_checksum = FALSE;
@@ -2694,18 +2693,17 @@ cleanup:
 
 static BOOL ConvertToUxnFormat(LPCSTR out_path, LPCSTR in_path)
 {
-	// LoadFileInto()
-	UINT file_size, hash; DWORD written; int comp_size;
+	UINT file_size, checksum; DWORD written; int comp_size;
 	BYTE *cool, *raw = CopyFileIntoHeapMemory(in_path, &file_size);
 	HANDLE hFileOut;
-	hash = uxn_checksum(UXN_CHECKSUM_SEED, raw, file_size);
+	checksum = uxn_checksum(UXN_CHECKSUM_SEED, raw, file_size);
 	cool = HeapAlloc0OrDie(file_size + 13);
 	comp_size = uxn_lz_compress(cool + 13, file_size, raw, file_size);
 	if (comp_size < 0) DebugPrint("fail to compress");
 	cool[0] = 'u', cool[1] = 'x', cool[2] = 'n';
 	cool[3] = 0; /* Version tag */
 	cool[4] = 0x3; /* Flags */
-	CopyMemory(cool + 5, &hash, 4);
+	CopyMemory(cool + 5, &checksum, 4);
 	CopyMemory(cool + 9, &file_size, 4);
 	hFileOut = CreateFileA(out_path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (hFileOut == INVALID_HANDLE_VALUE) DebugPrint("no file out");
