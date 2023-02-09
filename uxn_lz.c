@@ -103,52 +103,66 @@ uxn_lz_expand(void *output, int output_size, const void *input, int input_size)
 int
 uxn_lz_expand_stream(struct uxn_lz_expand_t *a)
 {
+	/* Copy struct to stack variables for compiler optimizations */
+	unsigned char *next_in = a->next_in, *next_out = a->next_out;
+	int avail_in = a->avail_in, avail_out = a->avail_out;
+	int dict_len = a->dict_len, copy_num = a->copy_num;
+	unsigned char dict_read_pos = a->dict_read_pos, dict_write_pos = a->dict_write_pos, *dict = a->dict;
+	int result = 0;
 	switch (a->state)
 	{
 case 0:
-	for (; a->avail_in; a->state = 0)
+	for (; avail_in;)
 	{
-		a->copy_num = *a->next_in++;
-		a->avail_in--;
-		if (a->copy_num > 127) /* Dictionary */
+		copy_num = *next_in++;
+		avail_in--;
+		if (copy_num > 127) /* Dictionary */
 		{
-			a->copy_num &= 0x7F;
-			if (a->copy_num & 0x40)
+			copy_num &= 0x7F;
+			if (copy_num & 0x40)
 			{
 case 1:
-				if (!a->avail_in) { a->state = 1; goto need_more; }
-				a->avail_in--;
-				a->copy_num = *a->next_in++ | a->copy_num << 8 & 0x3FFF;
+				if (!avail_in) { a->state = 1; goto need_more; }
+				avail_in--;
+				copy_num = *next_in++ | copy_num << 8 & 0x3FFF;
 			}
-			a->copy_num += MinMatchLength;
+			copy_num += MinMatchLength;
 case 2:
-			if (!a->avail_in) { a->state = 2; goto need_more; }
-			a->avail_in--;
-			a->dict_read_pos = *a->next_in++ + 1;
-			if (a->dict_read_pos > a->dict_len) return -1; /* Malformed */
-			a->dict_read_pos = a->dict_write_pos - a->dict_read_pos;
+			if (!avail_in) { a->state = 2; goto need_more; }
+			avail_in--;
+			dict_read_pos = *next_in++ + 1;
+			if (dict_read_pos > dict_len) { a->state = 5; result = -1; goto flush; } /* Malformed */
+			dict_read_pos = dict_write_pos - dict_read_pos;
+			if ((dict_len += copy_num) > 256) dict_len = 256;
 case 3:
 			do {
-				if (!a->avail_out) { a->state = 3; goto need_more; }
-				*a->next_out++ = a->dict[a->dict_write_pos++] = a->dict[a->dict_read_pos++];
-				a->avail_out--;
-				if (a->dict_len < 256) a->dict_len++;
-			} while (--a->copy_num);
+				if (!avail_out) { a->state = 3; goto need_more; }
+				*next_out++ = dict[dict_write_pos++] = dict[dict_read_pos++];
+				avail_out--;
+			} while (--copy_num);
 		}
 		else /* Literal */
 		{
-			a->copy_num++;
+			copy_num++;
+			if ((dict_len += copy_num) > 256) dict_len = 256;
 case 4:
 			do {
-				if (!a->avail_in || !a->avail_out) { a->state = 4; goto need_more; }
-				*a->next_out++ = a->dict[a->dict_write_pos++] = *a->next_in++;
-				a->avail_in--, a->avail_out--;
-				if (a->dict_len < 256) a->dict_len++;
-			} while (--a->copy_num);
+				if (!avail_in || !avail_out) { a->state = 4; goto need_more; }
+				*next_out++ = dict[dict_write_pos++] = *next_in++;
+				avail_in--, avail_out--;
+			} while (--copy_num);
 		}
 	}
+	a->state = 0;
+case 5:;
 	}
-	need_more: return 0;
+need_more: flush:
+	/* Flush stack variables back to struct */
+	a->next_in = next_in, a->next_out = next_out;
+	a->avail_in = avail_in, a->avail_out = avail_out;
+	a->dict_len = dict_len, a->copy_num = copy_num;
+	a->dict_read_pos = dict_read_pos, a->dict_write_pos = dict_write_pos;
+	return result;
 }
 
 unsigned int uxn_checksum(unsigned int seed, void *bytes, unsigned int bytes_size)
