@@ -475,7 +475,7 @@ static BOOL LoadFileInto(LPCSTR path, BYTE *dest, DWORD max_bytes, DWORD *bytes_
 	return TRUE;
 }
 
-static BOOL LoadUxnFile(UxnBox *box, BYTE *file_data, UINT file_size)
+static BOOL LoadUxnFile(UxnBox *box, BYTE *file_data, DWORD file_size)
 {
 	BYTE version, flags; BOOL ok = TRUE, use_checksum = FALSE;
 	UINT file_checksum = 0, checksum = UXN_CHECKSUM_SEED, i, tmp; BYTE *mem;
@@ -2676,7 +2676,7 @@ use_mm_timer:
 	return 0; (void)d;
 }
 
-static void * CopyFileIntoHeapMemory(LPCSTR path, UINT *out_size)
+static void * CopyFileIntoHeapMemory(LPCSTR path, DWORD *out_size)
 {
 	BY_HANDLE_FILE_INFORMATION info; void *data = NULL;
 	HANDLE hFile = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -2684,32 +2684,47 @@ static void * CopyFileIntoHeapMemory(LPCSTR path, UINT *out_size)
 	if (hFile == INVALID_HANDLE_VALUE) return NULL;
 	if (!GetFileInformationByHandle(hFile, &info)) goto cleanup;
 	data = HeapAlloc0OrDie(info.nFileSizeLow);
-	if (!ReadFile(hFile, data, info.nFileSizeLow, (DWORD *)out_size, NULL) || *out_size != info.nFileSizeLow)
+	if (!ReadFile(hFile, data, info.nFileSizeLow, out_size, NULL) || *out_size != info.nFileSizeLow)
 		FatalBox("Read error while reading file %s", path);
 cleanup:
 	CloseHandle(hFile);
 	return data;
 }
 
-static BOOL ConvertToUxnFormat(LPCSTR out_path, LPCSTR in_path)
+static BOOL ConvertROMFileToUxnFormat(LPCSTR out_path, LPCSTR in_path)
 {
-	UINT file_size, checksum; DWORD written; int comp_size;
-	BYTE *cool, *raw = CopyFileIntoHeapMemory(in_path, &file_size);
-	HANDLE hFileOut;
+	DWORD file_size, checksum, out_size, written; int comp_size;
+	BYTE *converted, *raw = CopyFileIntoHeapMemory(in_path, &file_size);
+	HANDLE hFileOut = INVALID_HANDLE_VALUE; BOOL ok = FALSE;
+	if (!raw) return FALSE;
 	checksum = uxn_checksum(UXN_CHECKSUM_SEED, raw, file_size);
-	cool = HeapAlloc0OrDie(file_size + 13);
-	comp_size = uxn_lz_compress(cool + 13, file_size, raw, file_size);
-	if (comp_size < 0) DebugPrint("fail to compress");
-	cool[0] = 'u', cool[1] = 'x', cool[2] = 'n';
-	cool[3] = 0; /* Version tag */
-	cool[4] = 0x3; /* Flags */
-	CopyMemory(cool + 5, &checksum, 4);
-	CopyMemory(cool + 9, &file_size, 4);
+	converted = HeapAlloc0OrDie(file_size + 13);
+	converted[0] = 'u', converted[1] = 'x', converted[2] = 'n';
+	converted[3] = 0; /* Version tag */
+	converted[4] = 0x1; /* Flags */
+	if ((comp_size = uxn_lz_compress(converted + 13, file_size, raw, file_size)) >= 0)
+	{
+		/* If no error, then it was smaller than uncompressed, */
+		converted[4] |= 0x2; /* Add compression flag */
+		out_size = comp_size + 13; /* Add uncompressed size */
+		CopyMemory(converted + 9, &file_size, 4);
+	}
+	else
+	{
+		/* Compressed file was larger than original, so just use leave it uncompressed. */
+		out_size = file_size + 9;
+		CopyMemory(converted + 9, raw, file_size);
+	}
+	CopyMemory(converted + 5, &checksum, 4);
 	hFileOut = CreateFileA(out_path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-	if (hFileOut == INVALID_HANDLE_VALUE) DebugPrint("no file out");
-	if (!WriteFile(hFileOut, cool, comp_size + 13, &written, NULL)) DebugPrint("bad write");
-	CloseHandle(hFileOut);
-	return TRUE;
+	if (hFileOut == INVALID_HANDLE_VALUE) goto cleanup;
+	if (!WriteFile(hFileOut, converted, out_size, &written, NULL)) goto cleanup;
+	ok = TRUE;
+cleanup:
+	if (hFileOut != INVALID_HANDLE_VALUE) CloseHandle(hFileOut);
+	HeapFree0(raw);
+	HeapFree0(converted);
+	return ok;
 }
 
 int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
@@ -2719,7 +2734,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	ProcessHeap = GetProcessHeap();
 	ZeroMemory(&box, sizeof box);
 	box.table = VirtualAlloc(NULL, sizeof(UxnStashPtr) * (USHORT)-1, MEM_RESERVE, PAGE_NOACCESS);
-	ConvertToUxnFormat("big_oquonie.uxn", "big oquonie.rom");
+	ConvertROMFileToUxnFormat("big_oquonie.uxn", "big oquonie.rom");
 	if (LoadUxnFileByPath(&box, "big_oquonie.uxn"))
 	{
 		DebugPrint("load ok");
