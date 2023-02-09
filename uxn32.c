@@ -2685,9 +2685,8 @@ static void * CopyFileIntoHeapMemory(LPCSTR path, UINT *out_size)
 	if (hFile == INVALID_HANDLE_VALUE) return NULL;
 	if (!GetFileInformationByHandle(hFile, &info)) goto cleanup;
 	data = HeapAlloc0OrDie(info.nFileSizeLow);
-	if (!ReadFile(hFile, data, info.nFileSizeLow, NULL, NULL))
+	if (!ReadFile(hFile, data, info.nFileSizeLow, (DWORD *)out_size, NULL) || *out_size != info.nFileSizeLow)
 		FatalBox("Read error while reading file %s", path);
-	*out_size = info.nFileSizeLow;
 cleanup:
 	CloseHandle(hFile);
 	return data;
@@ -2696,19 +2695,19 @@ cleanup:
 static BOOL ConvertToUxnFormat(LPCSTR out_path, LPCSTR in_path)
 {
 	// LoadFileInto()
-	ProcessHeap = GetProcessHeap();
-	UINT file_size, hash; DWORD written;
-	BYTE *raw = CopyFileIntoHeapMemory(in_path, &file_size);
+	UINT file_size, hash; DWORD written; int comp_size;
+	BYTE *cool, *raw = CopyFileIntoHeapMemory(in_path, &file_size);
+	HANDLE hFileOut;
 	hash = uxn_checksum(UXN_CHECKSUM_SEED, raw, file_size);
-	BYTE *cool = HeapAlloc0OrDie(file_size + 13);
-	int comp_size = uxn_lz_compress(cool + 13, file_size, raw, file_size);
+	cool = HeapAlloc0OrDie(file_size + 13);
+	comp_size = uxn_lz_compress(cool + 13, file_size, raw, file_size);
 	if (comp_size < 0) DebugPrint("fail to compress");
 	cool[0] = 'u', cool[1] = 'x', cool[2] = 'n';
 	cool[3] = 0; /* Version tag */
 	cool[4] = 0x3; /* Flags */
 	CopyMemory(cool + 5, &hash, 4);
 	CopyMemory(cool + 9, &file_size, 4);
-	HANDLE hFileOut = CreateFileA(out_path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	hFileOut = CreateFileA(out_path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (hFileOut == INVALID_HANDLE_VALUE) DebugPrint("no file out");
 	if (!WriteFile(hFileOut, cool, comp_size + 13, &written, NULL)) DebugPrint("bad write");
 	CloseHandle(hFileOut);
@@ -2718,6 +2717,8 @@ static BOOL ConvertToUxnFormat(LPCSTR out_path, LPCSTR in_path)
 int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
 {
 	UxnBox box;
+	QueryPerformanceFrequency(&_perfcount_freq);
+	ProcessHeap = GetProcessHeap();
 	ZeroMemory(&box, sizeof box);
 	box.table = VirtualAlloc(NULL, sizeof(UxnStashPtr) * (USHORT)-1, MEM_RESERVE, PAGE_NOACCESS);
 	ConvertToUxnFormat("big_oquonie.uxn", "big oquonie.rom");
