@@ -507,19 +507,13 @@ static BOOL LoadUxnFile(UxnBox *box, BYTE *file_data, UINT file_size)
 		{
 			stream.next_out = mem = GetStashMemory(box, i++);
 			stream.avail_out = UXN_RAM_SIZE;
-			if (uxn_lz_expand_stream(&stream))
-			{
-				ok = FALSE;
-				break;
-			}
+			if (uxn_lz_expand_stream(&stream)) return FALSE;
 			tmp = UXN_RAM_SIZE - stream.avail_out;
 			total += tmp;
 			if (use_checksum) calc_checksum = uxn_hash(calc_checksum, mem, tmp);
 		}
-		if (stream.state || total != unzipped_size)
-		{
-			ok = FALSE;
-		}
+		/* Expansion went OK if it wasn't expecting more input bytes, and if the actual expanded size matches what was recorded in the file. */
+		ok = !stream.state && total == unzipped_size;
 	}
 	else
 	{
