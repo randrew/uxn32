@@ -479,7 +479,7 @@ static BOOL LoadFileInto(LPCSTR path, BYTE *dest, DWORD max_bytes, DWORD *bytes_
 static BOOL LoadUxnFile(UxnBox *box, BYTE *file_data, UINT file_size)
 {
 	BYTE version, flags; BOOL ok = TRUE, use_checksum = FALSE;
-	UINT file_checksum = 0, calc_checksum = UXN_HASH_SEED, i, tmp; BYTE *mem;
+	UINT file_checksum = 0, checksum = UXN_CHECKSUM_SEED, i, tmp; BYTE *mem;
 	if (file_size < 5) return FALSE;
 	file_size -= 5;
 	if (*file_data++ != 'u' || *file_data++ != 'x' || *file_data++ != 'n') return FALSE;
@@ -510,14 +510,14 @@ static BOOL LoadUxnFile(UxnBox *box, BYTE *file_data, UINT file_size)
 			if (uxn_lz_expand_stream(&stream)) return FALSE;
 			tmp = UXN_RAM_SIZE - stream.avail_out;
 			total += tmp;
-			if (use_checksum) calc_checksum = uxn_hash(calc_checksum, mem, tmp);
+			if (use_checksum) checksum = uxn_checksum(checksum, mem, tmp);
 		}
 		/* Expansion went OK if it wasn't expecting more input bytes, and if the actual expanded size matches what was recorded in the file. */
 		ok = !stream.state && total == unzipped_size;
 	}
 	else
 	{
-		if (use_checksum) calc_checksum = uxn_hash(calc_checksum, file_data, file_size);
+		if (use_checksum) checksum = uxn_checksum(checksum, file_data, file_size);
 		for (i = 0;; i++)
 		{
 			UINT start = i * UXN_RAM_SIZE;
@@ -525,7 +525,7 @@ static BOOL LoadUxnFile(UxnBox *box, BYTE *file_data, UINT file_size)
 			CopyMemory(GetStashMemory(box, i), file_data + start, MIN(file_size - start, UXN_RAM_SIZE));
 		}
 	}
-	if (use_checksum) ok = ok && file_checksum == calc_checksum;
+	if (use_checksum) ok = ok && file_checksum == checksum;
 	return ok;
 }
 
@@ -2699,7 +2699,7 @@ static BOOL ConvertToUxnFormat(LPCSTR out_path, LPCSTR in_path)
 	ProcessHeap = GetProcessHeap();
 	UINT file_size, hash; DWORD written;
 	BYTE *raw = CopyFileIntoHeapMemory(in_path, &file_size);
-	hash = uxn_hash(UXN_HASH_SEED, raw, file_size);
+	hash = uxn_checksum(UXN_CHECKSUM_SEED, raw, file_size);
 	BYTE *cool = HeapAlloc0OrDie(file_size + 13);
 	int comp_size = uxn_lz_compress(cool + 13, file_size, raw, file_size);
 	if (comp_size < 0) DebugPrint("fail to compress");
