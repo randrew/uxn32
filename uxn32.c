@@ -2728,80 +2728,7 @@ cleanup:
 	return ok;
 }
 
-int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
-{
-	UxnBox box;
-	QueryPerformanceFrequency(&_perfcount_freq);
-	ProcessHeap = GetProcessHeap();
-	ZeroMemory(&box, sizeof box);
-	box.table = VirtualAlloc(NULL, sizeof(UxnStashPtr) * (USHORT)-1, MEM_RESERVE, PAGE_NOACCESS);
-	ConvertROMFileToUxnFormat("big_oquonie.uxn", "big oquonie.rom");
-	if (LoadUxnFileByPath(&box, "big_oquonie.uxn"))
-	{
-		DebugPrint("load ok");
-	}
-	else
-	{
-		DebugPrint("load uxn error");
-	}
-	(void)instance; (void)prev_instance; (void)command_line; (void)show_code;
-	return 0;
-}
 
-#if 0
-#define IN_SIZE 1000
-#define OUT_SIZE 1000
-int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
-{
-	BYTE *input, *bufa, *bufb;
-	DWORD input_size; SIZE_T compressed_size, decompressed_size;
-	struct uxn_lz_expand_t stream;
-	int cool_size;
-	ZeroMemory(&stream, sizeof stream);
-	ProcessHeap = GetProcessHeap();
-
-	input = HeapAlloc0(5000000);
-	bufa = HeapAlloc0(5000000), bufb = HeapAlloc0(5000000);
-	if (!LoadFileInto("big oquonie.rom", input, 5000000, &input_size)) ExitProcess(0);
-	compressed_size = uxn_lz_compress((BYTE *)bufa, 5000000, (BYTE *)input, input_size);
-
-	// decompressed_size = uxn_lz_expand((BYTE *)bufb, 5000000, (BYTE *)bufa, compressed_size);
-	// int true_avail =
-	cool_size = compressed_size;
-	decompressed_size = 0;
-	stream.next_in = bufa;
-	// stream.avail_in = cool_size;
-	stream.next_out = bufb;
-
-	for (;;) {
-		stream.avail_out = OUT_SIZE;
-		if (!stream.avail_in) {
-			stream.avail_in = MIN(cool_size, IN_SIZE);
-			cool_size = MAX(0, cool_size - IN_SIZE);
-		}
-		if (!stream.avail_in && !stream.state) break;
-		if (uxn_lz_expand_stream(&stream)) DebugPrint("oh no");
-		decompressed_size += OUT_SIZE - stream.avail_out;
-	}
-
-	// if (uxn_lz_expand_stream(&stream)) DebugPrint("oh no");
-	// decompressed_size = total;
-
-	if (decompressed_size == input_size && memcmp(bufb, input, input_size) == 0) DebugPrint("same contents");
-	DebugPrint("done");
-
-	// HANDLE hFile = CreateFile("compressed.bin", GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-	// WriteFile(hFile, bufa, (DWORD)compressed_size, NULL, 0);
-	// CloseHandle(hFile);
-	(void)instance; (void)prev_instance; (void)command_line; (void)show_code;
-	return 0;
-}
-#endif
-
-
-
-
-#if 0
 int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
 {
 	WNDCLASSEX wc; HWND hWin, hParent;
@@ -2912,4 +2839,3 @@ quitting:
 	TerminateThread(hThread, 0);
 	return 0;
 }
-#endif
