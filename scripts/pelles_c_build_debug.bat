@@ -1,5 +1,6 @@
 @echo off
-if not exist uxn32.c echo Run this with the uxn32 root source directory as your working directory (not from within scripts) & pause & exit /b 1
+if not exist uxn32.c cd ..
+if not exist uxn32.c echo Run this with the uxn32 root source directory as your working directory & pause & exit /b 1
 @echo on
 
 if not exist build mkdir build
