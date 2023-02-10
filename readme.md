@@ -19,7 +19,7 @@ Features
 * Debugger with stepping, disassembly viewing and editing, memory view, and stack viewing and editing.
 * Uxn programs receive events at full speed and repaint immediately. Got a 240hz display? Now your Uxn drawing program can make use of it.
 * Pre-emptive execution, so it won't freeze up if the Uxn program goes into an infinite loop or takes a long time to process something.
-* Compiles with: Visual C++ 6.0 (VC6 1998) and later, Clang, clang-cl, GCC via Winelib, MinGW Clang, MinGW GCC, and Pelles C.
+* Compiles with: Visual C++ 6.0 (VC6 1998) and all versions up through Visual Studio 2022, Clang, clang-cl, GCC via Winelib, MinGW Clang, MinGW GCC, and Pelles C.
 
 ![](https://raw.githubusercontent.com/wiki/randrew/uxn32/uxn32-1.2-screenshot.gif)
 
