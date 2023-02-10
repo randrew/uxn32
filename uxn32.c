@@ -1533,7 +1533,7 @@ static void LoadROMFileAndStartVM(EmuWindow *d)
 	if (!lstrlen(d->rom_path) || !LoadROMIntoBox(&d->box, d->rom_path))
 	{
 		/* Can't load ROM file? Load a small ROM to display an error screen. */
-		HRSRC hInfo = FindResource(MainInstance, MAKEINTRESOURCE(IDR_FLUMMOX), TEXT("ROM"));
+		HRSRC hInfo = FindResource(MainInstance, MAKEINTRESOURCE(IDR_DEFAULT_ROM), TEXT("ROM"));
 		DWORD i, skip, to_copy, rom_size = SizeofResource(MainInstance, hInfo);
 		BYTE *data = LockResource(LoadResource(MainInstance, hInfo));
 		if (!data) return;

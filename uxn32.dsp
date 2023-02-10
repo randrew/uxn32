@@ -128,15 +128,15 @@ SOURCE=.\uxn_lz.h
 # PROP Default_Filter "ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe"
 # Begin Source File
 
-SOURCE=.\beetbug.ico
+SOURCE=.\resources\beetbug.ico
 # End Source File
 # Begin Source File
 
-SOURCE=.\flummox.rom
+SOURCE=.\resources\default.rom
 # End Source File
 # Begin Source File
 
-SOURCE=.\uxn32.ico
+SOURCE=.\resources\uxn32.ico
 # End Source File
 # End Group
 # End Target

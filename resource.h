@@ -12,7 +12,7 @@
 #define IDC_UXN32                       109
 #define IDR_MAINFRAME                   128
 #define IDI_BEETBUG                     130
-#define IDR_FLUMMOX                     131
+#define IDR_DEFAULT_ROM                 131
 #define IDM_OPENROM                     32771
 #define IDM_CLONEWINDOW                 32772
 #define IDM_TOGGLEZOOM                  32773
