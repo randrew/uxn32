@@ -26,3 +26,6 @@ CMakeLists.txt.user
 *.opt
 *.plg
 *.dsw
+
+# Generic build dir that Pelles C scripts use
+/build
