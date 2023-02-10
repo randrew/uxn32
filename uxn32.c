@@ -2303,15 +2303,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		return 0;
 	case WM_DESTROY:
 		d->running = FALSE, Update60hzTimerEnabled(d); /* it reads d->running */
-		SetHostCursorVisible(d, TRUE);
-		ResetStasher(&d->box);
-		VirtualFree(d->box.table, 0, MEM_RELEASE);
-		FreeUxnScreen(&d->screen);
-		ResetFiler(&d->filers[0]);
-		ResetFiler(&d->filers[1]);
-		if (d->hHiddenMenu) DestroyMenu(d->hHiddenMenu);
-		if (d->hBMP) DeleteObject(d->hBMP);
-		if (d->hDibDC) DeleteDC(d->hDibDC);
+		/* Audio callback might fire while we block on waiting for it to stop, so stop the audio before freeing any other memory */
 		if (d->wave_out)
 		{
 			if (d->wave_out->hWaveOut)
@@ -2321,6 +2313,15 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 			}
 			HeapFree0(d->wave_out);
 		}
+		SetHostCursorVisible(d, TRUE);
+		ResetStasher(&d->box);
+		VirtualFree(d->box.table, 0, MEM_RELEASE);
+		FreeUxnScreen(&d->screen);
+		ResetFiler(&d->filers[0]);
+		ResetFiler(&d->filers[1]);
+		if (d->hHiddenMenu) DestroyMenu(d->hHiddenMenu);
+		if (d->hBMP) DeleteObject(d->hBMP);
+		if (d->hDibDC) DeleteDC(d->hDibDC);
 		ListRemove(&emus_needing_work, d, work_link);
 		HeapFree0(d);
 		if (!--emu_window_count) PostQuitMessage(0);
