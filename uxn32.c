@@ -96,6 +96,8 @@ typedef ULONG_PTR DWORD_PTR, *PDWORD_PTR;
 
 typedef LPWSTR * WINAPI Type_CommandLineToArgvW(LPCWSTR lpCmdLine, int* pNumArgs);
 typedef LPWSTR WINAPI Type_GetCommandLineW(void);
+typedef BOOL WINAPI Type_TrackMouseEvent(LPTRACKMOUSEEVENT lpEventTrack);
+static Type_TrackMouseEvent *Ptr_TrackMouseEvent;
 
 #define ADAPTER_VBLANK 0
 /* ^ If enabled, time the Uxn "screen" device vector using D3DKMTWaitForVerticalBlankEvent. */
@@ -1247,7 +1249,8 @@ static void BindPointToLocalUxnScreen(RECT *in_screenrect, LONG scale, POINT *in
 
 static void SetHostCursorVisible(EmuWindow *d, BOOL visible)
 {
-	if (d->host_cursor == visible) return;
+	/* TODO Win95 doesn't have TrackMouseEvent, so we can't easily know when the mouse leaves the window. If we fail to load the function ptr for it from both user32.dll and the fallback implementation from comctl32.dll, for now, we'll just not hide the host mouse cursor. In the future, maybe we can poll for it. */
+	if (d->host_cursor == visible || !Ptr_TrackMouseEvent) return;
 	d->host_cursor = visible;
 	/* Correctly handle moving mouse between 2 overlapped emu windows. Causes WM_MOUSELEAVE to be generated.
 	 * If we don't do this, cursor might not appear in non-client area.
@@ -1260,7 +1263,7 @@ static void SetHostCursorVisible(EmuWindow *d, BOOL visible)
 		track.dwFlags = TME_LEAVE;
 		track.hwndTrack = d->hWnd;
 		track.dwHoverTime = 0;
-		TrackMouseEvent(&track);
+		Ptr_TrackMouseEvent(&track);
 	}
 	ShowCursor(visible);
 }
@@ -2754,6 +2757,9 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	ProcessHeap = GetProcessHeap();
 	emu = HeapAlloc0OrDie(sizeof(EmuWindow));
 	if (!SINGULAR_MODE) CopyMemory(emu->rom_path, DefaultROMPath, (lstrlen(DefaultROMPath) + 1) * sizeof(TCHAR));
+	if (!(Ptr_TrackMouseEvent = (Type_TrackMouseEvent *)GetProcAddress(GetModuleHandle(TEXT("user32.dll")), "TrackMouseEvent")))
+		Ptr_TrackMouseEvent = (Type_TrackMouseEvent *)GetProcAddress(GetModuleHandle(TEXT("comctl32.dll")), "_TrackMouseEvent");
+		/* Windows 95 won't have TrackMouseEvent, but it might have comctl32.dll, which might have a replica. */
 
 #if ADAPTER_VBLANK
 	hMod = GetModuleHandle(TEXT("gdi32.dll"));
