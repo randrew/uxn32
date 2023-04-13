@@ -1177,14 +1177,27 @@ static void UxnDeviceWrite(UxnCore *u, UINT address, UINT value)
 	devmem[address] = value;
 	if (address == VV_SCREEN + 0xE)
 	{
-		LONG x, y, width = screen->width, layer = imem[0xE] & 0x40;
-		UxnU8 *pixels = layer ? screen->fg : screen->bg;
+		LONG x, y, width = screen->width, height = screen->height, ctrl = imem[0xE];
+		UxnU8 *pixels = ctrl & 0x40 ? screen->fg : screen->bg, color = ctrl & 0x3;
 		DEVPEEK2(imem, x, y, 0x8);
-		if (x < width && y < screen->height) /* poke pixel */
-			pixels[x + y * width] = imem[0xE] & 0x3;
-		if (imem[0x6] & 0x01) DEVPOKE(imem, 0x8, x + 1); /* auto x+1 */
-		if (imem[0x6] & 0x02) DEVPOKE(imem, 0xA, y + 1); /* auto y+1 */
-		return;
+		if (ctrl & 0x80) /* Fill rect */
+		{
+			LONG i, x2 = width, y2 = height;
+			if (ctrl & 0x10) x2 = x, x = 0;
+			if (ctrl & 0x20) y2 = y, y = 0;
+			for (; y < y2; y++)
+			{
+				for (i = x; i < x2; i++) pixels[y * width + i] = color;
+			}
+		}
+		else /* Single pixel write */
+		{
+			if (x < width && y < height) /* poke pixel */
+				pixels[x + y * width] = color;
+			if (imem[0x6] & 0x01) DEVPOKE(imem, 0x8, x + 1); /* auto x+1 */
+			if (imem[0x6] & 0x02) DEVPOKE(imem, 0xA, y + 1); /* auto y+1 */
+			return;
+		}
 	}
 	if (address == VV_SCREEN + 0xF)
 	{
