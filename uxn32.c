@@ -1185,10 +1185,7 @@ static void UxnDeviceWrite(UxnCore *u, UINT address, UINT value)
 			LONG i, x2 = width, y2 = height;
 			if (ctrl & 0x10) x2 = x, x = 0;
 			if (ctrl & 0x20) y2 = y, y = 0;
-			for (; y < y2; y++)
-			{
-				for (i = x; i < x2; i++) pixels[y * width + i] = color;
-			}
+			for (; y < y2; y++) for (i = x; i < x2; i++) pixels[y * width + i] = color;
 		}
 		else /* Single pixel write */
 		{
