@@ -2292,7 +2292,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		box->core.deo = UxnDeviceWrite;
 		d->host_cursor = TRUE;
 		d->hWnd = hwnd; /* TODO cleanup reorder these assignments */
-		d->viewport_scale = 1;
+		d->viewport_scale = SINGULAR_MODE ? 2 : 1;
 		SetUxnScreenSize(&d->screen, UXN_DEFAULT_WIDTH, UXN_DEFAULT_HEIGHT);
 		d->filers[0].hFile = d->filers[0].hFind = d->filers[1].hFile = d->filers[1].hFind = INVALID_HANDLE_VALUE;
 		LoadROMFileAndStartVM(d);
