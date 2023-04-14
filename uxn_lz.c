@@ -165,7 +165,8 @@ need_more: flush:
 	return result;
 }
 
-unsigned int uxn_checksum(unsigned int seed, void *bytes, unsigned int bytes_size)
+unsigned int
+uxn_checksum(unsigned int seed, void *bytes, unsigned int bytes_size)
 {
 	unsigned int x = seed >> 16, y = seed, c;
 	unsigned char *in = bytes, *end = in + bytes_size;
