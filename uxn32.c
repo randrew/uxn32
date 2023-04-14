@@ -59,6 +59,9 @@ typedef ULONG_PTR DWORD_PTR, *PDWORD_PTR;
 #ifndef SINGULAR_MODE
 #define SINGULAR_MODE 0
 #endif
+#ifndef UXN_DEFAULT_ZOOM
+#define UXN_DEFAULT_ZOOM 1
+#endif
 #define UXN_DEFAULT_WIDTH (64 * 8)
 #define UXN_DEFAULT_HEIGHT (40 * 8)
 #define UXN_RAM_SIZE 0x10000u
@@ -2305,7 +2308,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		box->core.deo = UxnDeviceWrite;
 		d->host_cursor = TRUE;
 		d->hWnd = hwnd; /* TODO cleanup reorder these assignments */
-		d->viewport_scale = SINGULAR_MODE ? 2 : 1;
+		d->viewport_scale = UXN_DEFAULT_ZOOM;
 		SetUxnScreenSize(&d->screen, UXN_DEFAULT_WIDTH, UXN_DEFAULT_HEIGHT);
 		d->filers[0].hFile = d->filers[0].hFind = d->filers[1].hFile = d->filers[1].hFind = INVALID_HANDLE_VALUE;
 		LoadROMFileAndStartVM(d);
