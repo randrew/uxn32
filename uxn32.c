@@ -480,6 +480,7 @@ static BOOL LoadFileInto(LPCSTR path, BYTE *dest, DWORD max_bytes, DWORD *bytes_
 	return TRUE;
 }
 
+#ifdef ENABLE_LZ
 static BOOL LoadUxnFile(UxnBox *box, BYTE *file_data, DWORD file_size)
 {
 	BYTE version, flags; BOOL ok = TRUE, use_checksum = FALSE;
@@ -532,7 +533,9 @@ static BOOL LoadUxnFile(UxnBox *box, BYTE *file_data, DWORD file_size)
 	if (use_checksum) ok = ok && file_checksum == checksum;
 	return ok;
 }
+#endif
 
+#ifdef ENABLE_LZ
 static BOOL LoadUxnFileByPath(UxnBox *box, LPCSTR path)
 {
 	BY_HANDLE_FILE_INFORMATION info; BOOL ok; void *data = NULL;
@@ -548,6 +551,7 @@ cleanup:
 	if (hMap) CloseHandle(hMap);
 	return (BOOL)ok;
 }
+#endif
 
 static HFONT GetSmallFixedFont(void)
 {
@@ -2708,6 +2712,7 @@ cleanup:
 	return data;
 }
 
+#ifdef ENABLE_LZ /* Disabled until needed */
 static BOOL ConvertROMFileToUxnFormat(LPCSTR out_path, LPCSTR in_path)
 {
 	DWORD file_size, checksum, out_size, written; int comp_size;
@@ -2743,6 +2748,7 @@ cleanup:
 	HeapFree0(converted);
 	return ok;
 }
+#endif
 
 
 int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
