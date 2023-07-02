@@ -2,7 +2,6 @@
 #define NOMINMAX
 #include "resource.h"
 #include "uxn_core.h"
-#include "uxn_lz.h"
 #include <windows.h>
 #include <windowsx.h>
 #include <shellapi.h>
