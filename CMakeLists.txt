@@ -39,6 +39,7 @@ if (IS_MSVC)
         )
     string(REPLACE ";" " " MSVC_WARNING_FLAGS "${MSVC_WARNING_FLAGS}")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${MSVC_WARNING_FLAGS}")
+    set_source_files_properties(uxn_core.c PROPERTIES COMPILE_FLAGS /wd4127)
 
     # Disable incremental linking, which has been buggy for years and often
     # produces corrupt executables and debug info.
@@ -69,6 +70,6 @@ if (IS_CLANG)
     set(CMAKE_C_FLAGS_RELWITHDEBINFO "-Oz -g")
 endif ()
 
-add_executable(Uxn32 WIN32 uxn32.rc core32.c uxn32.c)
+add_executable(Uxn32 WIN32 uxn32.rc uxn_core.c uxn_lz.c uxn32.c)
 target_link_libraries(Uxn32 user32.lib gdi32.lib shell32.lib shlwapi.lib comdlg32.lib comctl32.lib winmm.lib)
 set_property(TARGET Uxn32 PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:DebugDLL>")
