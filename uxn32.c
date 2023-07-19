@@ -552,11 +552,11 @@ cleanup:
 }
 #endif
 
-static HFONT GetSmallFixedFont(scale)
+static HFONT GetSmallFixedFont(float fScale)
 {
 	static HFONT hFont;
 	if (!hFont) hFont = CreateFont(
-		8*scale, 6*scale, 0, 0, 0, 0, 0, 0, OEM_CHARSET, OUT_RASTER_PRECIS,
+		8 * fScale, 6 * fScale, 0, 0, 0, 0, 0, 0, OEM_CHARSET, OUT_RASTER_PRECIS,
 		CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, FIXED_PITCH, TEXT("Terminal"));
 	return hFont;
 }
