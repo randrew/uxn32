@@ -18,8 +18,8 @@ Features
 * Sandboxed file system access for Uxn program ROMs.
 * Debugger with stepping, disassembly viewing and editing, memory view, and stack viewing and editing.
 * Uxn programs receive events at full speed and repaint immediately. Got a 240hz display? Now your Uxn drawing program can make use of it.
-* Pre-emptive execution, so it won't freeze up if the Uxn program goes into an infinite loop, unlike the SDL2 version.
-* Compiles with: Visual C++ 6.0 (VC6 1998) and later, Clang, clang-cl, GCC via Winelib, MinGW Clang, and MinGW GCC.
+* Pre-emptive execution, so it won't freeze up if the Uxn program goes into an infinite loop or takes a long time to process something.
+* Compiles with: Visual C++ 6.0 (VC6 1998) and all versions up through Visual Studio 2022, Clang, clang-cl, GCC via Winelib, MinGW Clang, MinGW GCC, and Pelles C.
 
 ![](https://raw.githubusercontent.com/wiki/randrew/uxn32/uxn32-1.2-screenshot.gif)
 
@@ -43,7 +43,7 @@ Gamepad Keyboard Mapping
         Alt Key -> Gamepad 'B'
       Shift Key -> Gamepad 'Select'
        Home Key -> Gamepad 'Start'
-    
+
 ![](https://raw.githubusercontent.com/wiki/randrew/uxn32/uxn32-1.4-screenshot.gif)
 
 Building
@@ -76,7 +76,7 @@ If you want to use MinGW on a Linux host to produce an executable for Windows, y
 
 ### Other
 
-Building with some other system or by hand is easy. There's only one resource file, `uxn32.rc`, and two source files, `uxn32.c` and `core32.c`. You don't need any special compiler flags or preprocessor definitions. But you will need to link these libraries: `user32.lib gdi32.lib shell32.lib shlwapi.lib comdlg32.lib comctl32.lib winmm.lib`
+Building with some other system or by hand is easy. There's only one resource file, `uxn32.rc`, and three source files, `uxn32.c`, `uxn_lz.c`, and `uxn_core.c`. You don't need any special compiler flags or preprocessor definitions. But you will need to link these libraries: `user32.lib gdi32.lib shell32.lib shlwapi.lib comdlg32.lib comctl32.lib winmm.lib`
 
 Uxn32 TODO
 ----------
@@ -88,7 +88,7 @@ Uxn32 TODO
 - [x] ~~Add console output.~~
 - [x] ~~Add console input.~~
 - [x] ~~Add File, View, etc. menus.~~
-- [ ] Add toggle to show/hide menu bar.
+- [x] ~~Add toggle to show/hide menu bar.~~
 - [ ] Add preferences.
 - [x] ~~Add a graphical debugger.~~
 - [x] ~~Add "About" dialog box. (Currently sitting unused in the resources file.)~~

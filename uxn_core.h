@@ -1,7 +1,7 @@
-#ifndef __UXN_CORE32_H__
-#define __UXN_CORE32_H__
+#ifndef __UXN_CORE_H__
+#define __UXN_CORE_H__
 /*
-Copyright (c) 2022 Devine Lu Linvega, Andrew Richards
+Copyright (c) 2022-2023 Devine Lu Linvega, Andrew Richards
 
 Permission to use, copy, modify, and distribute this software for any
 purpose with or without fee is hereby granted, provided that the above
@@ -10,21 +10,21 @@ copyright notice and this permission notice appear in all copies.
 THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
 WITH REGARD TO THIS SOFTWARE.
 */
-#pragma warning(disable:4244) /* Noisy VC6 warning. Can't disable with flag */
-typedef unsigned char Uint8;
-typedef signed char Sint8;
-typedef unsigned short Uint16;
+
+typedef unsigned char UxnU8;
+typedef signed char UxnI8;
+typedef unsigned short UxnU16;
 
 typedef struct UxnStack {
-	Uint8 ptr, dat[255];
+	UxnU8 num, mem[255];
 } UxnStack;
 
 typedef struct UxnCore {
-	Uint8 *ram;
+	UxnU8 *ram;
 	UxnStack *wst, *rst;
-	Uint8 (*dei)(struct UxnCore *u, unsigned int address);
+	UxnU8 (*dei)(struct UxnCore *u, unsigned int address);
 	void (*deo)(struct UxnCore *u, unsigned int address, unsigned int value);
-	Uint16 pc, fault_code;
+	UxnU16 pc, fault;
 } UxnCore;
 
 #define UXN_FAULT_DONE 1
@@ -35,13 +35,17 @@ typedef struct UxnCore {
 /* Runs up to 'limit' number of Uxn instructions.
    Returns limit - (number of instructions executed).
    Execution starts at address 'u->pc', so set it (or leave it) as needed.
-   `u->fault_code` should be set to 0 before calling.
+   `u->fault` should be set to 0 before calling.
 
-   Upon returning, `u->fault_code` indicates the reason execution ended:
+   After returning, `u->fault` indicates the reason execution ended:
      0: Instruction limit was reached before executing a halt instruction.
         The program needs to execute more before it finishes.
      1: The program halted normally after executing a halt instruction.
-     x: The program halted after an error was encountered. */
+     x: The program halted after an error was encountered.
+
+   `u->ram` should point to a buffer 0x10001 bytes in size. The extra byte
+   prevents 16-bit POKE and PEEK instructions with address 0xFFFF going out
+   of bounds. Uxn does not wrap those high byte accesses to 0x0. */
 unsigned int UxnExec(UxnCore *u, unsigned int limit);
 
 #endif
