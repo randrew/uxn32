@@ -1209,19 +1209,21 @@ static void UxnDeviceWrite(UxnCore *u, UINT address, UINT value)
 		UINT x, y, addr, i, tmp, advance = imem[0x6], sprite = imem[0xF];
 		UINT n = advance >> 4, dx = advance << 3 & 8, dy = advance << 2 & 8;
 		UINT twobpp = sprite >> 7 & 1, daddr = (advance & 0x4) << (twobpp + 1);
-		int color = sprite & 0xF, flipx = sprite & 0x10, flipy = sprite & 0x20;
+		int flipx = sprite & 0x10, fx = flipx ? -1 : 1;
+		int flipy = sprite & 0x20, fy = flipy ? -1 : 1;
+		int color = sprite & 0xF;
 		UxnU8 *layer_pixels = (sprite & 0x40) ? screen->fg : screen->bg;
 		DEVPEEK2(imem, x, y, 0x8);
 		DEVPEEK(imem, addr, 0xC);
-		tmp = x + dx; DEVPOKE(imem, 0x8, tmp);
-		tmp = y + dy; DEVPOKE(imem, 0xA, tmp);
-		for (i = 0; i <= n; i++, x += dy, y += dx)
+		tmp = x + dx * fx; DEVPOKE(imem, 0x8, tmp);
+		tmp = y + dy * fy; DEVPOKE(imem, 0xA, tmp);
+		for (i = 0; i <= n; i++, x += dy * fx, y += dx * fy)
 		{
 			if ((tmp = addr, addr += daddr) >= UXN_RAM_SIZE) break;
 			DrawUxnSprite(screen, layer_pixels, x, y, &u->ram[tmp], color, flipx, flipy, twobpp);
 		}
 		DEVPOKE(imem, 0xC, addr);
-		return; /* TODO some perf warning if drawing same sprite redundantly on top of itself? */
+		return;
 	}
 	UxnDeviceWrite_Cold(box, address, value);
 }
