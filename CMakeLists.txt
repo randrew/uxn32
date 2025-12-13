@@ -35,6 +35,7 @@ if (IS_MSVC)
         /wd4946 # reinterpret cast used between related types
         /wd4371 # layout of class may have changed from previous version of compiler
         /wd5045 # spectre mitigation would have been used with /Qspectre
+        /wd4191 # unsafe conversion from 'FARPROC' to 'some_func()' (avoiding this requires extra void* boilerplate)
         /wd4623 /wd4625 /wd4626 /wd5026 /wd5027 # C++ OOP garbage
         )
     string(REPLACE ";" " " MSVC_WARNING_FLAGS "${MSVC_WARNING_FLAGS}")
