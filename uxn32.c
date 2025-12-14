@@ -1110,17 +1110,38 @@ static void UxnDeviceWrite_Cold(UxnBox *box, UINT address, UINT value)
 		case 0x3:
 		{
 			UINT offset, i; BYTE *ram;
-			struct { USHORT size, a_slot, a_offset, b_slot, b_offset; } params = {0};
 			DEVPEEK(imem, offset, 0x2);
-			if (offset > UXN_RAM_SIZE - (1 + sizeof params)) goto stasher_fault;
-			for (ram = box->core.ram + 1 + offset, i = 0; i < sizeof params / sizeof(USHORT); i++, ram += 2)
-				((USHORT *)&params)[i] = GET_16BIT(ram);
-			if (params.a_offset + params.size > UXN_RAM_SIZE ||
-			    params.b_offset + params.size > UXN_RAM_SIZE) goto stasher_fault;
-			CopyMemory(GetStashMemory(box, params.b_slot) + params.b_offset,
-			           GetStashMemory(box, params.a_slot) + params.a_offset, params.size);
+			/* TODO this are quick hack implementations for 2025 uxn update WIP testing */
+			switch (box->core.ram[offset++])
+			{
+			case 0: /* Fill */
+			{
+				struct { USHORT size, slot, offset; BYTE value; } params = {0};
+				if (offset > UXN_RAM_SIZE - sizeof params) goto stasher_fault;
+				for (ram = box->core.ram + offset, i = 0; i < 3; i++, ram += 2)
+					(&params.size)[i] = GET_16BIT(ram);
+				params.value = *ram;
+				if (params.offset + params.size > UXN_RAM_SIZE) goto stasher_fault;
+				FillMemory(GetStashMemory(box, params.slot) + params.offset, params.size, params.value);
+				break;
+			}
+			case 1: /* Copy from left */
+			case 2: /* Copy from right */
+			{
+				struct { USHORT size, a_slot, a_offset, b_slot, b_offset; } params = {0};
+				if (offset > UXN_RAM_SIZE - sizeof params) goto stasher_fault;
+				for (ram = box->core.ram + offset, i = 0; i < sizeof params / sizeof(USHORT); i++, ram += 2)
+					((USHORT *)&params)[i] = GET_16BIT(ram);
+				if (params.a_offset + params.size > UXN_RAM_SIZE ||
+					params.b_offset + params.size > UXN_RAM_SIZE) goto stasher_fault;
+				MoveMemory(GetStashMemory(box, params.b_slot) + params.b_offset,
+						   GetStashMemory(box, params.a_slot) + params.a_offset, params.size);
+				break;
+			}
+			}
 			break;
 			stasher_fault: box->core.fault = UXN_FAULT_STASHER; break;
+			/* TODO should be system fault, not stasher fault, now. */
 		}
 
 		case 0x4: box->work_stack.num = (UxnU8)value; break;
