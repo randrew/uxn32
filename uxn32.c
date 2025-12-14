@@ -743,7 +743,7 @@ static DWORD FileDevWrite(UxnFiler *f, char *src, DWORD src_len, int flags)
 	{
 		int append = flags & 0x01;
 		ResetFiler(f);
-		f->hFile = CreateFile(f->path, GENERIC_WRITE, FILE_SHARE_READ, NULL, append ? OPEN_ALWAYS : CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+		f->hFile = CreateFile(f->path, append ? FILE_APPEND_DATA : GENERIC_WRITE, FILE_SHARE_READ, NULL, append ? OPEN_ALWAYS : CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 	}
 	if (f->hFile == INVALID_HANDLE_VALUE) return 0;
 	f->state = FileDevState_Writing;
