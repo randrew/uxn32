@@ -64,7 +64,7 @@ The easiest way to develop Uxn32 from within Linux is to use Winelib. This lets 
 Make sure you have Wine installed, and also either gcc or clang installed, then do something like:
 
 ```sh
-winemaker --wine32 uxn32.dsp
+winemaker uxn32.dsp
 make
 ```
 
