@@ -13,7 +13,7 @@ WITH REGARD TO THIS SOFTWARE.
 
 /*	a,b,c: general use.  bs: byte/short bool. src, dst: stack ptrs, swapped in return mode.
 	pc: program counter. snum: pointer to src stack num. knum: "keep mode" copy of src stack num.
-	x,y: macro in params. j,k: macro temp variables. o: macro out param. */
+	x,y: macro in params. j,k: macro temp variables. m: RAM access wrap mask. o: macro out param. */
 
 #define PUSH8(s, x) { s->mem[j = s->num] = (x); s->num = j + 1 & 0xFF; }
 #define PUSH16(s, x) { j = s->num; k = (x); s->mem[j] = k >> 8; s->mem[j + 1 & 0xFF] = k; s->num = j + 2 & 0xFF; }
@@ -21,9 +21,9 @@ WITH REGARD TO THIS SOFTWARE.
 #define POP8(o) { o = src->mem[*snum = *snum - 1 & 0xFF]; }
 #define POP16(o) { j = *snum; o = src->mem[j - 1 & 0xFF]; o += src->mem[j = j - 2 & 0xFF] << 8; *snum = j; }
 #define POP(o) { if(bs) POP16(o) else POP8(o) }
-#define POKE(x, y) { if(bs) { u->ram[(x)] = (y) >> 8; u->ram[(x) + 1 & 0xFFFF] = (y); } else u->ram[(x)] = y; }
-#define PEEK16(o, x) { o = (u->ram[(x)] << 8) + u->ram[(x) + 1 & 0xFFFF]; }
-#define PEEK(o, x) { if(bs) PEEK16(o, x) else o = u->ram[(x)]; }
+#define POKE(x, y, m) { if(bs) { u->ram[(x)] = (y) >> 8; u->ram[(x) + 1 & m] = (y); } else u->ram[(x)] = y; }
+#define PEEK16(o, x, m) { o = (u->ram[(x)] << 8) + u->ram[(x) + 1 & m]; }
+#define PEEK(o, x, m) { if(bs) PEEK16(o, x, m) else o = u->ram[(x)]; }
 #define DEVR(o, x) { o = u->dei(u, x); if(bs) o = (o << 8) + u->dei(u, ((x) + 1) & 0xFF); }
 #define DEVW(x, y) { if(bs) { u->deo(u, (x), (y) >> 8); u->deo(u, ((x) + 1) & 0xFF, (y)); } else u->deo(u, x, (y)); }
 #define JUMP(x) { if(bs) pc = (x); else pc += (UxnI8)(x); }
@@ -48,12 +48,12 @@ UxnExec(UxnCore *u, unsigned int limit)
 		switch(u->ram[pc++]) {
 		/* BRK */ case 0x00: u->fault = 1; goto done;
 		/* JCI */ case 0x20: snum = &u->wst->num, src = u->wst; POP8(b) if(b) goto JMI; pc += 2; break;
-		/* JMI */ case 0x40: JMI: PEEK16(a, pc) pc += a + 2; break;
+		/* JMI */ case 0x40: JMI: PEEK16(a, pc, 0xFFFF) pc += a + 2; break;
 		/* JSI */ case 0x60: PUSH16(u->rst, pc + 2) goto JMI;
 		/* LIT */ case 0x80: a = u->ram[pc++]; PUSH8(u->wst, a); break;
-		          case 0xA0: PEEK16(a, pc) PUSH16(u->wst, a) pc += 2; break;
+		          case 0xA0: PEEK16(a, pc, 0xFFFF) PUSH16(u->wst, a) pc += 2; break;
 		          case 0xC0: a = u->ram[pc++]; PUSH8(u->rst, a); break;
-		          case 0xE0: PEEK16(a, pc) PUSH16(u->rst, a) pc += 2; break;
+		          case 0xE0: PEEK16(a, pc, 0xFFFF) PUSH16(u->rst, a) pc += 2; break;
 		/* INC */ MODE(0x01, POP(a) PUSH(src, a + 1))
 		/* POP */ MODE(0x02, POP(a))
 		/* NIP */ MODE(0x03, POP(a) POP(b) PUSH(src, a))
@@ -69,12 +69,12 @@ UxnExec(UxnCore *u, unsigned int limit)
 		/* JCN */ MODE(0x0D, POP(a) POP8(b) if(b) JUMP(a))
 		/* JSR */ MODE(0x0E, POP(a) PUSH16(dst, pc) JUMP(a))
 		/* STH */ MODE(0x0F, POP(a) PUSH(dst, a))
-		/* LDZ */ MODE(0x10, POP8(a) PEEK(b, a) PUSH(src, b))
-		/* STZ */ MODE(0x11, POP8(a) POP(b) POKE(a, b))
-		/* LDR */ MODE(0x12, POP8(a) b = pc + (UxnI8)a & 0xFFFF; PEEK(c, b) PUSH(src, c))
-		/* STR */ MODE(0x13, POP8(a) POP(b) c = pc + (UxnI8)a & 0xFFFF; POKE(c, b))
-		/* LDA */ MODE(0x14, POP16(a) PEEK(b, a) PUSH(src, b))
-		/* STA */ MODE(0x15, POP16(a) POP(b) POKE(a, b))
+		/* LDZ */ MODE(0x10, POP8(a) PEEK(b, a, 0xFF) PUSH(src, b))
+		/* STZ */ MODE(0x11, POP8(a) POP(b) POKE(a, b, 0xFF))
+		/* LDR */ MODE(0x12, POP8(a) b = pc + (UxnI8)a & 0xFFFF; PEEK(c, b, 0xFFFF) PUSH(src, c))
+		/* STR */ MODE(0x13, POP8(a) POP(b) c = pc + (UxnI8)a & 0xFFFF; POKE(c, b, 0xFFFF))
+		/* LDA */ MODE(0x14, POP16(a) PEEK(b, a, 0xFFFF) PUSH(src, b))
+		/* STA */ MODE(0x15, POP16(a) POP(b) POKE(a, b, 0xFFFF))
 		/* DEI */ MODE(0x16, POP8(a) DEVR(b, a) PUSH(src, b))
 		/* DEO */ MODE(0x17, POP8(a) POP(b) DEVW(a, b) if(u->fault) goto done;)
 		/* ADD */ MODE(0x18, POP(a) POP(b) PUSH(src, b + a))
