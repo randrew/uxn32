@@ -563,7 +563,7 @@ static const UxnU8 SpriteBlendingTable[5][16] = {
 	{0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3},
 	{1, 2, 3, 1, 1, 2, 3, 1, 1, 2, 3, 1, 1, 2, 3, 1},
 	{2, 3, 1, 2, 2, 3, 1, 2, 2, 3, 1, 2, 2, 3, 1, 2},
-	{1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0}};
+	{0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0}};
 
 static void DrawUxnSprite(UxnScreen *p, UxnU8 *layer_pixels, UxnU16 x, UxnU16 y, UxnU8 *sprite, int color, int flipx, int flipy, int twobpp)
 {
