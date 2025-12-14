@@ -1018,8 +1018,8 @@ static UxnU8 UxnDeviceRead(UxnCore *u, UINT address)
 
 	switch (address)
 	{
-	case VV_SYSTEM|0x2: return box->work_stack.num;
-	case VV_SYSTEM|0x3: return box->ret_stack.num;
+	case VV_SYSTEM|0x4: return box->work_stack.num;
+	case VV_SYSTEM|0x5: return box->ret_stack.num;
 
 	case VV_SCREEN|0x2: return emu->screen.width >> 8;
 	case VV_SCREEN|0x3: return emu->screen.width;
@@ -1123,6 +1123,9 @@ static void UxnDeviceWrite_Cold(UxnBox *box, UINT address, UINT value)
 			stasher_fault: box->core.fault = UXN_FAULT_STASHER; break;
 		}
 
+		case 0x4: box->work_stack.num = (UxnU8)value; break;
+		case 0x5: box->ret_stack.num = (UxnU8)value; break;
+#if 0 /* TODO: Setting window title has been moved to the 'metadata' stuff. Need to reimplement it there */
 		case 0x5: /* Set window title. Limit to 256 chars. */
 		{
 			BYTE *ram = GetStashMemory(box, 0); DWORD offset, i, n;
@@ -1130,6 +1133,7 @@ static void UxnDeviceWrite_Cold(UxnBox *box, UINT address, UINT value)
 				if (!ram[i++]) { SetWindowTextA(emu->hWnd, (CHAR *)ram + offset); break; }
 			break;
 		}
+#endif
 		case 0xE: box->core.fault = UXN_FAULT_DEBUG; break;
 		case 0xF: box->core.fault = UXN_FAULT_QUIT; break;
 		default: if (port > 0x7 && port < 0xE)
