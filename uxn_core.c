@@ -21,8 +21,8 @@ WITH REGARD TO THIS SOFTWARE.
 #define POP8(o) { o = src->mem[*snum = *snum - 1 & 0xFF]; }
 #define POP16(o) { j = *snum; o = src->mem[j - 1 & 0xFF]; o += src->mem[j = j - 2 & 0xFF] << 8; *snum = j; }
 #define POP(o) { if(bs) POP16(o) else POP8(o) }
-#define POKE(x, y) { if(bs) { u->ram[(x)] = (y) >> 8; u->ram[(x) + 1] = (y); } else u->ram[(x)] = y; }
-#define PEEK16(o, x) { o = (u->ram[(x)] << 8) + u->ram[(x) + 1]; }
+#define POKE(x, y) { if(bs) { u->ram[(x)] = (y) >> 8; u->ram[(x) + 1 & 0xFFFF] = (y); } else u->ram[(x)] = y; }
+#define PEEK16(o, x) { o = (u->ram[(x)] << 8) + u->ram[(x) + 1 & 0xFFFF]; }
 #define PEEK(o, x) { if(bs) PEEK16(o, x) else o = u->ram[(x)]; }
 #define DEVR(o, x) { o = u->dei(u, x); if(bs) o = (o << 8) + u->dei(u, ((x) + 1) & 0xFF); }
 #define DEVW(x, y) { if(bs) { u->deo(u, (x), (y) >> 8); u->deo(u, ((x) + 1) & 0xFF, (y)); } else u->deo(u, x, (y)); }

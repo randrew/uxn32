@@ -65,8 +65,6 @@ typedef ULONG_PTR DWORD_PTR, *PDWORD_PTR;
 #define UXN_DEFAULT_HEIGHT (40 * 8)
 #define UXN_RAM_SIZE 0x10000u
 /* ^ Memory normally usable to the Uxn VM and programs. */
-#define UXN_RAM_PAD_SIZE 0x1u
-/* ^ Extra byte of RAM that stops a Uxn 16-bit POKE/PEEK op at 0xFFFF doing evil things. */
 #define UXN_ROM_OFFSET 0x0100u
 /* ^ Start location in Uxn RAM where a loaded 'ROM' file is copied to. */
 #define UXN_SAMPLE_RATE 44100
@@ -218,7 +216,6 @@ static void CutRectForWindow(RECT *prect, int dir, int length, HWND window)
 
 typedef struct UxnStashFooter
 {
-	BYTE secret_byte[UXN_RAM_PAD_SIZE]; /* Uxn VM can read and write this byte (1 byte after 64k main RAM) */
 	USHORT slot;
 	ListLink link;
 } UxnStashFooter;
@@ -465,7 +462,7 @@ static void CopyStasher(UxnBox *dst, UxnBox *src)
 	UxnStashFooter *s;
 	ResetStasher(dst);
 	for (s = ListFront(&src->stashes, UxnStashFooter, link); s; s = ListNext(s, UxnStashFooter, link))
-		CopyMemory(GetStashMemory(dst, s->slot), STASH_MetaToRAM(s), UXN_RAM_SIZE + UXN_RAM_PAD_SIZE);
+		CopyMemory(GetStashMemory(dst, s->slot), STASH_MetaToRAM(s), UXN_RAM_SIZE);
 	dst->core.ram = GetStashMemory(dst, 0);
 }
 
