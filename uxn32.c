@@ -70,7 +70,6 @@ typedef ULONG_PTR DWORD_PTR, *PDWORD_PTR;
 #define UXN_SAMPLE_RATE 44100
 #define UXN_VOICES 4
 
-#define UXN_FAULT_STASHER 253
 #define UXN_FAULT_DEBUG 254
 #define UXN_FAULT_QUIT 255
 
@@ -93,6 +92,7 @@ typedef ULONG_PTR DWORD_PTR, *PDWORD_PTR;
 #define DEVPOKE2(d, a, v1, v2) (DEVPOKE(d, a, v1), DEVPOKE(d, (a) + 2, v2))
 #define GET_16BIT(d) ((d)[0] << 8 | (d)[1])
 #define DEVINDEX(device, base) (((device) - (base)) >> 4)
+#define WRAPREAD_16BIT(o, ram, addr_u16) ((o) = (ram)[addr_u16++] << 8, (o) |= (ram)[addr_u16++])
 
 typedef LPWSTR * WINAPI Type_CommandLineToArgvW(LPCWSTR lpCmdLine, int* pNumArgs);
 typedef LPWSTR WINAPI Type_GetCommandLineW(void);
@@ -1109,39 +1109,50 @@ static void UxnDeviceWrite_Cold(UxnBox *box, UINT address, UINT value)
 		{
 		case 0x3:
 		{
-			UINT offset, i; BYTE *ram;
-			DEVPEEK(imem, offset, 0x2);
+			USHORT cursor, i; BYTE *ram = box->core.ram, cmd;
+			DEVPEEK(imem, cursor, 0x2);
 			/* TODO this are quick hack implementations for 2025 uxn update WIP testing */
-			switch (box->core.ram[offset++])
+			switch (cmd = ram[cursor++])
 			{
-			case 0: /* Fill */
+			case 0: /* Fill/memset. Might need to split into two bulk operations due to 16-bit address wrapping. */
 			{
 				struct { USHORT size, slot, offset; BYTE value; } params = {0};
-				if (offset > UXN_RAM_SIZE - sizeof params) goto stasher_fault;
-				for (ram = box->core.ram + offset, i = 0; i < 3; i++, ram += 2)
-					(&params.size)[i] = GET_16BIT(ram);
-				params.value = *ram;
-				if (params.offset + params.size > UXN_RAM_SIZE) goto stasher_fault;
-				FillMemory(GetStashMemory(box, params.slot) + params.offset, params.size, params.value);
+				int remaining, size1, size2;
+				for (i = 0; i < 3; i++) WRAPREAD_16BIT((&params.size)[i], ram, cursor);
+				params.value = ram[cursor++];
+				ram = GetStashMemory(box, params.slot);
+				remaining = UXN_RAM_SIZE - params.offset;
+				size1 = remaining < params.size ? remaining : params.size;
+				size2 = params.size - size1;
+				FillMemory(ram + params.offset, size1, params.value);
+				if (size2) FillMemory(ram, size2, params.value);
 				break;
 			}
-			case 1: /* Copy from left */
-			case 2: /* Copy from right */
+			/* "Copy from left" and "Copy from right": Uxn defines these strange memcpy/memmove operations with two different "directions" based on incrementing or decrementing a loop index in the emulator implementation code. I don't know why it was done this way, because it's slow and requires more implementation code paths, and requires more code paths in the ROM usage code, but that's how it is. This used to be shorter and easier to understand with the older Uxn specification, but now it's a bit of a hairball. */
+			case 1: case 2:
 			{
 				struct { USHORT size, a_slot, a_offset, b_slot, b_offset; } params = {0};
-				if (offset > UXN_RAM_SIZE - sizeof params) goto stasher_fault;
-				for (ram = box->core.ram + offset, i = 0; i < sizeof params / sizeof(USHORT); i++, ram += 2)
-					((USHORT *)&params)[i] = GET_16BIT(ram);
-				if (params.a_offset + params.size > UXN_RAM_SIZE ||
-					params.b_offset + params.size > UXN_RAM_SIZE) goto stasher_fault;
-				MoveMemory(GetStashMemory(box, params.b_slot) + params.b_offset,
+				for (i = 0; i < sizeof params / sizeof(USHORT); i++) WRAPREAD_16BIT((&params.size)[i], ram, cursor);
+				/* The case where a and b don't overlap, but one or both have a wrap, is hairy and I don't want to figure out how to implement it right now. Instead, just send that case down the slow byte-by-byte path. */
+				if (params.a_slot == params.b_slot || /* Same slot: might overlap, so use slow byte-by-byte path */
+					params.a_offset + params.size > UXN_RAM_SIZE ||
+					params.b_offset + params.size > UXN_RAM_SIZE) /* Overflow past end of memory: slow byte-by-byte path */
+				{
+					BYTE *a_ram = GetStashMemory(box, params.a_slot), *b_ram = GetStashMemory(box, params.b_slot);
+					USHORT a_i = params.a_offset, b_i = params.b_offset, a_e = a_i + params.size;
+					if (cmd == 1) /* "Copy from left" */
+						for (; a_i != a_e;) b_ram[b_i++] = a_ram[a_i++];
+					else /* "Copy from right" */
+						for (b_i += params.size; a_i != a_e;) b_ram[--b_i] = a_ram[--a_e];
+					break;
+				}
+				/* Fast path: non-overlapping memory */
+				CopyMemory(GetStashMemory(box, params.b_slot) + params.b_offset,
 						   GetStashMemory(box, params.a_slot) + params.a_offset, params.size);
 				break;
 			}
 			}
 			break;
-			stasher_fault: box->core.fault = UXN_FAULT_STASHER; break;
-			/* TODO should be system fault, not stasher fault, now. */
 		}
 
 		case 0x4: box->work_stack.num = (UxnU8)value; break;
@@ -1846,7 +1857,6 @@ static void UpdateBeetbugStuff(HWND hWnd, BeetbugWin *d)
 		{
 		case UXN_FAULT_DONE: text = TEXT("Break"); break;
 		/* case 127: text = TEXT("Stack debris"); break; */ /* TODO search debris */
-		case UXN_FAULT_STASHER: text = TEXT("Stasher fault"); break;
 		case UXN_FAULT_DEBUG: text = TEXT("Debug device break"); break;
 		case UXN_FAULT_QUIT: text = TEXT("Program requested exit"); break;
 		}
