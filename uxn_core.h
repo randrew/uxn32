@@ -28,9 +28,6 @@ typedef struct UxnCore {
 } UxnCore;
 
 #define UXN_FAULT_DONE 1
-#define UXN_FAULT_STACK_UNDERFLOW 2
-#define UXN_FAULT_STACK_OVERFLOW 3
-#define UXN_FAULT_DIVIDE_BY_ZERO 4
 
 /* Runs up to 'limit' number of Uxn instructions.
    Returns limit - (number of instructions executed).
