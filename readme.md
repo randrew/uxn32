@@ -70,7 +70,7 @@ make
 
 Then run it with `wine Uxn32.exe`. You can use gdb to debug it with `winedbg Uxn32.exe`. You might want to tweak the compiler flags in the generated Makefile to change optimization and debug symbol generation settings.
 
-<sub>(Actually, if you use clang as your compiler with `winegcc`, and you have `lld` installed, you can manually invoke `winegcc` while adding the flags `-b i386-pc-windows-msvc -Wl,/safeseh:no` and then it *will* output a `PE` executable that will run on Windows. But it will probably only run on Windows 7 and later, because it links with `ucrtbase.dll`.)</sub>
+<sub>(Actually, if you use clang as your compiler with `winegcc`, and you have `lld` installed, you can manually invoke `winegcc` while adding the flags `-b i386-pc-windows-msvc -Wl,/safeseh:no` and then it *will* output a `PE` executable that will run on Windows. But it will probably only run on Windows 7 and later, because it links with `ucrtbase.dll`. Also, you will need to add `--wine32` to the `winemaker` invocation, so that the makefile is targeting 32-bit Windows and will work with the `i386-pc-windows-msvc` option.)</sub>
 
 If you want to use MinGW on a Linux host to produce an executable for Windows, you can do a similar invocation by hand, or try using CMake.
 
