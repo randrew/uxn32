@@ -15,11 +15,11 @@ WITH REGARD TO THIS SOFTWARE.
 	pc: program counter. snum: pointer to src stack num. knum: "keep mode" copy of src stack num.
 	x,y: macro in params. j,k: macro temp variables. m: RAM access wrap mask. o: macro out param. */
 
-#define PUSH8(s, x) { s->mem[j = s->num] = (x); s->num = j + 1 & 0xFF; }
-#define PUSH16(s, x) { j = s->num; k = (x); s->mem[j] = k >> 8; s->mem[j + 1 & 0xFF] = k; s->num = j + 2 & 0xFF; }
+#define PUSH8(s, x) { s->mem[s->num++] = (x); }
+#define PUSH16(s, x) { j = s->num; k = (x); s->mem[j++] = k >> 8; s->mem[j++] = k; s->num = j; }
 #define PUSH(s, x) { if(bs) PUSH16(s, (x)) else PUSH8(s, (x)) }
-#define POP8(o) { o = src->mem[*snum = *snum - 1 & 0xFF]; }
-#define POP16(o) { j = *snum; o = src->mem[j - 1 & 0xFF]; o += src->mem[j = j - 2 & 0xFF] << 8; *snum = j; }
+#define POP8(o) { o = src->mem[--*snum]; }
+#define POP16(o) { j = *snum; o = src->mem[--j]; o += src->mem[--j] << 8; *snum = j; }
 #define POP(o) { if(bs) POP16(o) else POP8(o) }
 #define POKE(x, y, m) { if(bs) { u->ram[(x)] = (y) >> 8; u->ram[(x) + 1 & m] = (y); } else u->ram[(x)] = y; }
 #define PEEK16(o, x, m) { o = (u->ram[(x)] << 8) + u->ram[(x) + 1 & m]; }
@@ -41,8 +41,8 @@ WITH REGARD TO THIS SOFTWARE.
 unsigned int
 UxnExec(UxnCore *u, unsigned int limit)
 {
-	unsigned int a, b, c, j, k; UxnU16 pc = u->pc;
-	UxnU8 knum, *snum; UxnStack *src, *dst;
+	unsigned int a, b, c, k; UxnU16 pc = u->pc;
+	UxnU8 j, knum, *snum; UxnStack *src, *dst;
 	while(limit) {
 		limit--;
 		switch(u->ram[pc++]) {
@@ -80,7 +80,7 @@ UxnExec(UxnCore *u, unsigned int limit)
 		/* ADD */ MODE(0x18, POP(a) POP(b) PUSH(src, b + a))
 		/* SUB */ MODE(0x19, POP(a) POP(b) PUSH(src, b - a))
 		/* MUL */ MODE(0x1A, POP(a) POP(b) PUSH(src, b * a))
-		/* DIV */ MODE(0x1B, POP(a) POP(b) a = a ? b / a : 0; PUSH(src, a))
+		/* DIV */ MODE(0x1B, POP(a) POP(b) c = a ? b / a : 0; PUSH(src, c))
 		/* AND */ MODE(0x1C, POP(a) POP(b) PUSH(src, b & a))
 		/* ORA */ MODE(0x1D, POP(a) POP(b) PUSH(src, b | a))
 		/* EOR */ MODE(0x1E, POP(a) POP(b) PUSH(src, b ^ a))
