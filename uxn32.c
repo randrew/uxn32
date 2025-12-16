@@ -1386,7 +1386,7 @@ static void OpenBeetbugWindow(EmuWindow *emu, BOOL force)
 	{
 		emu->beetbugHWnd = CreateWindowEx(
 			0, BeetbugWinClass, TEXT("Beetbug"), WS_OVERLAPPEDWINDOW,
-			CW_USEDEFAULT, CW_USEDEFAULT, 530, 395,
+			CW_USEDEFAULT, CW_USEDEFAULT, 540, 395,
 			emu->hWnd, NULL, MainInstance, emu);
 	}
 	if (!IsWindowVisible(emu->beetbugHWnd)) ShowWindow(emu->beetbugHWnd, SW_SHOW);
