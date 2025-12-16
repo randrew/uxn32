@@ -1441,18 +1441,6 @@ static void RunUxn(EmuWindow *d, UINT steps, BOOL initial)
 	}
 	if (u->fault)
 	{
-		UINT last_addr = ((UINT)u->pc - 1) % UXN_RAM_SIZE, last_op = u->ram[last_addr], fault_handler;
-		DEVPEEK(d->box.device_memory, fault_handler, 0x0);
-		if (fault_handler && u->fault <= UXN_FAULT_DONE) /* Uxn core fault types */
-		{
-			u->wst->num = 4;
-			u->wst->mem[0] = last_addr >> 8, u->wst->mem[1] = last_addr;
-			u->wst->mem[2] = last_op;
-			u->wst->mem[3] = u->fault - 1;
-			u->fault = 0;
-			u->pc = fault_handler;
-			goto residual;
-		}
 		if (u->fault == UXN_FAULT_DONE) goto completed;
 		PauseVM(d);
 		/* This particular fault code means ROM program requested to 'quit'. What should we do?
