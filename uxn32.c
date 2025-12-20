@@ -42,6 +42,13 @@ typedef ULONG_PTR DWORD_PTR, *PDWORD_PTR;
 #ifndef MAPVK_VK_TO_CHAR
 #define MAPVK_VK_TO_CHAR (2)
 #endif
+#ifndef WM_DPICHANGED
+#define WM_DPICHANGED 0x02E0
+#endif
+#ifndef USER_DEFAULT_SCREEN_DPI
+#define USER_DEFAULT_SCREEN_DPI 96
+#endif
+
 
 #define OFFSET_OF(s, m) ((SIZE_T)&(((s*)0)->m))
 #define OUTER_OF(outer, type, field) ((type *) ((char *)(outer) - OFFSET_OF(type, field)))
@@ -125,6 +132,17 @@ typedef LONG WINAPI Type_D3DKMTWaitForVerticalBlankEvent(CONST D3DKMT_WAITFORVER
 static Type_D3DKMTWaitForVerticalBlankEvent *Ptr_D3DKMTWaitForVerticalBlankEvent;
 #endif
 
+typedef BOOL WINAPI Type_SetProcessDpiAwarenessContext(void *value);
+typedef UINT WINAPI Type_GetDpiForWindow(HWND hwnd);
+static Type_GetDpiForWindow *Ptr_GetDpiForWindow;
+static UINT Fallback_GetDpiForWindow(HWND hwnd) { (void)hwnd; return USER_DEFAULT_SCREEN_DPI; }
+typedef UINT WINAPI Type_GetDpiForSystem(void);
+static Type_GetDpiForSystem *Ptr_GetDpiForSystem;
+
+#ifndef DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+#define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 (void *)-4)
+#endif
+
 static LARGE_INTEGER _perfcount_freq;
 static LONGLONG ExecutionTimeLimit;
 #define RepaintTimeLimit ExecutionTimeLimit
@@ -136,6 +154,7 @@ static LPWSTR *CmdLineArgs; static int CmdLineArgCount;
 static BOOL BreakOnInitVector;
 static HANDLE VBlankMutex, ResumeTimerEvent;
 static HANDLE ProcessHeap;
+static DWORD WindowDpiTls;
 
 static LONGLONG LongLongMulDiv(LONGLONG value, LONGLONG numer, LONGLONG denom)
 {
@@ -214,6 +233,28 @@ static void CutRectForWindow(RECT *prect, int dir, int length, HWND window)
 	MoveWindowRect(window, &r, TRUE);
 }
 
+#define DPI(x) MulDiv((x), (int)(INT_PTR)TlsGetValue(WindowDpiTls), USER_DEFAULT_SCREEN_DPI)
+static SIZE DPISIZE(SIZE size)
+{
+	int dpi = (int)(INT_PTR)TlsGetValue(WindowDpiTls);
+	return (SIZE){MulDiv(size.cx, dpi, USER_DEFAULT_SCREEN_DPI), MulDiv(size.cy, dpi, USER_DEFAULT_SCREEN_DPI)};
+}
+static void BeginDPI(HWND hWnd)
+{ TlsSetValue(WindowDpiTls, (LPVOID)(UINT_PTR)Ptr_GetDpiForWindow(hWnd)); }
+static BOOL IsLowDpi(void)
+{ return (LONG)(INT_PTR)TlsGetValue(WindowDpiTls) == USER_DEFAULT_SCREEN_DPI; }
+static UINT ScreenScaleForDpi(UINT dpi)
+{ return dpi >= 144 ? 2 : 1; }
+static UINT GetDpiForNewWindow(void)
+{ return Ptr_GetDpiForSystem ? Ptr_GetDpiForSystem() : USER_DEFAULT_SCREEN_DPI; }
+static void RectForNewWindowSize(RECT *r, UINT width, UINT height)
+{
+	UINT dpi = GetDpiForNewWindow();
+	r->left = r->top = 0;
+	r->right = MulDiv(width, dpi, USER_DEFAULT_SCREEN_DPI);
+	r->bottom = MulDiv(height, dpi, USER_DEFAULT_SCREEN_DPI);
+}
+
 typedef struct UxnStashFooter
 {
 	USHORT slot;
@@ -275,7 +316,7 @@ typedef struct UxnDebugSymbols
 } UxnDebugSymbols;
 
 enum { TimerID_InitAudio = 1, TimerID_FlushConsole };
-enum { UXNMSG_ContinueExec = WM_USER, UXNMSG_BecomeClone, UXNMSG_LoadSymbols, UXNMSG_SendArgs, UXNMSG_Screen60hz };
+enum { UXNMSG_ContinueExec = WM_USER, UXNMSG_BecomeClone, UXNMSG_LoadSymbols, UXNMSG_SendArgs, UXNMSG_Screen60hz, UXNMSG_UpdateDPI };
 enum EmuIn
 {
 	EmuIn_KeyChar = 1,
@@ -549,13 +590,25 @@ cleanup:
 }
 #endif
 
-static HFONT GetSmallFixedFont(void)
+static HFONT GetSmallFixedFont(HWND hWnd)
 {
-	static HFONT hFont;
-	if (!hFont) hFont = CreateFont(
-		8, 6, 0, 0, 0, 0, 0, 0, OEM_CHARSET, OUT_RASTER_PRECIS,
-		CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, FIXED_PITCH, TEXT("Terminal"));
-	return hFont;
+	static HFONT hFonts[32];
+	static UINT dpis[32];
+	UINT dpi = Ptr_GetDpiForWindow(hWnd);
+	int i = 0, height, width;
+	LPCSTR fontName;
+	for (; i <= 31 && dpis[i] != dpi; i++)
+	{
+		if (dpis[i]) continue;
+		dpis[i] = dpi;
+		height = dpi > 96 ? MulDiv(12, dpi, USER_DEFAULT_SCREEN_DPI) : 8, width = dpi > 96 ? 0 : 6;
+		fontName = dpi > 96 ? "Courier" : "Terminal";
+		hFonts[i] = CreateFont(
+			height, width, 0, 0, 0, 0, 0, 0, OEM_CHARSET, dpi > 96 ? OUT_DEFAULT_PRECIS : OUT_RASTER_PRECIS,
+			CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, FIXED_PITCH, fontName);
+		break;
+	}
+	return hFonts[i];
 }
 
 static const UxnU8 SpriteBlendingTable[5][16] = {
@@ -620,7 +673,7 @@ static void CalcUxnViewport(EmuWindow *d)
 {
 	RECT crect, *vprect = &d->viewport_rect; LONG width, height, scale;
 	GetClientRect(d->hWnd, &crect);
-	width = crect.right / d->screen.width, height = crect.bottom / d->screen.height;
+	width = crect.right/ d->screen.width, height = crect.bottom / d->screen.height;
 	scale = width < height ? width : height;
 	if (scale < 1) scale = 1;
 	d->viewport_scale = scale;
@@ -968,7 +1021,8 @@ result:
 static void CreateConsoleWindow(EmuWindow *emu)
 {
 	DWORD exStyle = WS_EX_TOOLWINDOW, wStyle = WS_SIZEBOX | WS_SYSMENU;
-	RECT rect; rect.left = 0; rect.top = 0; rect.right = 400; rect.bottom = 200;
+	RECT rect;
+	RectForNewWindowSize(&rect, 400, 200);
 	AdjustWindowRectEx(&rect, wStyle, FALSE, exStyle);
 	emu->consoleHWnd = CreateWindowEx(exStyle, ConsoleWinClass, TEXT("Console"), wStyle, CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, emu->hWnd, NULL, MainInstance, (void *)NULL);
 }
@@ -1384,10 +1438,10 @@ static void OpenBeetbugWindow(EmuWindow *emu, BOOL force)
 {
 	if (!emu->beetbugHWnd || force)
 	{
-		emu->beetbugHWnd = CreateWindowEx(
-			0, BeetbugWinClass, TEXT("Beetbug"), WS_OVERLAPPEDWINDOW,
-			CW_USEDEFAULT, CW_USEDEFAULT, 540, 395,
-			emu->hWnd, NULL, MainInstance, emu);
+		DWORD wStyle = WS_OVERLAPPEDWINDOW; RECT rect;
+		RectForNewWindowSize(&rect, 540, 395);
+		AdjustWindowRectEx(&rect, wStyle, FALSE, 0);
+		emu->beetbugHWnd = CreateWindowEx(0, BeetbugWinClass, TEXT("Beetbug"), WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, emu->hWnd, NULL, MainInstance, emu);
 	}
 	if (!IsWindowVisible(emu->beetbugHWnd)) ShowWindow(emu->beetbugHWnd, SW_SHOW);
 }
@@ -1638,7 +1692,8 @@ static HWND CreateWindowForEmu(HINSTANCE hInst, EmuWindow *emu)
 {
 	RECT rect;
 	rect.left = rect.top = 0;
-	rect.right = UXN_DEFAULT_WIDTH; rect.bottom = UXN_DEFAULT_HEIGHT;
+	rect.right = rect.bottom = ScreenScaleForDpi(GetDpiForNewWindow());
+	rect.right *= UXN_DEFAULT_WIDTH; rect.bottom *= UXN_DEFAULT_HEIGHT;
 	AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, TRUE);
 	return CreateWindowEx(WS_EX_APPWINDOW, EmuWinClass, TEXT("Uxn"), WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, rect.right - rect.left, rect.bottom - rect.top, NULL, NULL, hInst, (void *)emu);
 }
@@ -1883,12 +1938,8 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	{
 	case WM_CREATE:
 	{
-		LONG_PTR i, j; HWND list; LV_COLUMN col; HFONT hFont = GetSmallFixedFont();
-		static const int
-			columns[] = { /* Instr list */ 45 + 25 + 50 + 90, /* Hex list */ 40 + 130,
-			              /* Stacks */ 25, 25, /* Device mem */ 20 + 130},
-			rows[] = {UXN_RAM_SIZE, UXN_RAM_SIZE / 8, 255, 255, 256 / 8},
-			status_parts[] = {70, 140, 200, 300, -1};
+		LONG_PTR i, j; HWND list; LV_COLUMN col; HFONT hFont = GetSmallFixedFont(hWnd);
+		static const int rows[] = {UXN_RAM_SIZE, UXN_RAM_SIZE / 8, 255, 255, 256 / 8};
 		d = HeapAlloc0OrDie(sizeof *d);
 		SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)d);
 		d->emu = ((CREATESTRUCT *)lParam)->lpCreateParams;
@@ -1902,16 +1953,14 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 					LVS_REPORT | LVS_OWNERDATA | LVS_SHOWSELALWAYS |
 					LVS_NOCOLUMNHEADER | LVS_EDITLABELS | LVS_SINGLESEL,
 				0, 0, 0, 0, hWnd, (HMENU)(i + BB_AsmList), MainInstance, NULL);
-			if (hFont) SendMessage(list, WM_SETFONT, (WPARAM)hFont, 0);
 			ListView_SetExtendedListViewStyle(list, LVS_EX_FULLROWSELECT);
 			ListView_DeleteAllItems(list);
-			col.cx = columns[i]; ListView_InsertColumn(list, 0, &col);
+			col.cx = 0; ListView_InsertColumn(list, 0, &col);
 			SendMessage(list, LVM_SETITEMCOUNT, rows[i], LVSICF_NOSCROLL);
 		}
 		d->ctrls[BB_Status] = CreateWindowEx(
 			0, STATUSCLASSNAME, NULL, WS_CHILD | WS_VISIBLE | SBARS_SIZEGRIP,
 			0, 0, 0, 0, hWnd, (HMENU)BB_Status, MainInstance, NULL);
-		SendMessage(d->ctrls[BB_Status], SB_SETPARTS, sizeof status_parts / sizeof(int), (LPARAM)status_parts);
 		for (i = BB_BigStepBtn; i <= BB_PopStackBtn1; i++)
 		{
 			HWND btn = d->ctrls[i] = CreateWindowEx(0, TEXT("Button"), NULL, WS_TABSTOP | WS_VISIBLE | WS_CHILD, 0, 0, 0, 0, hWnd, (HMENU)(i), MainInstance, NULL);
@@ -1927,12 +1976,41 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		SetWindowLongPtr(d->ctrls[BB_JumpEdit], GWLP_USERDATA, (LONG_PTR)GetWindowLongPtr(d->ctrls[BB_JumpEdit], GWLP_WNDPROC));
 		SetWindowLongPtr(d->ctrls[BB_JumpEdit], GWLP_WNDPROC,  (LONG_PTR)BeetbugJumpEditProc);
 		SendMessage(d->ctrls[BB_JumpEdit], EM_SETLIMITTEXT, 4, 0);
-		SendMessage(d->ctrls[BB_JumpEdit], WM_SETFONT, (WPARAM)hFont, 0);
+		SendMessage(hWnd, UXNMSG_UpdateDPI, 0, 0);
 		SendMessage(hWnd, UXNMSG_LoadSymbols, 0, 0);
 		UpdateBeetbugStuff(hWnd, d);
 		SetTimer(hWnd, 1, 50, NULL);
 		break;
 	}
+	case UXNMSG_UpdateDPI:
+	{
+		static const int
+			columns[] = { /* Instr list */ 45 + 25 + 50 + 90, /* Hex list */ 40 + 130,
+			/* Stacks */ 25, 25, /* Device mem */ 20 + 130};
+		int status_parts[] = {70, 140, 200, 300, -1};
+		LONG_PTR i;
+		HFONT hFont = GetSmallFixedFont(hWnd);
+		BeginDPI(hWnd);
+		for (i = 0; i < 5; i++)
+		{
+			HWND list = d->ctrls[BB_AsmList + i];
+			ListView_SetColumnWidth(list, 0, DPI(columns[i]));
+			if (hFont) SendMessage(list, WM_SETFONT, (WPARAM)hFont, 0);
+		}
+		for (i = 0; i < sizeof status_parts / sizeof(int); i++)
+			status_parts[i] = DPI(status_parts[i]);
+		SendMessage(d->ctrls[BB_Status], SB_SETPARTS, 5, (LPARAM)status_parts);
+		for (i = BB_BigStepBtn; i <= BB_PopStackBtn1; i++)
+		{
+			SendMessage(d->ctrls[i], WM_SETFONT, i < BB_PushStackBtn0 ? (WPARAM)GetStockObject(DEFAULT_GUI_FONT) : (WPARAM)hFont, 0);
+		}
+		if (hFont) SendMessage(d->ctrls[BB_JumpEdit], WM_SETFONT, (WPARAM)hFont, 0);
+		return 0;
+	}
+	case WM_DPICHANGED:
+		SendMessage(hWnd, UXNMSG_UpdateDPI, 0, 0);
+		MoveWindowRect(hWnd, (RECT *)lParam, TRUE);
+		return 0;
 	case WM_CLOSE:
 		ShowWindow(hWnd, SW_HIDE);
 		return 0;
@@ -1942,24 +2020,26 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		break;
 	case WM_SIZE:
 	{
-		static const SIZE btnSize = {87, 19}; int i; RECT r, tmp, tmp2;
+		int i; RECT r, tmp, tmp2; SIZE btnSize;
+		BeginDPI(hWnd);
+		btnSize = DPISIZE((SIZE){87, 19});
 		SetRect(&r, 0, 0, LOWORD(lParam), HIWORD(lParam));
 		SendMessage(d->ctrls[BB_Status], WM_SIZE, 0, 0);
 		GetClientRect(d->ctrls[BB_Status], &tmp);
 		MapWindowPoints(d->ctrls[BB_Status], hWnd, (LPPOINT)&tmp, 2); /* must violate strict aliasing */
 		r.bottom = tmp.top;
-		CutRect(&r, FromLeft, 250, &tmp);
-		CutRect(&tmp, FromBottom, 15, &tmp2);
-		CutRectForWindow(&tmp2, FromLeft, 50, d->ctrls[BB_JumpEdit]);
+		CutRect(&r, FromLeft, DPI(250), &tmp);
+		CutRect(&tmp, FromBottom, DPI(15), &tmp2);
+		CutRectForWindow(&tmp2, FromLeft, DPI(50), d->ctrls[BB_JumpEdit]);
 		MoveWindowRect(d->ctrls[BB_JumpBtn], &tmp2, TRUE);
-		CutRectForWindow(&tmp, FromBottom, (tmp.bottom - tmp.top) * 10 / 25, d->ctrls[BB_HexList]);
+		CutRectForWindow(&tmp, FromBottom, (tmp.bottom - tmp.top) * DPI(10) / DPI(25), d->ctrls[BB_HexList]);
 		MoveWindowRect(d->ctrls[BB_AsmList], &tmp, TRUE);
 		d->rcBlank = r;
-		r.top += 5;
+		r.top += DPI(5);
 		CutRect(&r, FromTop, btnSize.cy, &tmp);
-		r.top += 5;
+		r.top += DPI(5);
 		d->rcBlank.bottom = r.top; /* TODO fix filling over buttons by using regions? */
-		tmp.left += 5; tmp.right = tmp.left + 500;
+		tmp.left += DPI(5); tmp.right = tmp.left + DPI(500);
 		for (i = BB_BigStepBtn; i <= BB_PauseBtn; i++)
 		{
 			CutRectForWindow(&tmp, FromLeft, btnSize.cx, d->ctrls[i]);
@@ -1967,10 +2047,10 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		}
 		for (i = 0; i < 2; i++)
 		{
-			CutRect(&r, FromLeft, 50, &tmp);
-			CutRect(&tmp, FromBottom, 20, &d->rcWstLabel + i);
-			CutRectForWindow(&tmp, FromBottom, 15, d->ctrls[BB_PopStackBtn0  + i]);
-			CutRectForWindow(&tmp, FromBottom, 15, d->ctrls[BB_PushStackBtn0 + i]);
+			CutRect(&r, FromLeft, DPI(50), &tmp);
+			CutRect(&tmp, FromBottom, DPI(20), &d->rcWstLabel + i);
+			CutRectForWindow(&tmp, FromBottom, DPI(15), d->ctrls[BB_PopStackBtn0  + i]);
+			CutRectForWindow(&tmp, FromBottom, DPI(15), d->ctrls[BB_PushStackBtn0 + i]);
 			MoveWindowRect(d->ctrls[BB_WrkStack + i], &tmp, TRUE);
 		}
 		CutRect(&r, FromBottom, 20, &d->rcDevMemLabel);
@@ -1986,7 +2066,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		if (IntersectRect(&rTmp, &ps.rcPaint, &d->rcBlank))
 			FillRect(hDC, &rTmp, (HBRUSH)(COLOR_3DFACE + 1));
 		old_bkmode = SetBkMode(hDC, TRANSPARENT);
-		old_font = SelectObject(hDC, GetSmallFixedFont());
+		old_font = SelectObject(hDC, GetSmallFixedFont(hWnd));
 		for (i = 0; i < 3; i++)
 		{
 			RECT *rc = &d->rcWstLabel + i;
@@ -2239,7 +2319,7 @@ static LRESULT CALLBACK ConsoleWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	{
 	case WM_CREATE:
 	{
-		HWND hwTmp; int i; HFONT hFont = GetSmallFixedFont();
+		HWND hwTmp; int i;
 		d = HeapAlloc0OrDie(sizeof *d);
 		SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)d);
 		d->outHWnd = CreateWindowEx(
@@ -2254,9 +2334,16 @@ static LRESULT CALLBACK ConsoleWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		{
 			SetWindowLongPtr(hwTmp, GWLP_USERDATA, (LONG_PTR)GetWindowLongPtr(hwTmp, GWLP_WNDPROC));
 			SetWindowLongPtr(hwTmp, GWLP_WNDPROC,  (LONG_PTR)ConEditWndProc);
-			if (hFont) SendMessage(hwTmp, WM_SETFONT, (WPARAM)hFont, 0);
 		}
+		SendMessage(hWnd, UXNMSG_UpdateDPI, 0, 0);
 		break;
+	}
+	case UXNMSG_UpdateDPI:
+	{
+		HWND hwTmp; int i; HFONT hFont = GetSmallFixedFont(hWnd); /* hmm */
+		for (i = 0, hwTmp = d->outHWnd; i < 2; hwTmp = (&d->outHWnd)[++i])
+			if (hFont) SendMessage(hwTmp, WM_SETFONT, (WPARAM)hFont, 0);
+		return 0;
 	}
 	case WM_CLOSE:
 		ShowWindow(hWnd, SW_HIDE);
@@ -2266,8 +2353,13 @@ static LRESULT CALLBACK ConsoleWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		HeapFree0(d);
 		return 0;
 	case WM_SIZE:
-		MoveWindow(d->outHWnd, 0, 0, LOWORD(lParam), HIWORD(lParam) - 15, TRUE);
-		MoveWindow(d->inHWnd, 0, HIWORD(lParam) - 15, LOWORD(lParam), 15, TRUE);
+		BeginDPI(hWnd);
+		MoveWindow(d->outHWnd, 0, 0, LOWORD(lParam), HIWORD(lParam) - DPI(15), TRUE);
+		MoveWindow(d->inHWnd, 0, HIWORD(lParam) - DPI(15), LOWORD(lParam), DPI(15), TRUE);
+		return 0;
+	case WM_DPICHANGED:
+		SendMessage(hWnd, UXNMSG_UpdateDPI, 0, 0);
+		MoveWindowRect(hWnd, (RECT *)lParam, TRUE);
 		return 0;
 	case WM_ACTIVATE:
 		if (wParam != WA_INACTIVE) SetFocus(d->inHWnd);
@@ -2323,7 +2415,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		box->core.deo = UxnDeviceWrite;
 		d->host_cursor = TRUE;
 		d->hWnd = hwnd; /* TODO cleanup reorder these assignments */
-		d->viewport_scale = UXN_DEFAULT_ZOOM;
+		d->viewport_scale = ScreenScaleForDpi(Ptr_GetDpiForWindow(hwnd));
 		SetUxnScreenSize(&d->screen, UXN_DEFAULT_WIDTH, UXN_DEFAULT_HEIGHT);
 		d->filers[0].hFile = d->filers[0].hFind = d->filers[1].hFile = d->filers[1].hFind = INVALID_HANDLE_VALUE;
 		LoadROMFileAndStartVM(d);
@@ -2432,6 +2524,9 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 	case WM_SIZE:
 		CalcUxnViewport(d);
 		InvalidateRect(d->hWnd, NULL, FALSE);
+		return 0;
+	case WM_DPICHANGED:
+		RefitEmuWindow(d);
 		return 0;
 
 	{
@@ -2543,10 +2638,13 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		case IDM_OPENROM: OpenROMDialog(d); return 0;
 		case IDM_CLONEWINDOW: CloneWindow(d); return 0;
 		case IDM_TOGGLEZOOM:
+		{
+			UINT base = ScreenScaleForDpi(Ptr_GetDpiForWindow(hwnd));
 			if (IsZoomed(d->hWnd)) return 0;
-			d->viewport_scale = d->viewport_scale == 1 ? 2 : 1;
+			d->viewport_scale = d->viewport_scale == base ? base * 2 : base;
 			RefitEmuWindow(d);
 			return 0;
+		}
 		case IDM_RELOAD: if (!SINGULAR_MODE) ReloadFromROMFile(d); return 0;
 		case IDM_CLOSEWINDOW: PostMessage(hwnd, WM_CLOSE, 0, 0); return 0;
 		case IDM_PAUSE: if (d->running) PauseVM(d); else d->box.core.fault = 0, UnpauseVM(d); return 0;
@@ -2769,12 +2867,14 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	DWORD thread_id; static /* <- C89 */ BOOL hide_menu = SINGULAR_MODE;
 	Type_CommandLineToArgvW *Ptr_CommandLineToArgvW;
 	Type_GetCommandLineW *Ptr_GetCommandLineW;
+	Type_SetProcessDpiAwarenessContext *Ptr_SetProcessDpiAwarenessContext;
 	EmuWindow *emu;
 	(void)command_line; (void)prev_instance;
 	QueryPerformanceFrequency(&_perfcount_freq);
 	ExecutionTimeLimit = _perfcount_freq.QuadPart / 20;
 	MainInstance = instance;
 	ProcessHeap = GetProcessHeap();
+	WindowDpiTls = TlsAlloc();
 	emu = HeapAlloc0OrDie(sizeof(EmuWindow));
 	if (!SINGULAR_MODE) CopyMemory(emu->rom_path, DefaultROMPath, (lstrlen(DefaultROMPath) + 1) * sizeof(TCHAR));
 	if (!(Ptr_TrackMouseEvent = (Type_TrackMouseEvent *)GetProcAddress(GetModuleHandle(TEXT("user32.dll")), "TrackMouseEvent")))
@@ -2817,6 +2917,16 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 			CmdLineArgs += 1, CmdLineArgCount -= 1;
 		}
 	}
+
+	if ((Ptr_SetProcessDpiAwarenessContext = (Type_SetProcessDpiAwarenessContext *)GetProcAddress(GetModuleHandle(TEXT("user32.dll")), "SetProcessDpiAwarenessContext")))
+	{
+		Ptr_SetProcessDpiAwarenessContext((void *)-4); /* DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 */
+	}
+	if (!(Ptr_GetDpiForWindow = (Type_GetDpiForWindow *)GetProcAddress(GetModuleHandle(TEXT("user32.dll")), "GetDpiForWindow")))
+	{
+		Ptr_GetDpiForWindow = Fallback_GetDpiForWindow;
+	}
+	Ptr_GetDpiForSystem = (Type_GetDpiForSystem *)GetProcAddress(GetModuleHandle(TEXT("user32.dll")), "GetDpiForSystem");
 
 	ZeroMemory(&wc, sizeof wc);
 	wc.hInstance = instance;
