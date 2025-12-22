@@ -135,7 +135,7 @@ static Type_D3DKMTWaitForVerticalBlankEvent *Ptr_D3DKMTWaitForVerticalBlankEvent
 typedef BOOL WINAPI Type_SetProcessDpiAwarenessContext(void *value);
 typedef UINT WINAPI Type_GetDpiForWindow(HWND hwnd);
 static Type_GetDpiForWindow *Ptr_GetDpiForWindow;
-static UINT Fallback_GetDpiForWindow(HWND hwnd) { (void)hwnd; return USER_DEFAULT_SCREEN_DPI; }
+static UINT WINAPI Fallback_GetDpiForWindow(HWND hwnd) { (void)hwnd; return USER_DEFAULT_SCREEN_DPI; }
 typedef UINT WINAPI Type_GetDpiForSystem(void);
 static Type_GetDpiForSystem *Ptr_GetDpiForSystem;
 
