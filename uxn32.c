@@ -2639,7 +2639,7 @@ static LRESULT CALLBACK EmuWndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lp
 		case IDM_CLONEWINDOW: CloneWindow(d); return 0;
 		case IDM_TOGGLEZOOM:
 		{
-			UINT base = ScreenScaleForDpi(Ptr_GetDpiForWindow(hwnd));
+			LONG base = (LONG)ScreenScaleForDpi(Ptr_GetDpiForWindow(hwnd));
 			if (IsZoomed(d->hWnd)) return 0;
 			d->viewport_scale = d->viewport_scale == base ? base * 2 : base;
 			RefitEmuWindow(d);
