@@ -810,17 +810,23 @@ static DWORD FileDevWrite(UxnFiler *f, char *src, DWORD src_len, int flags)
 
 static DWORD FileDevStat(UxnFiler *f, char *dst, DWORD dst_len)
 {
-	DWORD written; char path_tmp[MAX_PATH]; BY_HANDLE_FILE_INFORMATION info; BOOL ok, dir;
+	DWORD i; char fill = '?'; BY_HANDLE_FILE_INFORMATION info;
 	f->hFile = CreateFile(f->path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-	if (f->hFile == INVALID_HANDLE_VALUE) return 0;
-	ok = GetFileInformationByHandle(f->hFile, &info);
-	dir = ok && info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY;
-	if (!ok) info.nFileSizeHigh = info.nFileSizeLow = (DWORD)-1;
-	CopyMemory(path_tmp, f->path, f->pathlen + 1);
-	PathStripPathA(path_tmp);
-	written = PrintDirListRow(dst, dst_len, path_tmp, info.nFileSizeHigh, info.nFileSizeLow, dir);
+	if (f->hFile == INVALID_HANDLE_VALUE) goto fill;
+	if (!GetFileInformationByHandle(f->hFile, &info)) goto cleanup;
+	if (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) { fill = '-'; goto cleanup; }
+	fill = '0';
+	for (i = 0; i < 2; i++)
+	{
+		DWORD size = *(&info.nFileSizeLow - i);
+		for (; dst_len && size; size >>= 4)
+			dst[--dst_len] = "0123456789abcdef"[size & 0xF];
+	}
+cleanup:
 	ResetFiler(f);
-	return written;
+fill:
+	while (dst_len) dst[--dst_len] = fill;
+	return dst_len;
 }
 
 static DWORD FileDevDelete(UxnFiler *f)
