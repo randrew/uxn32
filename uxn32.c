@@ -1139,16 +1139,16 @@ static void UxnDeviceWrite_Cold(UxnBox *box, UINT address, UINT value)
 	EmuWindow *emu = OUTER_OF(box, EmuWindow, box);
 	UINT device = address & 0xF0, port = address & 0x0F;
 	UxnU8 *imem = box->device_memory + device;
-	if (address == VV_SCREEN + 0x5)
+	if (address == VV_SCREEN + 0x3 || address == VV_SCREEN + 0x5)
 	{
 		DWORD w, h;
 		DEVPEEK2(imem, w, h, 0x2);
-		if (w > 1024 || h > 1024)
+		if (w > 2048 || h > 2048)
 		{
 			/* If the size is unacceptable, write back the old one */
 			DEVPOKE2(imem, 0x2, emu->screen.width, emu->screen.height);
 		}
-		else
+		else if (w && h)
 		{
 			SetUxnScreenSize(&emu->screen, w, h);
 			if (IsZoomed(emu->hWnd)) /* When maximized, adjust the viewport, not the window size. */
