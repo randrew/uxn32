@@ -833,14 +833,12 @@ fill:
 
 static DWORD FileDevDelete(UxnFiler *f)
 {
-	DWORD result;
 	ResetFiler(f);
 	if (!f->pathlen) return 0;
 	/* result = PathIsDirectoryA(f->path) ? RemoveDirectoryA(f->path) : DeleteFileA(f->path); */
 	/* ^ If Uxn is ever allowed to create directories, this is how it would delete them.
 	 * But right now, unable to create them, it's just a liability when running in Wine. */
-	result = PathIsDirectoryA(f->path) ? 0 : DeleteFileA(f->path);
-	return result ? 0 : 1;
+	return PathIsDirectoryA(f->path) ? 0 : !!DeleteFileA(f->path);
 }
 
 #define NOTE_PERIOD (UXN_SAMPLE_RATE * 0x4000 / 11025)
