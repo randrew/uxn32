@@ -810,7 +810,7 @@ static DWORD FileDevWrite(UxnFiler *f, char *src, DWORD src_len, int flags)
 
 static DWORD FileDevStat(UxnFiler *f, char *dst, DWORD dst_len)
 {
-	DWORD i; char fill = '?'; BY_HANDLE_FILE_INFORMATION info;
+	DWORD i; char fill = '!'; BY_HANDLE_FILE_INFORMATION info;
 	f->hFile = CreateFile(f->path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (f->hFile == INVALID_HANDLE_VALUE) goto fill;
 	if (!GetFileInformationByHandle(f->hFile, &info)) goto cleanup;
