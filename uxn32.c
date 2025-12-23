@@ -237,7 +237,9 @@ static void CutRectForWindow(RECT *prect, int dir, int length, HWND window)
 static SIZE DPISIZE(SIZE size)
 {
 	int dpi = (int)(INT_PTR)TlsGetValue(WindowDpiTls);
-	return (SIZE){MulDiv(size.cx, dpi, USER_DEFAULT_SCREEN_DPI), MulDiv(size.cy, dpi, USER_DEFAULT_SCREEN_DPI)};
+	size.cx = MulDiv(size.cx, dpi, USER_DEFAULT_SCREEN_DPI);
+	size.cy = MulDiv(size.cy, dpi, USER_DEFAULT_SCREEN_DPI);
+	return size;
 }
 static void BeginDPI(HWND hWnd)
 { TlsSetValue(WindowDpiTls, (LPVOID)(UINT_PTR)Ptr_GetDpiForWindow(hWnd)); }
@@ -2026,9 +2028,9 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 		break;
 	case WM_SIZE:
 	{
-		int i; RECT r, tmp, tmp2; SIZE btnSize;
+		int i; RECT r, tmp, tmp2; SIZE btnSize = {87, 19};
 		BeginDPI(hWnd);
-		btnSize = DPISIZE((SIZE){87, 19});
+		btnSize = DPISIZE(btnSize);
 		SetRect(&r, 0, 0, LOWORD(lParam), HIWORD(lParam));
 		SendMessage(d->ctrls[BB_Status], WM_SIZE, 0, 0);
 		GetClientRect(d->ctrls[BB_Status], &tmp);
