@@ -812,7 +812,7 @@ static DWORD FileDevWrite(UxnFiler *f, char *src, DWORD src_len, int flags)
 
 static DWORD FileDevStat(UxnFiler *f, char *dst, DWORD dst_len)
 {
-	DWORD i; char fill = '!'; BY_HANDLE_FILE_INFORMATION info;
+	DWORD i, rem = dst_len; char fill = '!'; BY_HANDLE_FILE_INFORMATION info;
 	f->hFile = CreateFile(f->path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (f->hFile == INVALID_HANDLE_VALUE) goto fill;
 	if (!GetFileInformationByHandle(f->hFile, &info)) goto cleanup;
@@ -821,13 +821,13 @@ static DWORD FileDevStat(UxnFiler *f, char *dst, DWORD dst_len)
 	for (i = 0; i < 2; i++)
 	{
 		DWORD size = *(&info.nFileSizeLow - i);
-		for (; dst_len && size; size >>= 4)
-			dst[--dst_len] = "0123456789abcdef"[size & 0xF];
+		for (; rem && size; size >>= 4)
+			dst[--rem] = "0123456789abcdef"[size & 0xF];
 	}
 cleanup:
 	ResetFiler(f);
 fill:
-	while (dst_len) dst[--dst_len] = fill;
+	while (rem) dst[--rem] = fill;
 	return dst_len;
 }
 
