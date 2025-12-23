@@ -1117,8 +1117,8 @@ static UxnU8 UxnDeviceRead(UxnCore *u, UINT address)
 		GetLocalTime(&t);
 		switch (port)
 		{
-		case 0x0: return (t.wYear + 1900) >> 8;
-		case 0x1: return (t.wYear + 1900);
+		case 0x0: return t.wYear >> 8;
+		case 0x1: return t.wYear;
 		case 0x2: return t.wMonth;
 		case 0x3: return t.wDay;
 		case 0x4: return t.wHour;
