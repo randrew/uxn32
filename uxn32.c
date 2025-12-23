@@ -673,7 +673,7 @@ static void CalcUxnViewport(EmuWindow *d)
 {
 	RECT crect, *vprect = &d->viewport_rect; LONG width, height, scale;
 	GetClientRect(d->hWnd, &crect);
-	width = crect.right/ d->screen.width, height = crect.bottom / d->screen.height;
+	width = crect.right / d->screen.width, height = crect.bottom / d->screen.height;
 	scale = width < height ? width : height;
 	if (scale < 1) scale = 1;
 	d->viewport_scale = scale;
