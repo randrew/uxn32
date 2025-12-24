@@ -2868,7 +2868,7 @@ cleanup:
 
 int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
 {
-	WNDCLASSEX wc; HWND hWin, hParent;
+	WNDCLASSEX wc; HWND hWin, hParent; ATOM emuClassAtom;
 	MSG msg; HACCEL hAccel; HANDLE hThread; HMODULE hMod;
 	DWORD thread_id; static /* <- C89 */ BOOL hide_menu = SINGULAR_MODE;
 	Type_CommandLineToArgvW *Ptr_CommandLineToArgvW;
@@ -2943,7 +2943,7 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 	wc.hCursor = LoadCursor(NULL, IDC_ARROW);
 	wc.hIcon = LoadIcon(instance, (LPCTSTR)IDI_UXN32); /* use this one */
 	wc.style = CS_HREDRAW | CS_VREDRAW;
-	RegisterClassEx(&wc);
+	emuClassAtom = RegisterClassEx(&wc);
 	wc.lpszClassName = ConsoleWinClass;
 	wc.lpszMenuName = NULL;
 	wc.lpfnWndProc = ConsoleWndProc;
@@ -2975,7 +2975,8 @@ int CALLBACK WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_
 				hWin = msg.hwnd;
 				if (msg.wParam >= VK_F1 && msg.wParam <= VK_F24)
 					while ((hParent = (HWND)GetWindowLongPtr(hWin, GWLP_HWNDPARENT))) hWin = hParent;
-				if (TranslateAccelerator(hWin, hAccel, &msg)) continue;
+				/* Use the same keyboard accelerators for all window types, and suppress the original keystroke. Except, for the main emulator window type, don't suppress the original keystroke for Ctrl+A (select all) so that programs like text editors can still see Ctrl+A. */
+				if (TranslateAccelerator(hWin, hAccel, &msg) && !(msg.wParam == 'A' && GetClassLong(hWin, GCW_ATOM) == emuClassAtom)) continue;
 			}
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
