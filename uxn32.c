@@ -1945,7 +1945,7 @@ static LRESULT CALLBACK BeetbugWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARA
 	case WM_CREATE:
 	{
 		LONG_PTR i, j; HWND list; LV_COLUMN col; HFONT hFont = GetSmallFixedFont(hWnd);
-		static const int rows[] = {UXN_RAM_SIZE, UXN_RAM_SIZE / 8, 255, 255, 256 / 8};
+		static const int rows[] = {UXN_RAM_SIZE, UXN_RAM_SIZE / 8, 256, 256, 256 / 8};
 		d = HeapAlloc0OrDie(sizeof *d);
 		SetWindowLongPtr(hWnd, GWLP_USERDATA, (LONG_PTR)d);
 		d->emu = ((CREATESTRUCT *)lParam)->lpCreateParams;
