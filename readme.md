@@ -107,5 +107,5 @@ Uxn32 TODO
 License
 -------
 
-`uxn32.c`: All rights reserved
-`uxn_core.c`, `uxn_core.h`, `uxn_lz.c`: MIT
+- `uxn32.c`: All rights reserved
+- `uxn_core.c`, `uxn_core.h`, `uxn_lz.c`: MIT
