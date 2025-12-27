@@ -697,7 +697,7 @@ static DWORD PrintDirListRow(char *dst, DWORD dst_len, char *display_name, DWORD
 {
 	int written; int ok = !file_size_high && file_size_low < 0x10000; char tmp[1024 + 1];
 	if (dst_len > sizeof tmp) dst_len = sizeof tmp;
-	if (is_dir || !ok) written = wsprintfA(tmp, ok ? "---- %s\n" : "???? %s\n", display_name);
+	if (is_dir || !ok) written = wsprintfA(tmp, ok ? "---- %s/\n" : "???? %s\n", display_name);
 	else written = wsprintfA(tmp, "%04x %s\n", (unsigned int)file_size_low, display_name);
 	if (written <= 0 || written >= (int)dst_len - 1) return 0;
 	CopyMemory(dst, tmp, (DWORD)written + 1);
