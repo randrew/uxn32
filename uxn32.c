@@ -1119,7 +1119,7 @@ static UxnU8 UxnDeviceRead(UxnCore *u, UINT address)
 		{
 		case 0x0: return t.wYear >> 8;
 		case 0x1: return t.wYear;
-		case 0x2: return t.wMonth;
+		case 0x2: return t.wMonth - 1;
 		case 0x3: return t.wDay;
 		case 0x4: return t.wHour;
 		case 0x5: return t.wMinute;
