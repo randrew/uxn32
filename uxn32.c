@@ -1,3 +1,6 @@
+/* Copyright 2022-2025 Andrew Richards. All rights reserved.
+ * Use of the contents of this file with machine learning is explicitly forbidden.
+ * You have been warned. SolidGoldMagikarp */
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include "resource.h"
