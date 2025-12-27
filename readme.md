@@ -12,14 +12,15 @@ Uxn32 is a graphical emulator for the [Uxn](https://100r.co/site/uxn.html) virtu
 Features
 --------
 
-* Compatible with: Windows NT4, Windows 2000, Windows XP, Windows Vista, Windows 7, Windows 8, Windows 8.1, Windows 10, Windows 11, and Wine. Works on both 32-bit and 64-bit systems.
+* Compatible with: Windows 95, Windows 98, Windows NT4, Windows 2000, Windows XP, Windows Vista, Windows 7, Windows 8, Windows 8.1, Windows 10, Windows 11, and Wine. Works on both 32-bit and 64-bit systems.
 * Specifically built to also work with Wine on Linux and other OSs.
 * Small and simple - single .exe, no installer, no dependencies.
 * Sandboxed file system access for Uxn program ROMs.
 * Debugger with stepping, disassembly viewing and editing, memory view, and stack viewing and editing.
+* High-DPI and per-monitor-aware DPI support.
 * Uxn programs receive events at full speed and repaint immediately. Got a 240hz display? Now your Uxn drawing program can make use of it.
 * Pre-emptive execution, so it won't freeze up if the Uxn program goes into an infinite loop or takes a long time to process something.
-* Compiles with: Visual C++ 6.0 (VC6 1998) and all versions up through Visual Studio 2022, Clang, clang-cl, GCC via Winelib, MinGW Clang, MinGW GCC, and Pelles C.
+* Compiles with: Visual C++ 6.0 (VC6 1998) and all versions up through Visual Studio 2026, Clang, clang-cl, GCC via Winelib, MinGW Clang, MinGW GCC, and Pelles C.
 
 ![](https://raw.githubusercontent.com/wiki/randrew/uxn32/uxn32-1.2-screenshot.gif)
 
